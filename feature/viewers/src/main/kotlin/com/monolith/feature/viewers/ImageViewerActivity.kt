@@ -1,0 +1,74 @@
+package com.monolith.feature.viewers
+
+import android.app.Activity
+import android.content.Context
+import android.content.Intent
+import android.graphics.Color
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import com.monolith.core.ui.theme.MonolithTheme
+
+/**
+ * Activity for viewing one or more local images with zoom, pan, rotation, and swipe navigation.
+ */
+class ImageViewerActivity : ComponentActivity() {
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
+        )
+
+        val path = intent.getStringExtra(EXTRA_PATH).orEmpty()
+        val rawPaths = intent.getStringArrayListExtra(EXTRA_IMAGE_PATHS).orEmpty()
+        val imagePaths = when {
+            rawPaths.isNotEmpty() -> rawPaths
+            path.isNotBlank() -> listOf(path)
+            else -> emptyList()
+        }
+
+        if (imagePaths.isEmpty()) {
+            finish()
+            return
+        }
+
+        val initialIndex = imagePaths.indexOf(path).coerceAtLeast(0)
+
+        setContent {
+            MonolithTheme(darkTheme = true) {
+                ImageViewerScreen(
+                    imagePaths = imagePaths,
+                    initialIndex = initialIndex,
+                    onNavigateBack = { finish() },
+                )
+            }
+        }
+    }
+
+    companion object {
+        private const val EXTRA_PATH = "extra_path"
+        private const val EXTRA_IMAGE_PATHS = "extra_image_paths"
+
+        /**
+         * Launches [ImageViewerActivity] for [path], optionally allowing swiping across [imagePaths].
+         */
+        fun launch(
+            context: Context,
+            path: String,
+            imagePaths: List<String> = listOf(path),
+        ) {
+            val intent = Intent(context, ImageViewerActivity::class.java).apply {
+                putExtra(EXTRA_PATH, path)
+                putStringArrayListExtra(EXTRA_IMAGE_PATHS, ArrayList(imagePaths))
+                if (context !is Activity) {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+            }
+            context.startActivity(intent)
+        }
+    }
+}

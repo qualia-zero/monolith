@@ -68,6 +68,9 @@ fun ExplorerScreen(
     hasStoragePermission: Boolean,
     onRequestStoragePermission: () -> Unit,
     onOpenMedia: (node: VfsNode, playlist: List<VfsNode>) -> Unit = { _, _ -> },
+    onOpenImage: (node: VfsNode, imagePlaylist: List<VfsNode>) -> Unit = { _, _ -> },
+    onOpenText: (node: VfsNode) -> Unit = {},
+    onOpenOther: (node: VfsNode) -> Unit = {},
     onOpenMiniPlayer: () -> Unit = {},
     onOpenSettings: () -> Unit = {},
     modifier: Modifier = Modifier,
@@ -159,7 +162,6 @@ fun ExplorerScreen(
                                     menuExpanded = false
                                 },
                             )
-                            HorizontalDivider(thickness = 0.5.dp)
                             DropdownMenuItem(
                                 text = { Text("Einstellungen") },
                                 onClick = {
@@ -214,11 +216,18 @@ fun ExplorerScreen(
                     FileRow(
                         node = node,
                         onClick = {
-                            if (node.isDirectory) {
-                                currentPath = node.path
-                            } else if (node.category == FileCategory.VIDEO || node.category == FileCategory.AUDIO) {
-                                val playlist = nodes.filter { it.category == node.category }
-                                onOpenMedia(node, playlist)
+                            when {
+                                node.isDirectory -> currentPath = node.path
+                                node.category == FileCategory.VIDEO || node.category == FileCategory.AUDIO -> {
+                                    val playlist = nodes.filter { it.category == node.category }
+                                    onOpenMedia(node, playlist)
+                                }
+                                node.category == FileCategory.IMAGE -> {
+                                    val images = nodes.filter { it.category == FileCategory.IMAGE }
+                                    onOpenImage(node, images)
+                                }
+                                node.category == FileCategory.TEXT -> onOpenText(node)
+                                else -> onOpenOther(node)
                             }
                         },
                     )

@@ -31,9 +31,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.monolith.core.common.AppSettingsStore
 import com.monolith.core.media.MpvEngine
 import com.monolith.core.media.PlayerSettingsStore
 import com.monolith.core.model.ResumeMode
+import com.monolith.core.model.ThemeMode
 import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -43,7 +45,9 @@ fun SettingsScreen(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
+    AppSettingsStore.init(context)
     PlayerSettingsStore.init(context)
+    val appSettings by AppSettingsStore.settings.collectAsState()
     val settings by PlayerSettingsStore.settings.collectAsState()
 
     BackHandler(onBack = onBack)
@@ -72,6 +76,34 @@ fun SettingsScreen(
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
+            Text(
+                text = "Design",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+            )
+
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ThemeMode.entries.forEach { mode ->
+                    FilterChip(
+                        selected = appSettings.themeMode == mode,
+                        onClick = {
+                            AppSettingsStore.update { it.copy(themeMode = mode) }
+                        },
+                        label = {
+                            Text(
+                                when (mode) {
+                                    ThemeMode.SYSTEM -> "System"
+                                    ThemeMode.LIGHT -> "Hell"
+                                    ThemeMode.DARK -> "Dunkel"
+                                },
+                            )
+                        },
+                    )
+                }
+            }
+
+            HorizontalDivider(thickness = 0.5.dp)
+
             Text(
                 text = "Untertitel",
                 style = MaterialTheme.typography.labelLarge,
@@ -130,6 +162,43 @@ fun SettingsScreen(
                     )
                 }
             }
+
+            HorizontalDivider(thickness = 0.5.dp)
+
+            Text(
+                text = "Standard-Apps",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+            )
+
+            SettingsToggle(
+                title = "Bildbetrachter",
+                checked = appSettings.useInternalImageViewer,
+                onCheckedChange = { checked ->
+                    AppSettingsStore.update { it.copy(useInternalImageViewer = checked) }
+                },
+            )
+            SettingsToggle(
+                title = "Videoplayer",
+                checked = appSettings.useInternalVideoPlayer,
+                onCheckedChange = { checked ->
+                    AppSettingsStore.update { it.copy(useInternalVideoPlayer = checked) }
+                },
+            )
+            SettingsToggle(
+                title = "Musikplayer",
+                checked = appSettings.useInternalAudioPlayer,
+                onCheckedChange = { checked ->
+                    AppSettingsStore.update { it.copy(useInternalAudioPlayer = checked) }
+                },
+            )
+            SettingsToggle(
+                title = "Texteditor",
+                checked = appSettings.useInternalTextEditor,
+                onCheckedChange = { checked ->
+                    AppSettingsStore.update { it.copy(useInternalTextEditor = checked) }
+                },
+            )
         }
     }
 }
@@ -137,9 +206,9 @@ fun SettingsScreen(
 @Composable
 private fun SettingsToggle(
     title: String,
-    subtitle: String,
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
+    subtitle: String? = null,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -148,11 +217,13 @@ private fun SettingsToggle(
     ) {
         Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
             Text(text = title, style = MaterialTheme.typography.bodyLarge)
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            if (subtitle != null) {
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
         Switch(
             checked = checked,
