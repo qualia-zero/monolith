@@ -42,6 +42,9 @@ object MpvEngine : MPVLib.EventObserver, MPVLib.LogObserver {
     private var currentSurface: Surface? = null
 
     @Volatile
+    private var pendingLoadTarget: String? = null
+
+    @Volatile
     private var playlistItems: List<Pair<String, String>> = emptyList()
 
     @Volatile
@@ -182,8 +185,13 @@ object MpvEngine : MPVLib.EventObserver, MPVLib.LogObserver {
         }
 
         lastHistorySaveWallMs = System.currentTimeMillis()
-        MPVLib.command(arrayOf("loadfile", target, "replace"))
-        MPVLib.setPropertyBoolean("pause", false)
+        if (isVideo && currentSurface == null && !inBackground) {
+            pendingLoadTarget = target
+        } else {
+            pendingLoadTarget = null
+            MPVLib.command(arrayOf("loadfile", target, "replace"))
+            MPVLib.setPropertyBoolean("pause", false)
+        }
 
         scope.launch {
             val mkvInfo = MkvTagParser.parse(appCtx, uri)
@@ -312,7 +320,17 @@ object MpvEngine : MPVLib.EventObserver, MPVLib.LogObserver {
         if (!initialized) return
         if (!_uiState.value.isBackground) {
             MPVLib.attachSurface(surface)
+            MPVLib.setPropertyString("force-window", "yes")
+            if (_uiState.value.isVideo) {
+                MPVLib.setPropertyString("vid", "auto")
+            }
             MPVLib.setPropertyString("vo", "gpu")
+            val pending = pendingLoadTarget
+            if (pending != null) {
+                pendingLoadTarget = null
+                MPVLib.command(arrayOf("loadfile", pending, "replace"))
+                MPVLib.setPropertyBoolean("pause", false)
+            }
         }
     }
 

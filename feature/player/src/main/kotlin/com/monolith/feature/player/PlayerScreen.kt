@@ -354,7 +354,7 @@ private fun AudioPlayerContent(
             TopAppBar(
                 title = {
                     Text(
-                        text = state.title.ifBlank { "Audio" },
+                        text = "Wiedergabe",
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -436,9 +436,9 @@ private fun AudioPlayerContent(
             ) {
                 Text(
                     text = state.title.ifBlank { "Unbekannter Titel" },
-                    style = MaterialTheme.typography.titleLarge,
+                    style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Medium,
-                    maxLines = 2,
+                    maxLines = 4,
                     overflow = TextOverflow.Ellipsis,
                     textAlign = TextAlign.Center,
                 )
@@ -753,90 +753,6 @@ private fun PlayerSettingsSheetContent(
                             label = { Text(label) },
                         )
                     }
-                }
-            }
-        }
-
-        // Subtitle font size
-        HorizontalDivider()
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = "Untertitelgröße",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-                Text(
-                    text = "${settings.subtitleSize.roundToInt()} pt",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Slider(
-                value = settings.subtitleSize.coerceIn(12f, 48f),
-                onValueChange = { size ->
-                    onUpdateSettings { it.copy(subtitleSize = size) }
-                    MpvEngine.setSubtitleSize(size)
-                },
-                valueRange = 12f..48f,
-            )
-        }
-
-        // Toggles
-        HorizontalDivider()
-        SettingsToggleRow(
-            title = "Hardware-Dekodierung",
-            checked = settings.useHwDecoding,
-            onCheckedChange = { checked ->
-                onUpdateSettings { it.copy(useHwDecoding = checked) }
-            },
-        )
-        SettingsToggleRow(
-            title = "Hintergrundwiedergabe",
-            checked = settings.useBackgroundPlay,
-            onCheckedChange = { checked ->
-                onUpdateSettings { it.copy(useBackgroundPlay = checked) }
-            },
-        )
-        SettingsToggleRow(
-            title = "Bild-in-Bild (PiP)",
-            checked = settings.usePipMode,
-            onCheckedChange = { checked ->
-                onUpdateSettings { it.copy(usePipMode = checked) }
-            },
-        )
-
-        // Resume mode
-        HorizontalDivider()
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(
-                text = "Fortsetzen-Modus",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary,
-            )
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                ResumeMode.entries.forEach { mode ->
-                    FilterChip(
-                        selected = settings.resumeMode == mode,
-                        onClick = {
-                            onUpdateSettings { it.copy(resumeMode = mode) }
-                        },
-                        label = {
-                            Text(
-                                when (mode) {
-                                    ResumeMode.ASK -> "Fragen"
-                                    ResumeMode.ALWAYS -> "Immer"
-                                    ResumeMode.NEVER -> "Nie"
-                                },
-                            )
-                        },
-                    )
                 }
             }
         }

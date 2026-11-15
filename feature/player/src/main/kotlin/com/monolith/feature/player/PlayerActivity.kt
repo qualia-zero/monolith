@@ -246,5 +246,16 @@ class PlayerActivity : ComponentActivity() {
             }
             context.startActivity(intent)
         }
+
+        fun reopen(context: Context) {
+            val intent = Intent(context, PlayerActivity::class.java).apply {
+                putExtra(EXTRA_REOPEN, true)
+                addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+                if (context !is Activity) {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+            }
+            context.startActivity(intent)
+        }
     }
 }
