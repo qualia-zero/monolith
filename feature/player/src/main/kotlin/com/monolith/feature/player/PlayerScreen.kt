@@ -1,11 +1,14 @@
 package com.monolith.feature.player
 
+import android.graphics.Bitmap
 import android.view.SurfaceHolder
 import android.view.SurfaceView
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -15,6 +18,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -39,9 +43,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.FilterChip
@@ -52,12 +54,14 @@ import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -71,12 +75,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.monolith.core.media.MpvEngine
+import com.monolith.core.media.ThumbnailEngine
 import com.monolith.core.model.MediaTrackType
 import com.monolith.core.model.PlaybackUiState
 import com.monolith.core.model.PlayerSettings
@@ -121,18 +129,18 @@ fun PlayerScreen(
     if (pendingResumePositionMs != null && pendingResumePositionMs > 0L) {
         AlertDialog(
             onDismissRequest = onDismissResume,
-            title = { Text("Resume Playback") },
+            title = { Text("Wiedergabe fortsetzen") },
             text = {
-                Text("Resume from ${formatDuration(pendingResumePositionMs)}?")
+                Text("Ab ${formatDuration(pendingResumePositionMs)} fortsetzen?")
             },
             confirmButton = {
                 TextButton(onClick = { onConfirmResume(pendingResumePositionMs) }) {
-                    Text("Resume")
+                    Text("Fortsetzen")
                 }
             },
             dismissButton = {
                 TextButton(onClick = onDismissResume) {
-                    Text("Start Over")
+                    Text("Von vorn")
                 }
             },
         )
@@ -320,149 +328,170 @@ private fun VideoPlayerContent(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AudioPlayerContent(
     state: PlaybackUiState,
     onBack: () -> Unit,
     onOpenSettings: () -> Unit,
 ) {
-    Surface(
+    val context = LocalContext.current
+    var artwork by remember(state.mediaUri) { mutableStateOf<Bitmap?>(null) }
+
+    LaunchedEffect(state.mediaUri) {
+        artwork = if (state.mediaUri.isNotBlank()) {
+            ThumbnailEngine.loadMediaThumbnail(context, state.mediaUri, isVideo = false)
+        } else {
+            null
+        }
+    }
+
+    Scaffold(
         modifier = Modifier.fillMaxSize(),
-        color = MaterialTheme.colorScheme.background,
-    ) {
+        containerColor = MaterialTheme.colorScheme.background,
+        topBar = {
+            TopAppBar(
+                title = {
+                    Text(
+                        text = state.title.ifBlank { "Audio" },
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Zurück",
+                        )
+                    }
+                },
+                actions = {
+                    IconButton(onClick = onOpenSettings) {
+                        Icon(
+                            imageVector = Icons.Default.Settings,
+                            contentDescription = "Einstellungen",
+                        )
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.background,
+                ),
+            )
+        },
+    ) { padding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .statusBarsPadding()
+                .padding(padding)
+                .padding(horizontal = 24.dp, vertical = 16.dp)
                 .navigationBarsPadding(),
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                IconButton(onClick = onBack) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "Back",
-                    )
-                }
-                Text(
-                    text = state.title.ifBlank { "Now Playing" },
-                    style = MaterialTheme.typography.titleMedium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(horizontal = 8.dp),
-                )
-                IconButton(onClick = onOpenSettings) {
-                    Icon(
-                        imageVector = Icons.Default.Settings,
-                        contentDescription = "Settings",
-                    )
-                }
-            }
-
             Box(
                 modifier = Modifier
                     .weight(1f)
-                    .fillMaxWidth()
-                    .padding(horizontal = 24.dp),
+                    .fillMaxWidth(),
                 contentAlignment = Alignment.Center,
             ) {
-                ElevatedCard(
+                Box(
                     modifier = Modifier
-                        .widthIn(max = 420.dp)
-                        .fillMaxWidth(),
-                    shape = RoundedCornerShape(24.dp),
-                    colors = CardDefaults.elevatedCardColors(
-                        containerColor = MaterialTheme.colorScheme.surface,
-                    ),
+                        .widthIn(max = 280.dp)
+                        .fillMaxWidth(0.75f)
+                        .aspectRatio(1f)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                        .border(
+                            width = 0.5.dp,
+                            color = MaterialTheme.colorScheme.outline,
+                            shape = RoundedCornerShape(12.dp),
+                        ),
+                    contentAlignment = Alignment.Center,
                 ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(24.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(120.dp)
-                                .clip(RoundedCornerShape(20.dp))
-                                .background(MaterialTheme.colorScheme.primaryContainer),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.MusicNote,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(56.dp),
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(20.dp))
-
-                        Text(
-                            text = state.title.ifBlank { "Unknown Title" },
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                            textAlign = TextAlign.Center,
+                    val bmp = artwork
+                    if (bmp != null) {
+                        Image(
+                            bitmap = bmp.asImageBitmap(),
+                            contentDescription = null,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop,
                         )
-
-                        val subtitle = listOf(state.artist, state.album)
-                            .filter { it.isNotBlank() }
-                            .joinToString(" • ")
-                        if (subtitle.isNotBlank()) {
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Text(
-                                text = subtitle,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                textAlign = TextAlign.Center,
-                            )
-                        }
-
-                        if (state.isBuffering) {
-                            Spacer(modifier = Modifier.height(12.dp))
-                            LinearProgressIndicator(
-                                modifier = Modifier.fillMaxWidth(),
-                                color = MaterialTheme.colorScheme.primary,
-                            )
-                        }
-
-                        if (state.errorMessage != null) {
-                            Spacer(modifier = Modifier.height(12.dp))
-                            Text(
-                                text = state.errorMessage.orEmpty(),
-                                color = MaterialTheme.colorScheme.error,
-                                style = MaterialTheme.typography.bodySmall,
-                                textAlign = TextAlign.Center,
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(20.dp))
-
-                        SeekBarRow(
-                            positionMs = state.positionMs,
-                            durationMs = state.durationMs,
-                            cacheDurationSec = state.cacheDurationSec,
-                            timeTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        TransportControlsRow(
-                            isPlaying = state.isPlaying,
-                            iconTint = MaterialTheme.colorScheme.onSurface,
+                    } else {
+                        Icon(
+                            imageVector = Icons.Default.MusicNote,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(64.dp),
                         )
                     }
                 }
+            }
+
+            Column(
+                modifier = Modifier
+                    .widthIn(max = 460.dp)
+                    .fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text(
+                    text = state.title.ifBlank { "Unbekannter Titel" },
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.Center,
+                )
+
+                val subtitle = listOf(state.artist, state.album)
+                    .filter { it.isNotBlank() }
+                    .joinToString(" • ")
+                if (subtitle.isNotBlank()) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        textAlign = TextAlign.Center,
+                    )
+                }
+
+                if (state.isBuffering) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    LinearProgressIndicator(
+                        modifier = Modifier.fillMaxWidth(),
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+
+                if (state.errorMessage != null) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = state.errorMessage.orEmpty(),
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                        textAlign = TextAlign.Center,
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                SeekBarRow(
+                    positionMs = state.positionMs,
+                    durationMs = state.durationMs,
+                    cacheDurationSec = state.cacheDurationSec,
+                    timeTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                TransportControlsRow(
+                    isPlaying = state.isPlaying,
+                    iconTint = MaterialTheme.colorScheme.onSurface,
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
             }
         }
     }
@@ -644,7 +673,7 @@ private fun PlayerSettingsSheetContent(
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Text(
-            text = "Player Settings",
+            text = "Player-Einstellungen",
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.SemiBold,
         )
@@ -652,7 +681,7 @@ private fun PlayerSettingsSheetContent(
         // Speed selector
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
-                text = "Playback Speed",
+                text = "Wiedergabegeschwindigkeit",
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.primary,
             )
@@ -676,7 +705,7 @@ private fun PlayerSettingsSheetContent(
             HorizontalDivider()
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
-                    text = "Audio Track",
+                    text = "Audiospur",
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.primary,
                 )
@@ -701,7 +730,7 @@ private fun PlayerSettingsSheetContent(
             HorizontalDivider()
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
-                    text = "Subtitles",
+                    text = "Untertitel",
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.primary,
                 )
@@ -713,7 +742,7 @@ private fun PlayerSettingsSheetContent(
                     FilterChip(
                         selected = noneSelected,
                         onClick = { MpvEngine.selectSubtitleTrack(-1) },
-                        label = { Text("Off") },
+                        label = { Text("Aus") },
                     )
                     subtitleTracks.forEach { track ->
                         val label = buildTrackLabel(track.id, track.title, track.language)
@@ -736,7 +765,7 @@ private fun PlayerSettingsSheetContent(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = "Subtitle Size",
+                    text = "Untertitelgröße",
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.primary,
                 )
@@ -759,21 +788,21 @@ private fun PlayerSettingsSheetContent(
         // Toggles
         HorizontalDivider()
         SettingsToggleRow(
-            title = "Hardware Decoding",
+            title = "Hardware-Dekodierung",
             checked = settings.useHwDecoding,
             onCheckedChange = { checked ->
                 onUpdateSettings { it.copy(useHwDecoding = checked) }
             },
         )
         SettingsToggleRow(
-            title = "Background Playback",
+            title = "Hintergrundwiedergabe",
             checked = settings.useBackgroundPlay,
             onCheckedChange = { checked ->
                 onUpdateSettings { it.copy(useBackgroundPlay = checked) }
             },
         )
         SettingsToggleRow(
-            title = "Picture-in-Picture",
+            title = "Bild-in-Bild (PiP)",
             checked = settings.usePipMode,
             onCheckedChange = { checked ->
                 onUpdateSettings { it.copy(usePipMode = checked) }
@@ -784,7 +813,7 @@ private fun PlayerSettingsSheetContent(
         HorizontalDivider()
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
-                text = "Resume Mode",
+                text = "Fortsetzen-Modus",
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.primary,
             )
@@ -800,9 +829,9 @@ private fun PlayerSettingsSheetContent(
                         label = {
                             Text(
                                 when (mode) {
-                                    ResumeMode.ASK -> "Ask"
-                                    ResumeMode.ALWAYS -> "Always"
-                                    ResumeMode.NEVER -> "Never"
+                                    ResumeMode.ASK -> "Fragen"
+                                    ResumeMode.ALWAYS -> "Immer"
+                                    ResumeMode.NEVER -> "Nie"
                                 },
                             )
                         },

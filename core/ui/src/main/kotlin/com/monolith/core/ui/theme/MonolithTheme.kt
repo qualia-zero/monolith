@@ -9,40 +9,42 @@ import androidx.compose.ui.graphics.Color
 
 val MonolithRed = Color(0xFFD32F2F)
 val MonolithRedDark = Color(0xFFB71C1C)
-val MonolithRedLight = Color(0xFFFF6B6B)
-val MonolithRedContainerLight = Color(0xFFFFDAD6)
-val MonolithRedContainerDark = Color(0xFF93000A)
+val MonolithRedLight = Color(0xFFEF5350)
 
 private val LightColors = lightColorScheme(
     primary = MonolithRed,
     onPrimary = Color.White,
-    primaryContainer = MonolithRedContainerLight,
-    onPrimaryContainer = Color(0xFF410002),
-    secondary = Color(0xFF775652),
+    primaryContainer = Color(0xFFF1F1F3),
+    onPrimaryContainer = Color(0xFF1A1A1A),
+    secondary = Color(0xFF5A5A60),
     onSecondary = Color.White,
+    secondaryContainer = Color(0xFFEBEBEF),
+    onSecondaryContainer = Color(0xFF1A1A1A),
     background = Color(0xFFFAFAFA),
-    onBackground = Color(0xFF1A1A1A),
-    surface = Color.White,
-    onSurface = Color(0xFF1A1A1A),
-    surfaceVariant = Color(0xFFF2F2F2),
-    onSurfaceVariant = Color(0xFF5A5A5A),
-    outline = Color(0xFFE0E0E0),
+    onBackground = Color(0xFF141416),
+    surface = Color(0xFFFAFAFA),
+    onSurface = Color(0xFF141416),
+    surfaceVariant = Color(0xFFEFEFF2),
+    onSurfaceVariant = Color(0xFF606066),
+    outline = Color(0xFFE0E0E4),
 )
 
 private val DarkColors = darkColorScheme(
     primary = MonolithRedLight,
-    onPrimary = Color(0xFF690005),
-    primaryContainer = MonolithRedContainerDark,
-    onPrimaryContainer = MonolithRedContainerLight,
-    secondary = Color(0xFFE7BDB8),
-    onSecondary = Color(0xFF442926),
-    background = Color(0xFF121212),
-    onBackground = Color(0xFFF0F0F0),
-    surface = Color(0xFF1A1A1A),
-    onSurface = Color(0xFFF0F0F0),
-    surfaceVariant = Color(0xFF242424),
-    onSurfaceVariant = Color(0xFFB0B0B0),
-    outline = Color(0xFF2D2D2D),
+    onPrimary = Color.White,
+    primaryContainer = Color(0xFF232326),
+    onPrimaryContainer = Color(0xFFF2F2F4),
+    secondary = Color(0xFFA8A8B0),
+    onSecondary = Color(0xFF141416),
+    secondaryContainer = Color(0xFF27272B),
+    onSecondaryContainer = Color(0xFFF2F2F4),
+    background = Color(0xFF0E0E10),
+    onBackground = Color(0xFFF2F2F4),
+    surface = Color(0xFF0E0E10),
+    onSurface = Color(0xFFF2F2F4),
+    surfaceVariant = Color(0xFF1B1B1E),
+    onSurfaceVariant = Color(0xFF9E9EA6),
+    outline = Color(0xFF2A2A2E),
 )
 
 @Composable
