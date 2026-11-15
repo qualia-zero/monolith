@@ -32,5 +32,6 @@ dependencies {
     implementation(project(":core:ui"))
     implementation(project(":core:media"))
     implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
 }

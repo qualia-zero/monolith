@@ -55,6 +55,7 @@ import com.monolith.core.vfs.LocalVfsProvider
 fun ExplorerScreen(
     hasStoragePermission: Boolean,
     onRequestStoragePermission: () -> Unit,
+    onOpenMedia: (node: VfsNode, playlist: List<VfsNode>) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier,
 ) {
     val provider = remember { LocalVfsProvider() }
@@ -174,6 +175,9 @@ fun ExplorerScreen(
                         onClick = {
                             if (node.isDirectory) {
                                 currentPath = node.path
+                            } else if (node.category == FileCategory.VIDEO || node.category == FileCategory.AUDIO) {
+                                val playlist = nodes.filter { it.category == node.category }
+                                onOpenMedia(node, playlist)
                             }
                         },
                     )
