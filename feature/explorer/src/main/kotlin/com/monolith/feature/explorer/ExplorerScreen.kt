@@ -2,7 +2,9 @@ package com.monolith.feature.explorer
 
 import android.os.Environment
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -71,6 +73,7 @@ fun ExplorerScreen(
     onOpenImage: (node: VfsNode, imagePlaylist: List<VfsNode>) -> Unit = { _, _ -> },
     onOpenText: (node: VfsNode) -> Unit = {},
     onOpenOther: (node: VfsNode) -> Unit = {},
+    onOpenWith: (node: VfsNode, siblings: List<VfsNode>) -> Unit = { _, _ -> },
     onOpenMiniPlayer: () -> Unit = {},
     onOpenSettings: () -> Unit = {},
     modifier: Modifier = Modifier,
@@ -230,6 +233,14 @@ fun ExplorerScreen(
                                 else -> onOpenOther(node)
                             }
                         },
+                        onLongClick = if (node.isDirectory) {
+                            null
+                        } else {
+                            {
+                                val siblings = nodes.filter { it.category == node.category }
+                                onOpenWith(node, siblings)
+                            }
+                        },
                     )
                     HorizontalDivider(
                         thickness = 0.5.dp,
@@ -348,10 +359,12 @@ private fun MiniPlayerBar(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun FileRow(
     node: VfsNode,
     onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null,
 ) {
     val icon = when (node.category) {
         FileCategory.DIRECTORY -> Icons.Outlined.Folder
@@ -365,7 +378,10 @@ private fun FileRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick,
+            )
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

@@ -263,7 +263,7 @@ class MediaPlaybackService : Service() {
                 val current = MpvEngine.uiState.value
                 val enriched = if (mkvInfo != null) {
                     current.copy(
-                        title = current.title.ifBlank { mkvInfo.title },
+                        title = mkvInfo.title.ifBlank { current.title },
                         artist = current.artist.ifBlank { mkvInfo.artist },
                         album = current.album.ifBlank { mkvInfo.album },
                     )

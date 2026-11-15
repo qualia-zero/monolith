@@ -13,6 +13,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
@@ -21,8 +22,9 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
-import androidx.compose.material3.Switch
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -32,6 +34,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.monolith.core.common.AppSettingsStore
+import com.monolith.core.common.DefaultAppsStore
 import com.monolith.core.media.MpvEngine
 import com.monolith.core.media.PlayerSettingsStore
 import com.monolith.core.model.ResumeMode
@@ -165,69 +168,73 @@ fun SettingsScreen(
 
             HorizontalDivider(thickness = 0.5.dp)
 
-            Text(
-                text = "Standard-Apps",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary,
-            )
+            val defaultApps by DefaultAppsStore.associations.collectAsState()
 
-            SettingsToggle(
-                title = "Bildbetrachter",
-                checked = appSettings.useInternalImageViewer,
-                onCheckedChange = { checked ->
-                    AppSettingsStore.update { it.copy(useInternalImageViewer = checked) }
-                },
-            )
-            SettingsToggle(
-                title = "Videoplayer",
-                checked = appSettings.useInternalVideoPlayer,
-                onCheckedChange = { checked ->
-                    AppSettingsStore.update { it.copy(useInternalVideoPlayer = checked) }
-                },
-            )
-            SettingsToggle(
-                title = "Musikplayer",
-                checked = appSettings.useInternalAudioPlayer,
-                onCheckedChange = { checked ->
-                    AppSettingsStore.update { it.copy(useInternalAudioPlayer = checked) }
-                },
-            )
-            SettingsToggle(
-                title = "Texteditor",
-                checked = appSettings.useInternalTextEditor,
-                onCheckedChange = { checked ->
-                    AppSettingsStore.update { it.copy(useInternalTextEditor = checked) }
-                },
-            )
-        }
-    }
-}
-
-@Composable
-private fun SettingsToggle(
-    title: String,
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit,
-    subtitle: String? = null,
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
-            Text(text = title, style = MaterialTheme.typography.bodyLarge)
-            if (subtitle != null) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodySmall,
+                    text = "Standard-Apps",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                if (defaultApps.isNotEmpty()) {
+                    TextButton(onClick = { DefaultAppsStore.clearAll() }) {
+                        Text("Alle zurücksetzen")
+                    }
+                }
+            }
+
+            if (defaultApps.isEmpty()) {
+                Text(
+                    text = "Keine Standard-Apps festgelegt. Wähle beim Öffnen einer Datei „Immer“, um einen Dateityp fest zuzuordnen.",
+                    style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+            } else {
+                defaultApps.forEach { assoc ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Row(
+                            modifier = Modifier.weight(1f),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Surface(
+                                shape = MaterialTheme.shapes.small,
+                                color = MaterialTheme.colorScheme.secondaryContainer,
+                            ) {
+                                Text(
+                                    text = ".${assoc.extension.uppercase()}",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                )
+                            }
+                            Text(
+                                text = assoc.handlerLabel,
+                                style = MaterialTheme.typography.bodyLarge,
+                            )
+                        }
+                        IconButton(
+                            onClick = { DefaultAppsStore.removeForExtension(assoc.extension) },
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.DeleteOutline,
+                                contentDescription = "Zurücksetzen",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
             }
         }
-        Switch(
-            checked = checked,
-            onCheckedChange = onCheckedChange,
-        )
     }
 }

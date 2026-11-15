@@ -1,6 +1,7 @@
 package com.monolith.core.media
 
 import android.content.Context
+import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.view.Surface
 import com.monolith.core.common.MonolithDiagnostics
@@ -195,13 +196,22 @@ object MpvEngine : MPVLib.EventObserver, MPVLib.LogObserver {
 
         scope.launch {
             val mkvInfo = MkvTagParser.parse(appCtx, uri)
-            if (mkvInfo != null) {
+            val mmrTags = if (mkvInfo == null || mkvInfo.title.isBlank()) {
+                readRetrieverTags(appCtx, uri)
+            } else {
+                null
+            }
+            val resolvedTitle = mkvInfo?.title.orEmpty().ifBlank { mmrTags?.first.orEmpty() }
+            val resolvedArtist = mkvInfo?.artist.orEmpty().ifBlank { mmrTags?.second.orEmpty() }
+            val resolvedAlbum = mkvInfo?.album.orEmpty().ifBlank { mmrTags?.third.orEmpty() }
+
+            if (resolvedTitle.isNotBlank() || resolvedArtist.isNotBlank() || resolvedAlbum.isNotBlank()) {
                 _uiState.update { state ->
                     if (state.mediaUri != uri) state
                     else state.copy(
-                        title = state.title.ifBlank { mkvInfo.title },
-                        artist = state.artist.ifBlank { mkvInfo.artist },
-                        album = state.album.ifBlank { mkvInfo.album },
+                        title = resolvedTitle.ifBlank { state.title },
+                        artist = state.artist.ifBlank { resolvedArtist },
+                        album = state.album.ifBlank { resolvedAlbum },
                     )
                 }
             }
@@ -448,6 +458,7 @@ object MpvEngine : MPVLib.EventObserver, MPVLib.LogObserver {
                 refreshTracks()
                 readMpvMetadataFallback()
                 _uiState.update { it.copy(isBuffering = false, isEnded = false) }
+                appContext?.let { MediaPlaybackService.startOrUpdate(it) }
             }
             MPVLib.MpvEvent.MPV_EVENT_PLAYBACK_RESTART -> {
                 _uiState.update { it.copy(isBuffering = false, isEnded = false) }
@@ -498,20 +509,53 @@ object MpvEngine : MPVLib.EventObserver, MPVLib.LogObserver {
     }
 
     private fun readMpvMetadataFallback() {
-        val mpvTitle = MPVLib.getPropertyString("media-title").orEmpty()
-        val mpvArtist = MPVLib.getPropertyString("metadata/by-key/artist")
+        val tagTitle = MPVLib.getPropertyString("metadata/by-key/title")?.trim().orEmpty()
+            .ifBlank { MPVLib.getPropertyString("metadata/by-key/TITLE")?.trim().orEmpty() }
+        val mpvTitle = MPVLib.getPropertyString("media-title")?.trim().orEmpty()
+        val mpvArtist = (MPVLib.getPropertyString("metadata/by-key/artist")
             ?: MPVLib.getPropertyString("metadata/by-key/ARTIST")
-            ?: ""
-        val mpvAlbum = MPVLib.getPropertyString("metadata/by-key/album")
+            ?: MPVLib.getPropertyString("metadata/by-key/album_artist")
+            ?: "").trim()
+        val mpvAlbum = (MPVLib.getPropertyString("metadata/by-key/album")
             ?: MPVLib.getPropertyString("metadata/by-key/ALBUM")
-            ?: ""
+            ?: "").trim()
 
         _uiState.update { state ->
+            val resolvedTitle = when {
+                tagTitle.isNotBlank() -> tagTitle
+                state.title.isNotBlank() -> state.title
+                else -> mpvTitle
+            }
             state.copy(
-                title = state.title.ifBlank { mpvTitle },
+                title = resolvedTitle,
                 artist = state.artist.ifBlank { mpvArtist },
                 album = state.album.ifBlank { mpvAlbum },
             )
+        }
+    }
+
+    private fun readRetrieverTags(context: Context, uriString: String): Triple<String, String, String>? {
+        val parsed = Uri.parse(uriString)
+        val scheme = parsed.scheme.orEmpty().lowercase(Locale.ROOT)
+        if (scheme !in setOf("", "file", "content")) return null
+
+        val retriever = MediaMetadataRetriever()
+        return try {
+            when (scheme) {
+                "content" -> retriever.setDataSource(context, parsed)
+                "file" -> retriever.setDataSource(parsed.path ?: return null)
+                else -> retriever.setDataSource(uriString)
+            }
+            val title = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE)?.trim().orEmpty()
+            val artist = (retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST)
+                ?: retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUMARTIST))?.trim().orEmpty()
+            val album = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUM)?.trim().orEmpty()
+            if (title.isBlank() && artist.isBlank() && album.isBlank()) null
+            else Triple(title, artist, album)
+        } catch (_: Exception) {
+            null
+        } finally {
+            runCatching { retriever.release() }
         }
     }
 

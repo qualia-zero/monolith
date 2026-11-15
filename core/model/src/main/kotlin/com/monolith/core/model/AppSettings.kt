@@ -8,8 +8,12 @@ enum class ThemeMode {
 
 data class AppSettings(
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
-    val useInternalImageViewer: Boolean = true,
-    val useInternalVideoPlayer: Boolean = true,
-    val useInternalAudioPlayer: Boolean = true,
-    val useInternalTextEditor: Boolean = true,
+)
+
+data class DefaultAppAssociation(
+    val extension: String,
+    val handlerId: String,
+    val handlerLabel: String,
+    val packageName: String? = null,
+    val activityName: String? = null,
 )
