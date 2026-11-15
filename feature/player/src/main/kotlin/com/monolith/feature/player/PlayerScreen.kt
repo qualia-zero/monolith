@@ -283,13 +283,6 @@ private fun VideoPlayerContent(
                             .weight(1f)
                             .padding(horizontal = 8.dp),
                     )
-                    IconButton(onClick = onEnterPip) {
-                        Icon(
-                            imageVector = Icons.Default.PictureInPictureAlt,
-                            contentDescription = "Picture in Picture",
-                            tint = Color.White,
-                        )
-                    }
                     IconButton(onClick = onOpenSettings) {
                         Icon(
                             imageVector = Icons.Default.Settings,
@@ -756,6 +749,29 @@ private fun PlayerSettingsSheetContent(
                 }
             }
         }
+
+        HorizontalDivider()
+        SettingsToggleRow(
+            title = "Hardware-Dekodierung",
+            checked = settings.useHwDecoding,
+            onCheckedChange = { checked ->
+                onUpdateSettings { it.copy(useHwDecoding = checked) }
+            },
+        )
+        SettingsToggleRow(
+            title = "Hintergrundwiedergabe",
+            checked = settings.useBackgroundPlay,
+            onCheckedChange = { checked ->
+                onUpdateSettings { it.copy(useBackgroundPlay = checked) }
+            },
+        )
+        SettingsToggleRow(
+            title = "Bild-in-Bild (PiP)",
+            checked = settings.usePipMode,
+            onCheckedChange = { checked ->
+                onUpdateSettings { it.copy(usePipMode = checked) }
+            },
+        )
     }
 }
 

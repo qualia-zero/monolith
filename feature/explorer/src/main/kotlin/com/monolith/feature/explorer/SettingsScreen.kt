@@ -73,41 +73,6 @@ fun SettingsScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Text(
-                text = "Medien & Wiedergabe",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary,
-            )
-
-            SettingsToggle(
-                title = "Hardware-Dekodierung",
-                subtitle = "MediaCodec für Video verwenden",
-                checked = settings.useHwDecoding,
-                onCheckedChange = { checked ->
-                    PlayerSettingsStore.update { it.copy(useHwDecoding = checked) }
-                },
-            )
-
-            SettingsToggle(
-                title = "Hintergrundwiedergabe",
-                subtitle = "Audio beim Verlassen der App weiterspielen",
-                checked = settings.useBackgroundPlay,
-                onCheckedChange = { checked ->
-                    PlayerSettingsStore.update { it.copy(useBackgroundPlay = checked) }
-                },
-            )
-
-            SettingsToggle(
-                title = "Bild-in-Bild (PiP)",
-                subtitle = "Automatisches Mini-Video beim Verlassen",
-                checked = settings.usePipMode,
-                onCheckedChange = { checked ->
-                    PlayerSettingsStore.update { it.copy(usePipMode = checked) }
-                },
-            )
-
-            HorizontalDivider(thickness = 0.5.dp)
-
-            Text(
                 text = "Untertitel",
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.primary,
