@@ -175,6 +175,48 @@ fun SettingsScreen(
 
             HorizontalDivider(thickness = 0.5.dp)
 
+            var showResetConfirm by remember { mutableStateOf(false) }
+
+            OutlinedButton(
+                onClick = { showResetConfirm = true },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("App-Einstellungen zurücksetzen")
+            }
+
+            if (showResetConfirm) {
+                AlertDialog(
+                    onDismissRequest = { showResetConfirm = false },
+                    title = { Text("App-Einstellungen zurücksetzen") },
+                    text = {
+                        Text(
+                            "Design, Wiedergabe-Einstellungen sowie alle gespeicherten Standard-Apps (inkl. der integrierten Apps) werden auf die Standardwerte zurückgesetzt.",
+                        )
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showResetConfirm = false }) {
+                            Text("Abbrechen")
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                showResetConfirm = false
+                                AppSettingsStore.update { AppSettings() }
+                                val defaultPlayer = PlayerSettings()
+                                PlayerSettingsStore.update { defaultPlayer }
+                                MpvEngine.setSubtitleSize(defaultPlayer.subtitleSize)
+                                DefaultAppsStore.clearAll()
+                            },
+                        ) {
+                            Text("Zurücksetzen")
+                        }
+                    },
+                )
+            }
+
+            HorizontalDivider(thickness = 0.5.dp)
+
             val defaultApps by DefaultAppsStore.associations.collectAsState()
 
             Row(
@@ -241,48 +283,6 @@ fun SettingsScreen(
                         }
                     }
                 }
-            }
-
-            HorizontalDivider(thickness = 0.5.dp)
-
-            var showResetConfirm by remember { mutableStateOf(false) }
-
-            OutlinedButton(
-                onClick = { showResetConfirm = true },
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text("App-Einstellungen zurücksetzen")
-            }
-
-            if (showResetConfirm) {
-                AlertDialog(
-                    onDismissRequest = { showResetConfirm = false },
-                    title = { Text("App-Einstellungen zurücksetzen") },
-                    text = {
-                        Text(
-                            "Design, Wiedergabe-Einstellungen sowie alle gespeicherten Standard-Apps (inkl. der integrierten Apps) werden auf die Standardwerte zurückgesetzt.",
-                        )
-                    },
-                    dismissButton = {
-                        TextButton(onClick = { showResetConfirm = false }) {
-                            Text("Abbrechen")
-                        }
-                    },
-                    confirmButton = {
-                        TextButton(
-                            onClick = {
-                                showResetConfirm = false
-                                AppSettingsStore.update { AppSettings() }
-                                val defaultPlayer = PlayerSettings()
-                                PlayerSettingsStore.update { defaultPlayer }
-                                MpvEngine.setSubtitleSize(defaultPlayer.subtitleSize)
-                                DefaultAppsStore.clearAll()
-                            },
-                        ) {
-                            Text("Zurücksetzen")
-                        }
-                    },
-                )
             }
         }
     }
