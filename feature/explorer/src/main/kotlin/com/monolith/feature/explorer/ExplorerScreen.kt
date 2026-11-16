@@ -89,6 +89,7 @@ import com.monolith.core.model.FileCategory
 import com.monolith.core.model.LocationType
 import com.monolith.core.model.SortBy
 import com.monolith.core.model.VfsNode
+import com.monolith.core.vfs.FileTransferService
 import com.monolith.core.vfs.GoogleDriveAuthManager
 import com.monolith.core.vfs.GoogleDriveVfsProvider
 import com.monolith.core.vfs.LocalVfsProvider
@@ -179,6 +180,15 @@ fun ExplorerScreen(
     var refreshTrigger by remember { mutableIntStateOf(0) }
 
     val playbackState by MpvEngine.uiState.collectAsState()
+
+    LaunchedEffect(Unit) {
+        FileTransferService.events.collect { event ->
+            refreshTrigger++
+            if (event.errorMessage != null) {
+                snackbarHostState.showSnackbar(event.errorMessage ?: "Übertragung fehlgeschlagen")
+            }
+        }
+    }
 
     fun runFileOperation(
         onSuccess: () -> Unit = {},
@@ -449,47 +459,13 @@ fun ExplorerScreen(
                             onPaste = {
                                 val sources = clipboardPaths
                                 val move = isMoveOperation
-                                runFileOperation(
-                                    onSuccess = { clipboardPaths = emptyList() },
-                                ) {
-                                    val srcIsDrive = sources.firstOrNull()?.startsWith("gdrive://") == true
-                                    val dstIsDrive = currentPath.startsWith("gdrive://")
-                                    when {
-                                        srcIsDrive && dstIsDrive -> {
-                                            if (move) driveProvider.move(sources, currentPath)
-                                            else driveProvider.copy(sources, currentPath)
-                                        }
-                                        !srcIsDrive && !dstIsDrive -> {
-                                            if (move) localProvider.move(sources, currentPath)
-                                            else localProvider.copy(sources, currentPath)
-                                        }
-                                        !srcIsDrive && dstIsDrive -> {
-                                            val copyRes = driveProvider.copy(sources, currentPath)
-                                            if (copyRes.isSuccess && move) {
-                                                localProvider.delete(sources)
-                                            } else {
-                                                copyRes
-                                            }
-                                        }
-                                        else -> {
-                                            // Drive -> Lokal: Dateien herunterladen
-                                            runCatching {
-                                                for (src in sources) {
-                                                    val info = driveProvider.stat(src)
-                                                        ?: throw IllegalStateException("Quelle nicht gefunden")
-                                                    if (info.isDirectory) {
-                                                        throw IllegalStateException("Ordner-Download von Drive wird noch nicht unterstützt")
-                                                    }
-                                                    val dest = File(currentPath, info.name)
-                                                    driveProvider.downloadToFile(src, dest).getOrThrow()
-                                                }
-                                                if (move) {
-                                                    driveProvider.delete(sources).getOrThrow()
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
+                                clipboardPaths = emptyList()
+                                FileTransferService.enqueue(
+                                    context = context,
+                                    sources = sources,
+                                    destinationDir = currentPath,
+                                    isMove = move,
+                                )
                             },
                             onCancel = { clipboardPaths = emptyList() },
                         )
@@ -790,9 +766,12 @@ fun ExplorerScreen(
             text = {
                 OutlinedTextField(
                     value = newName,
-                    onValueChange = { newName = it },
+                    onValueChange = { updated ->
+                        newName = updated.replace('\n', ' ').replace('\r', ' ')
+                    },
                     label = { Text("Neuer Name") },
-                    singleLine = true,
+                    singleLine = false,
+                    maxLines = 4,
                     modifier = Modifier.fillMaxWidth(),
                 )
             },
