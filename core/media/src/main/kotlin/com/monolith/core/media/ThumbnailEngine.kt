@@ -12,8 +12,11 @@ import android.util.Size
 import com.monolith.core.common.MonolithDiagnostics
 import com.monolith.core.model.FileCategory
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.net.URLEncoder
 import kotlin.math.roundToInt
 
 /**
@@ -45,6 +48,8 @@ object ThumbnailEngine {
         return listThumbnailCache.get(listCacheKey(path, lastModifiedMs, targetPx))
     }
 
+    private val remoteExtractSemaphore = Semaphore(2)
+
     @Volatile
     var cloudTokenProvider: (() -> String?)? = null
 
@@ -61,7 +66,8 @@ object ThumbnailEngine {
     ): Bitmap? = withContext(Dispatchers.IO) {
         if (path.isBlank() || targetPx <= 0) return@withContext null
         val isCloudThumb = !thumbnailUrl.isNullOrBlank()
-        if (!isCloudThumb) {
+        val isDriveVideo = path.startsWith("gdrive://") && category == FileCategory.VIDEO
+        if (!isCloudThumb && !isDriveVideo) {
             if (isRemoteUri(path) || path.startsWith("gdrive://")) {
                 MonolithDiagnostics.logWarn("ThumbnailEngine", "Cloud item has no thumbnailUrl: $path (category=$category)")
                 return@withContext null
@@ -78,10 +84,13 @@ object ThumbnailEngine {
         listThumbnailCache.get(cacheKey)?.let { return@withContext it }
 
         val decoded = try {
-            if (isCloudThumb) {
-                decodeRemoteThumbnail(thumbnailUrl!!)
-            } else {
-                when (category) {
+            val remoteThumb = if (isCloudThumb) decodeRemoteThumbnail(thumbnailUrl!!) else null
+            when {
+                remoteThumb != null -> remoteThumb
+                isDriveVideo -> remoteExtractSemaphore.withPermit {
+                    decodeDriveVideoFallback(path, targetPx)
+                }
+                else -> when (category) {
                     FileCategory.IMAGE -> decodeSampledImage(context, path, targetPx)
                     FileCategory.VIDEO -> decodeVideoListThumbnail(context, path, targetPx)
                     FileCategory.AUDIO -> decodeAudioCoverThumbnail(context, path, targetPx)
@@ -128,7 +137,7 @@ object ThumbnailEngine {
 
         val (code, first) = fetch(null)
         if (first != null) return first
-        if (code == 401 || code == 403) {
+        if (code == 200 || code == 302 || code == 401 || code == 403) {
             val token = cloudTokenProvider?.invoke()
             if (!token.isNullOrBlank()) {
                 val (retryCode, retryBmp) = fetch(token)
@@ -315,22 +324,43 @@ object ThumbnailEngine {
         val retriever = MediaMetadataRetriever()
         return try {
             setDataSource(context, retriever, path)
-            retriever.embeddedPicture?.let { bytes ->
-                val boundsOpts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                BitmapFactory.decodeByteArray(bytes, 0, bytes.size, boundsOpts)
-                if (boundsOpts.outWidth > 0 && boundsOpts.outHeight > 0) {
-                    val decodeOpts = BitmapFactory.Options().apply {
-                        inSampleSize = calculateInSampleSize(boundsOpts.outWidth, boundsOpts.outHeight, targetPx, targetPx)
-                        inPreferredConfig = Bitmap.Config.ARGB_8888
-                    }
-                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, decodeOpts)?.let { return it }
-                }
-            }
-
-            extractNonBlackVideoFrame(retriever)
+            decodeRetrieverVideoThumbnail(retriever, targetPx)
         } finally {
             runCatching { retriever.release() }
         }
+    }
+
+    private fun decodeDriveVideoFallback(gdrivePath: String, targetPx: Int): Bitmap? {
+        val fileId = gdrivePath.removePrefix("gdrive://").trim()
+        if (fileId.isEmpty()) return null
+        val token = cloudTokenProvider?.invoke()?.takeIf { it.isNotBlank() } ?: return null
+        val encodedId = URLEncoder.encode(fileId, Charsets.UTF_8.name())
+        val streamUrl = "https://www.googleapis.com/drive/v3/files/$encodedId?alt=media"
+        val retriever = MediaMetadataRetriever()
+        return try {
+            retriever.setDataSource(streamUrl, mapOf("Authorization" to "Bearer $token"))
+            decodeRetrieverVideoThumbnail(retriever, targetPx)
+        } catch (t: Throwable) {
+            MonolithDiagnostics.logWarn("ThumbnailEngine", "Drive video fallback failed for $gdrivePath: ${t.message}")
+            null
+        } finally {
+            runCatching { retriever.release() }
+        }
+    }
+
+    private fun decodeRetrieverVideoThumbnail(retriever: MediaMetadataRetriever, targetPx: Int): Bitmap? {
+        retriever.embeddedPicture?.let { bytes ->
+            val boundsOpts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, boundsOpts)
+            if (boundsOpts.outWidth > 0 && boundsOpts.outHeight > 0) {
+                val decodeOpts = BitmapFactory.Options().apply {
+                    inSampleSize = calculateInSampleSize(boundsOpts.outWidth, boundsOpts.outHeight, targetPx, targetPx)
+                    inPreferredConfig = Bitmap.Config.ARGB_8888
+                }
+                BitmapFactory.decodeByteArray(bytes, 0, bytes.size, decodeOpts)?.let { return it }
+            }
+        }
+        return extractNonBlackVideoFrame(retriever)
     }
 
     private fun extractNonBlackVideoFrame(retriever: MediaMetadataRetriever): Bitmap? {
