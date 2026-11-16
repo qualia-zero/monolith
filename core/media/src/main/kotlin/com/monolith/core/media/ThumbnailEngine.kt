@@ -85,11 +85,8 @@ object ThumbnailEngine {
 
         val decoded = try {
             when {
-                isDriveVideo -> {
-                    val nativeThumb = remoteExtractSemaphore.withPermit {
-                        decodeDriveVideoFallback(path, targetPx)
-                    }
-                    nativeThumb ?: if (isCloudThumb) decodeRemoteThumbnail(thumbnailUrl!!) else null
+                isDriveVideo -> remoteExtractSemaphore.withPermit {
+                    decodeDriveVideoThumbnail(path, targetPx, thumbnailUrl)
                 }
                 isCloudThumb -> decodeRemoteThumbnail(thumbnailUrl!!)
                 else -> when (category) {
@@ -326,43 +323,53 @@ object ThumbnailEngine {
         val retriever = MediaMetadataRetriever()
         return try {
             setDataSource(context, retriever, path)
-            decodeRetrieverVideoThumbnail(retriever, targetPx)
+            decodeEmbeddedPicture(retriever, targetPx) ?: extractNonBlackVideoFrame(retriever)
         } finally {
             runCatching { retriever.release() }
         }
     }
 
-    private fun decodeDriveVideoFallback(gdrivePath: String, targetPx: Int): Bitmap? {
+    /**
+     * Resolves a Drive video thumbnail in priority order:
+     * 1) embedded cover art, 2) Drive thumbnailLink, 3) extracted 5s/10s/15s frame.
+     */
+    private fun decodeDriveVideoThumbnail(
+        gdrivePath: String,
+        targetPx: Int,
+        thumbnailUrl: String?,
+    ): Bitmap? {
         val fileId = gdrivePath.removePrefix("gdrive://").trim()
-        if (fileId.isEmpty()) return null
-        val token = cloudTokenProvider?.invoke()?.takeIf { it.isNotBlank() } ?: return null
+        val token = cloudTokenProvider?.invoke()?.takeIf { it.isNotBlank() }
+        if (fileId.isEmpty() || token == null) {
+            return thumbnailUrl?.takeIf { it.isNotBlank() }?.let(::decodeRemoteThumbnail)
+        }
+
         val encodedId = URLEncoder.encode(fileId, Charsets.UTF_8.name())
         val streamUrl = "https://www.googleapis.com/drive/v3/files/$encodedId?alt=media"
         val retriever = MediaMetadataRetriever()
         return try {
             retriever.setDataSource(streamUrl, mapOf("Authorization" to "Bearer $token"))
-            decodeRetrieverVideoThumbnail(retriever, targetPx)
+            decodeEmbeddedPicture(retriever, targetPx)
+                ?: thumbnailUrl?.takeIf { it.isNotBlank() }?.let(::decodeRemoteThumbnail)
+                ?: extractNonBlackVideoFrame(retriever)
         } catch (t: Throwable) {
-            MonolithDiagnostics.logWarn("ThumbnailEngine", "Drive video fallback failed for $gdrivePath: ${t.message}")
-            null
+            MonolithDiagnostics.logWarn("ThumbnailEngine", "Drive video stream thumb failed for $gdrivePath: ${t.message}")
+            thumbnailUrl?.takeIf { it.isNotBlank() }?.let(::decodeRemoteThumbnail)
         } finally {
             runCatching { retriever.release() }
         }
     }
 
-    private fun decodeRetrieverVideoThumbnail(retriever: MediaMetadataRetriever, targetPx: Int): Bitmap? {
-        retriever.embeddedPicture?.let { bytes ->
-            val boundsOpts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, boundsOpts)
-            if (boundsOpts.outWidth > 0 && boundsOpts.outHeight > 0) {
-                val decodeOpts = BitmapFactory.Options().apply {
-                    inSampleSize = calculateInSampleSize(boundsOpts.outWidth, boundsOpts.outHeight, targetPx, targetPx)
-                    inPreferredConfig = Bitmap.Config.ARGB_8888
-                }
-                BitmapFactory.decodeByteArray(bytes, 0, bytes.size, decodeOpts)?.let { return it }
-            }
+    private fun decodeEmbeddedPicture(retriever: MediaMetadataRetriever, targetPx: Int): Bitmap? {
+        val bytes = retriever.embeddedPicture ?: return null
+        val boundsOpts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, boundsOpts)
+        if (boundsOpts.outWidth <= 0 || boundsOpts.outHeight <= 0) return null
+        val decodeOpts = BitmapFactory.Options().apply {
+            inSampleSize = calculateInSampleSize(boundsOpts.outWidth, boundsOpts.outHeight, targetPx, targetPx)
+            inPreferredConfig = Bitmap.Config.ARGB_8888
         }
-        return extractNonBlackVideoFrame(retriever)
+        return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, decodeOpts)
     }
 
     private fun extractNonBlackVideoFrame(retriever: MediaMetadataRetriever): Bitmap? {
