@@ -3,6 +3,7 @@ package com.monolith.core.vfs
 import com.monolith.core.common.MimeNormalizer
 import com.monolith.core.model.LocationType
 import com.monolith.core.model.VfsNode
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -51,29 +52,139 @@ class LocalVfsProvider : VfsProvider {
             FileOutputStream(File(path))
         }
 
-    override suspend fun createDirectory(parentPath: String, name: String): VfsNode =
-        withContext(Dispatchers.IO) {
-            val target = File(parentPath, name)
-            if (!target.exists() && !target.mkdirs()) {
-                throw IOException("Failed to create directory: ${target.absolutePath}")
+    override suspend fun createDirectory(parentPath: String, name: String): Result<Unit> =
+        runIoResult {
+            val trimmed = name.trim()
+            validateName(trimmed)
+            val target = File(parentPath, trimmed)
+            if (target.exists()) {
+                throw IOException("Ordner oder Datei existiert bereits: $trimmed")
             }
-            target.toVfsNode()
+            if (!target.mkdirs()) {
+                throw IOException("Ordner konnte nicht erstellt werden: ${target.absolutePath}")
+            }
         }
 
-    override suspend fun delete(path: String): Boolean =
-        withContext(Dispatchers.IO) {
-            File(path).deleteRecursively()
-        }
-
-    override suspend fun rename(path: String, newName: String): VfsNode =
-        withContext(Dispatchers.IO) {
+    override suspend fun rename(path: String, newName: String): Result<Unit> =
+        runIoResult {
+            val trimmed = newName.trim()
+            validateName(trimmed)
             val source = File(path)
-            val dest = File(source.parentFile, newName)
-            if (!source.renameTo(dest)) {
-                throw IOException("Failed to rename ${source.absolutePath} to ${dest.absolutePath}")
+            if (!source.exists()) {
+                throw IOException("Quelle nicht gefunden: $path")
             }
-            dest.toVfsNode()
+            val dest = File(source.parentFile, trimmed)
+            if (dest.exists()) {
+                throw IOException("Ziel existiert bereits: $trimmed")
+            }
+            if (!source.renameTo(dest)) {
+                throw IOException("Umbenennen fehlgeschlagen: ${source.name}")
+            }
         }
+
+    override suspend fun delete(paths: List<String>): Result<Unit> =
+        runIoResult {
+            for (path in paths) {
+                val target = File(path)
+                if (target.exists() && !target.deleteRecursively()) {
+                    throw IOException("Löschen fehlgeschlagen: ${target.name}")
+                }
+            }
+        }
+
+    override suspend fun copy(sourcePaths: List<String>, targetDir: String): Result<Unit> =
+        runIoResult {
+            val targetRoot = requireDirectory(targetDir)
+            for (sourcePath in sourcePaths) {
+                val source = File(sourcePath)
+                if (!source.exists()) {
+                    throw IOException("Quelle nicht gefunden: $sourcePath")
+                }
+                ensureNotDescendant(source, targetRoot, "kopiert")
+                val dest = resolveUniqueTarget(targetRoot, source.name, source.isDirectory)
+                if (!source.copyRecursively(dest, overwrite = false)) {
+                    throw IOException("Kopieren fehlgeschlagen: ${source.name}")
+                }
+            }
+        }
+
+    override suspend fun move(sourcePaths: List<String>, targetDir: String): Result<Unit> =
+        runIoResult {
+            val targetRoot = requireDirectory(targetDir)
+            val targetCanonical = targetRoot.canonicalPath
+            for (sourcePath in sourcePaths) {
+                val source = File(sourcePath)
+                if (!source.exists()) {
+                    throw IOException("Quelle nicht gefunden: $sourcePath")
+                }
+                if (source.parentFile?.canonicalPath == targetCanonical) {
+                    continue
+                }
+                ensureNotDescendant(source, targetRoot, "verschoben")
+                val dest = resolveUniqueTarget(targetRoot, source.name, source.isDirectory)
+                if (!source.renameTo(dest)) {
+                    if (!source.copyRecursively(dest, overwrite = false)) {
+                        throw IOException("Verschieben fehlgeschlagen: ${source.name}")
+                    }
+                    if (!source.deleteRecursively()) {
+                        throw IOException("Quelle konnte nach Verschieben nicht gelöscht werden: ${source.name}")
+                    }
+                }
+            }
+        }
+
+    private suspend inline fun runIoResult(crossinline block: () -> Unit): Result<Unit> =
+        withContext(Dispatchers.IO) {
+            try {
+                block()
+                Result.success(Unit)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+        }
+
+    private fun validateName(name: String) {
+        if (name.isEmpty() || name == "." || name == ".." || name.contains('/') || name.contains('\\')) {
+            throw IllegalArgumentException("Ungültiger Name: $name")
+        }
+    }
+
+    private fun requireDirectory(path: String): File {
+        val dir = File(path)
+        if (!dir.exists() || !dir.isDirectory) {
+            throw IOException("Zielordner nicht gefunden: $path")
+        }
+        return dir
+    }
+
+    private fun ensureNotDescendant(source: File, targetRoot: File, verb: String) {
+        if (!source.isDirectory) return
+        val srcCanonical = source.canonicalPath
+        val targetCanonical = targetRoot.canonicalPath
+        if (targetCanonical == srcCanonical || targetCanonical.startsWith("$srcCanonical${File.separator}")) {
+            throw IOException("Ordner kann nicht in sich selbst $verb werden: ${source.name}")
+        }
+    }
+
+    private fun resolveUniqueTarget(targetDir: File, name: String, isDirectory: Boolean): File {
+        val direct = File(targetDir, name)
+        if (!direct.exists()) return direct
+
+        val dotIndex = if (isDirectory) -1 else name.lastIndexOf('.')
+        val (base, ext) = if (dotIndex > 0) {
+            name.substring(0, dotIndex) to name.substring(dotIndex)
+        } else {
+            name to ""
+        }
+        var index = 1
+        while (true) {
+            val candidate = File(targetDir, "$base ($index)$ext")
+            if (!candidate.exists()) return candidate
+            index++
+        }
+    }
 
     private fun File.toVfsNode(): VfsNode {
         val isDir = isDirectory

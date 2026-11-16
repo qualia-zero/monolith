@@ -3,6 +3,7 @@ package com.monolith.feature.explorer
 import android.os.Environment
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -21,17 +22,24 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.InsertDriveFile
+import androidx.compose.material.icons.automirrored.outlined.OpenInNew
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.AudioFile
 import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.outlined.ContentCut
+import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.FolderZip
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.MusicNote
+import androidx.compose.material.icons.outlined.SelectAll
 import androidx.compose.material.icons.outlined.VideoFile
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
@@ -41,8 +49,11 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -51,8 +62,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -63,6 +76,7 @@ import com.monolith.core.model.FileCategory
 import com.monolith.core.model.SortBy
 import com.monolith.core.model.VfsNode
 import com.monolith.core.vfs.LocalVfsProvider
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -86,14 +100,45 @@ fun ExplorerScreen(
     var sortBy by remember { mutableStateOf(SortBy.NAME) }
     var menuExpanded by remember { mutableStateOf(false) }
     var showSortDialog by remember { mutableStateOf(false) }
+    var selectedPaths by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var clipboardPaths by remember { mutableStateOf<List<String>>(emptyList()) }
+    var isMoveOperation by remember { mutableStateOf(false) }
+    var showCreateFolderDialog by remember { mutableStateOf(false) }
+    var renameTargetNode by remember { mutableStateOf<VfsNode?>(null) }
+    var showDeleteDialog by remember { mutableStateOf(false) }
+    var refreshTrigger by remember { mutableIntStateOf(0) }
 
+    val scope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
     val playbackState by MpvEngine.uiState.collectAsState()
 
-    BackHandler(enabled = currentPath != rootPath) {
-        currentPath = currentPath.substringBeforeLast('/', rootPath).ifEmpty { rootPath }
+    fun runFileOperation(
+        onSuccess: () -> Unit = {},
+        block: suspend () -> Result<Unit>,
+    ) {
+        scope.launch {
+            block()
+                .onSuccess {
+                    onSuccess()
+                    refreshTrigger++
+                }
+                .onFailure { error ->
+                    snackbarHostState.showSnackbar(
+                        error.message ?: "Vorgang fehlgeschlagen"
+                    )
+                }
+        }
     }
 
-    LaunchedEffect(currentPath, showHidden, sortBy, hasStoragePermission) {
+    BackHandler(enabled = selectedPaths.isNotEmpty() || currentPath != rootPath) {
+        if (selectedPaths.isNotEmpty()) {
+            selectedPaths = emptySet()
+        } else {
+            currentPath = currentPath.substringBeforeLast('/', rootPath).ifEmpty { rootPath }
+        }
+    }
+
+    LaunchedEffect(currentPath, showHidden, sortBy, hasStoragePermission, refreshTrigger) {
         if (hasStoragePermission) {
             val raw = provider.list(currentPath, showHidden)
             nodes = raw.sortedWith(
@@ -109,86 +154,190 @@ fun ExplorerScreen(
         }
     }
 
+    val selectedNodes = remember(nodes, selectedPaths) {
+        nodes.filter { it.path in selectedPaths }
+    }
+
     Scaffold(
         modifier = modifier.fillMaxSize(),
+        snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         topBar = {
-            TopAppBar(
-                title = {
-                    val label = if (currentPath == rootPath) "Monolith" else currentPath.substringAfterLast('/')
-                    Text(
-                        text = label,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                },
-                navigationIcon = {
-                    if (currentPath != rootPath) {
+            if (selectedPaths.isNotEmpty()) {
+                TopAppBar(
+                    title = {
+                        Text(
+                            text = "${selectedPaths.size}",
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = { selectedPaths = emptySet() }) {
+                            Icon(Icons.Default.Close, contentDescription = "Auswahl aufheben")
+                        }
+                    },
+                    actions = {
                         IconButton(onClick = {
-                            currentPath = currentPath.substringBeforeLast('/', rootPath).ifEmpty { rootPath }
+                            selectedPaths = if (selectedPaths.size == nodes.size && nodes.isNotEmpty()) {
+                                emptySet()
+                            } else {
+                                nodes.map { it.path }.toSet()
+                            }
                         }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Zurück")
+                            Icon(Icons.Outlined.SelectAll, contentDescription = "Alle auswählen")
                         }
-                    } else {
-                        Box(
-                            modifier = Modifier.size(48.dp),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Icon(
-                                imageVector = Icons.Outlined.AutoAwesome,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(22.dp),
-                            )
+                        IconButton(onClick = {
+                            clipboardPaths = selectedPaths.toList()
+                            isMoveOperation = false
+                            selectedPaths = emptySet()
+                        }) {
+                            Icon(Icons.Outlined.ContentCopy, contentDescription = "Kopieren")
                         }
-                    }
-                },
-                actions = {
-                    Box {
-                        IconButton(onClick = { menuExpanded = true }) {
-                            Icon(Icons.Outlined.MoreVert, contentDescription = "Menü")
+                        IconButton(onClick = {
+                            clipboardPaths = selectedPaths.toList()
+                            isMoveOperation = true
+                            selectedPaths = emptySet()
+                        }) {
+                            Icon(Icons.Outlined.ContentCut, contentDescription = "Ausschneiden")
                         }
-                        DropdownMenu(
-                            expanded = menuExpanded,
-                            onDismissRequest = { menuExpanded = false },
-                        ) {
-                            DropdownMenuItem(
-                                text = { Text("Sortieren nach") },
-                                onClick = {
-                                    menuExpanded = false
-                                    showSortDialog = true
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text(if (showHidden) "Versteckte ausblenden" else "Versteckte anzeigen") },
-                                onClick = {
-                                    showHidden = !showHidden
-                                    menuExpanded = false
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Einstellungen") },
-                                onClick = {
-                                    menuExpanded = false
-                                    onOpenSettings()
-                                },
-                            )
+                        if (selectedPaths.size == 1) {
+                            val singleNode = selectedNodes.firstOrNull()
+                            if (singleNode != null) {
+                                IconButton(onClick = { renameTargetNode = singleNode }) {
+                                    Icon(Icons.Outlined.Edit, contentDescription = "Umbenennen")
+                                }
+                                if (!singleNode.isDirectory) {
+                                    IconButton(onClick = {
+                                        val siblings = nodes.filter { it.category == singleNode.category }
+                                        selectedPaths = emptySet()
+                                        onOpenWith(singleNode, siblings)
+                                    }) {
+                                        Icon(
+                                            Icons.AutoMirrored.Outlined.OpenInNew,
+                                            contentDescription = "Öffnen mit",
+                                        )
+                                    }
+                                }
+                            }
                         }
-                    }
-                },
-            )
+                        IconButton(onClick = { showDeleteDialog = true }) {
+                            Icon(Icons.Outlined.Delete, contentDescription = "Löschen")
+                        }
+                    },
+                )
+            } else {
+                TopAppBar(
+                    title = {
+                        val label = if (currentPath == rootPath) "Monolith" else currentPath.substringAfterLast('/')
+                        Text(
+                            text = label,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    },
+                    navigationIcon = {
+                        if (currentPath != rootPath) {
+                            IconButton(onClick = {
+                                currentPath = currentPath.substringBeforeLast('/', rootPath).ifEmpty { rootPath }
+                            }) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Zurück")
+                            }
+                        } else {
+                            Box(
+                                modifier = Modifier.size(48.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.AutoAwesome,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(22.dp),
+                                )
+                            }
+                        }
+                    },
+                    actions = {
+                        Box {
+                            IconButton(onClick = { menuExpanded = true }) {
+                                Icon(Icons.Outlined.MoreVert, contentDescription = "Menü")
+                            }
+                            DropdownMenu(
+                                expanded = menuExpanded,
+                                onDismissRequest = { menuExpanded = false },
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("Neuer Ordner") },
+                                    onClick = {
+                                        menuExpanded = false
+                                        showCreateFolderDialog = true
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Sortieren nach") },
+                                    onClick = {
+                                        menuExpanded = false
+                                        showSortDialog = true
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(if (showHidden) "Versteckte ausblenden" else "Versteckte anzeigen") },
+                                    onClick = {
+                                        showHidden = !showHidden
+                                        menuExpanded = false
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Einstellungen") },
+                                    onClick = {
+                                        menuExpanded = false
+                                        onOpenSettings()
+                                    },
+                                )
+                            }
+                        }
+                    },
+                )
+            }
         },
         bottomBar = {
-            if (playbackState.mediaUri.isNotBlank() && !playbackState.isEnded) {
-                MiniPlayerBar(
-                    title = playbackState.title.ifBlank { "Wiedergabe" },
-                    subtitle = listOf(playbackState.artist, playbackState.album)
-                        .filter { it.isNotBlank() }
-                        .joinToString(" • "),
-                    isPlaying = playbackState.isPlaying,
-                    onOpen = onOpenMiniPlayer,
-                    onTogglePlayPause = { MpvEngine.togglePlayPause() },
-                    onStop = { MpvEngine.stopAndReset() },
-                )
+            val showMiniPlayer = playbackState.mediaUri.isNotBlank() && !playbackState.isEnded
+            if (clipboardPaths.isNotEmpty() || showMiniPlayer) {
+                Column(
+                    modifier = if (!showMiniPlayer) Modifier.navigationBarsPadding() else Modifier,
+                ) {
+                    if (clipboardPaths.isNotEmpty()) {
+                        ClipboardActionBar(
+                            count = clipboardPaths.size,
+                            isMoveOperation = isMoveOperation,
+                            onPaste = {
+                                val sources = clipboardPaths
+                                val move = isMoveOperation
+                                runFileOperation(
+                                    onSuccess = { clipboardPaths = emptyList() },
+                                ) {
+                                    if (move) {
+                                        provider.move(sources, currentPath)
+                                    } else {
+                                        provider.copy(sources, currentPath)
+                                    }
+                                }
+                            },
+                            onCancel = { clipboardPaths = emptyList() },
+                        )
+                    }
+                    if (showMiniPlayer) {
+                        MiniPlayerBar(
+                            title = playbackState.title.ifBlank { "Wiedergabe" },
+                            subtitle = listOf(playbackState.artist, playbackState.album)
+                                .filter { it.isNotBlank() }
+                                .joinToString(" • "),
+                            isPlaying = playbackState.isPlaying,
+                            onOpen = onOpenMiniPlayer,
+                            onTogglePlayPause = { MpvEngine.togglePlayPause() },
+                            onStop = { MpvEngine.stopAndReset() },
+                        )
+                    }
+                }
             }
         },
     ) { padding ->
@@ -216,29 +365,38 @@ fun ExplorerScreen(
                     .padding(padding),
             ) {
                 items(nodes, key = { it.id }) { node ->
+                    val isSelected = node.path in selectedPaths
                     FileRow(
                         node = node,
+                        isSelected = isSelected,
                         onClick = {
-                            when {
-                                node.isDirectory -> currentPath = node.path
-                                node.category == FileCategory.VIDEO || node.category == FileCategory.AUDIO -> {
-                                    val playlist = nodes.filter { it.category == node.category }
-                                    onOpenMedia(node, playlist)
+                            if (selectedPaths.isNotEmpty()) {
+                                selectedPaths = if (isSelected) {
+                                    selectedPaths - node.path
+                                } else {
+                                    selectedPaths + node.path
                                 }
-                                node.category == FileCategory.IMAGE -> {
-                                    val images = nodes.filter { it.category == FileCategory.IMAGE }
-                                    onOpenImage(node, images)
+                            } else {
+                                when {
+                                    node.isDirectory -> currentPath = node.path
+                                    node.category == FileCategory.VIDEO || node.category == FileCategory.AUDIO -> {
+                                        val playlist = nodes.filter { it.category == node.category }
+                                        onOpenMedia(node, playlist)
+                                    }
+                                    node.category == FileCategory.IMAGE -> {
+                                        val images = nodes.filter { it.category == FileCategory.IMAGE }
+                                        onOpenImage(node, images)
+                                    }
+                                    node.category == FileCategory.TEXT -> onOpenText(node)
+                                    else -> onOpenOther(node)
                                 }
-                                node.category == FileCategory.TEXT -> onOpenText(node)
-                                else -> onOpenOther(node)
                             }
                         },
-                        onLongClick = if (node.isDirectory) {
-                            null
-                        } else {
-                            {
-                                val siblings = nodes.filter { it.category == node.category }
-                                onOpenWith(node, siblings)
+                        onLongClick = {
+                            selectedPaths = if (isSelected) {
+                                selectedPaths - node.path
+                            } else {
+                                selectedPaths + node.path
                             }
                         },
                     )
@@ -293,6 +451,155 @@ fun ExplorerScreen(
                 }
             },
         )
+    }
+
+    if (showCreateFolderDialog) {
+        var folderName by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { showCreateFolderDialog = false },
+            title = { Text("Neuer Ordner") },
+            text = {
+                OutlinedTextField(
+                    value = folderName,
+                    onValueChange = { folderName = it },
+                    label = { Text("Ordnername") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = folderName.isNotBlank(),
+                    onClick = {
+                        val name = folderName
+                        showCreateFolderDialog = false
+                        runFileOperation {
+                            provider.createDirectory(currentPath, name)
+                        }
+                    },
+                ) {
+                    Text("Erstellen")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCreateFolderDialog = false }) {
+                    Text("Abbrechen")
+                }
+            },
+        )
+    }
+
+    renameTargetNode?.let { target ->
+        var newName by remember(target.path) { mutableStateOf(target.name) }
+        AlertDialog(
+            onDismissRequest = { renameTargetNode = null },
+            title = { Text("Umbenennen") },
+            text = {
+                OutlinedTextField(
+                    value = newName,
+                    onValueChange = { newName = it },
+                    label = { Text("Neuer Name") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = newName.isNotBlank() && newName.trim() != target.name,
+                    onClick = {
+                        val updatedName = newName
+                        renameTargetNode = null
+                        runFileOperation(
+                            onSuccess = { selectedPaths = emptySet() },
+                        ) {
+                            provider.rename(target.path, updatedName)
+                        }
+                    },
+                ) {
+                    Text("Umbenennen")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { renameTargetNode = null }) {
+                    Text("Abbrechen")
+                }
+            },
+        )
+    }
+
+    if (showDeleteDialog) {
+        val count = selectedPaths.size
+        AlertDialog(
+            onDismissRequest = { showDeleteDialog = false },
+            title = { Text("Löschen") },
+            text = {
+                val message = if (count == 1) {
+                    val name = selectedNodes.firstOrNull()?.name ?: "Element"
+                    "„$name“ wirklich löschen?"
+                } else {
+                    "$count Elemente wirklich löschen?"
+                }
+                Text(message)
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val pathsToDelete = selectedPaths.toList()
+                        showDeleteDialog = false
+                        runFileOperation(
+                            onSuccess = { selectedPaths = emptySet() },
+                        ) {
+                            provider.delete(pathsToDelete)
+                        }
+                    },
+                ) {
+                    Text("Löschen")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteDialog = false }) {
+                    Text("Abbrechen")
+                }
+            },
+        )
+    }
+}
+
+@Composable
+private fun ClipboardActionBar(
+    count: Int,
+    isMoveOperation: Boolean,
+    onPaste: () -> Unit,
+    onCancel: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.secondaryContainer,
+    ) {
+        Column {
+            HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outline)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "$count Element(e) ${if (isMoveOperation) "ausschneiden" else "kopieren"}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(onClick = onPaste) {
+                    Text("Hier einfügen")
+                }
+                TextButton(onClick = onCancel) {
+                    Text("Abbrechen")
+                }
+            }
+        }
     }
 }
 
@@ -363,6 +670,7 @@ private fun MiniPlayerBar(
 @Composable
 private fun FileRow(
     node: VfsNode,
+    isSelected: Boolean = false,
     onClick: () -> Unit,
     onLongClick: (() -> Unit)? = null,
 ) {
@@ -378,6 +686,13 @@ private fun FileRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .then(
+                if (isSelected) {
+                    Modifier.background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f))
+                } else {
+                    Modifier
+                }
+            )
             .combinedClickable(
                 onClick = onClick,
                 onLongClick = onLongClick,
@@ -385,12 +700,24 @@ private fun FileRow(
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = if (node.isDirectory) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(24.dp),
-        )
+        if (isSelected) {
+            Box(
+                modifier = Modifier.size(40.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.CheckCircle,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(24.dp),
+                )
+            }
+        } else {
+            FileThumbnail(
+                node = node,
+                fallbackIcon = icon,
+            )
+        }
         Spacer(modifier = Modifier.width(16.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(

@@ -4,10 +4,16 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.media.MediaMetadataRetriever
+import android.media.ThumbnailUtils
 import android.net.Uri
+import android.os.Build
+import android.util.LruCache
+import android.util.Size
 import com.monolith.core.common.MonolithDiagnostics
+import com.monolith.core.model.FileCategory
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.io.File
 import kotlin.math.roundToInt
 
 /**
@@ -18,6 +24,70 @@ object ThumbnailEngine {
     const val ART_MAX_LONG = 854
     const val ART_MAX_SHORT = 480
     const val ART_SIZE_SMALL = 192
+    const val LIST_THUMB_DEFAULT_PX = 128
+
+    private const val LIST_CACHE_MAX_BYTES = 24 * 1024 * 1024 // 24 MiB
+
+    private val listThumbnailCache = object : LruCache<String, Bitmap>(LIST_CACHE_MAX_BYTES) {
+        override fun sizeOf(key: String, value: Bitmap): Int =
+            value.allocationByteCount.coerceAtLeast(1)
+    }
+
+    /**
+     * Returns a cached list thumbnail immediately if present, or null.
+     */
+    fun getCachedListThumbnail(
+        path: String,
+        lastModifiedMs: Long = 0L,
+        targetPx: Int = LIST_THUMB_DEFAULT_PX,
+    ): Bitmap? {
+        if (path.isBlank() || targetPx <= 0) return null
+        return listThumbnailCache.get(listCacheKey(path, lastModifiedMs, targetPx))
+    }
+
+    /**
+     * Loads, downsamples, and caches a square-cropped thumbnail for list rows on [Dispatchers.IO].
+     */
+    suspend fun loadListThumbnail(
+        context: Context,
+        path: String,
+        category: FileCategory,
+        lastModifiedMs: Long = 0L,
+        targetPx: Int = LIST_THUMB_DEFAULT_PX,
+    ): Bitmap? = withContext(Dispatchers.IO) {
+        if (path.isBlank() || targetPx <= 0 || isRemoteUri(path)) return@withContext null
+        if (category != FileCategory.IMAGE &&
+            category != FileCategory.VIDEO &&
+            category != FileCategory.AUDIO
+        ) {
+            return@withContext null
+        }
+
+        val cacheKey = listCacheKey(path, lastModifiedMs, targetPx)
+        listThumbnailCache.get(cacheKey)?.let { return@withContext it }
+
+        val decoded = try {
+            when (category) {
+                FileCategory.IMAGE -> decodeSampledImage(context, path, targetPx)
+                FileCategory.VIDEO -> decodeVideoListThumbnail(context, path, targetPx)
+                FileCategory.AUDIO -> decodeAudioCoverThumbnail(context, path, targetPx)
+                else -> null
+            }
+        } catch (t: Throwable) {
+            MonolithDiagnostics.logWarn("ThumbnailEngine", "List thumbnail load failed for $path: ${t.message}")
+            null
+        } ?: return@withContext null
+
+        val prepared = centerCropScale(decoded, targetPx)
+        if (prepared !== decoded) {
+            decoded.recycle()
+        }
+        listThumbnailCache.put(cacheKey, prepared)
+        prepared
+    }
+
+    private fun listCacheKey(path: String, lastModifiedMs: Long, targetPx: Int): String =
+        "$path:$lastModifiedMs:$targetPx"
 
     /**
      * Samples a 3x3 interior grid (25%, 50%, 75% width/height) to reject near-black frames.
@@ -170,5 +240,163 @@ object ThumbnailEngine {
         val targetH = (srcH * scale).roundToInt().coerceAtLeast(1)
         val filter = srcW >= 128 && srcH >= 128
         return Bitmap.createScaledBitmap(src, targetW, targetH, filter)
+    }
+
+    private fun decodeSampledImage(context: Context, path: String, targetPx: Int): Bitmap? {
+        val boundsOpts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        val isContentUri = path.startsWith("content://")
+        if (isContentUri) {
+            val uri = Uri.parse(path)
+            context.contentResolver.openInputStream(uri)?.use { stream ->
+                BitmapFactory.decodeStream(stream, null, boundsOpts)
+            } ?: return null
+        } else {
+            val localPath = resolveLocalFilePath(path)
+            BitmapFactory.decodeFile(localPath, boundsOpts)
+        }
+
+        if (boundsOpts.outWidth <= 0 || boundsOpts.outHeight <= 0) return null
+
+        val decodeOpts = BitmapFactory.Options().apply {
+            inSampleSize = calculateInSampleSize(boundsOpts.outWidth, boundsOpts.outHeight, targetPx, targetPx)
+            inPreferredConfig = Bitmap.Config.ARGB_8888
+        }
+
+        return if (isContentUri) {
+            val uri = Uri.parse(path)
+            context.contentResolver.openInputStream(uri)?.use { stream ->
+                BitmapFactory.decodeStream(stream, null, decodeOpts)
+            }
+        } else {
+            val localPath = resolveLocalFilePath(path)
+            BitmapFactory.decodeFile(localPath, decodeOpts)
+        }
+    }
+
+    private fun decodeVideoListThumbnail(context: Context, path: String, targetPx: Int): Bitmap? {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && !path.startsWith("content://")) {
+            val file = File(resolveLocalFilePath(path))
+            if (file.isFile) {
+                val quickThumb = runCatching {
+                    ThumbnailUtils.createVideoThumbnail(file, Size(targetPx, targetPx), null)
+                }.getOrNull()
+                if (quickThumb != null) {
+                    if (isNonBlackBitmap(quickThumb)) {
+                        return quickThumb
+                    }
+                    quickThumb.recycle()
+                }
+            }
+        }
+
+        val retriever = MediaMetadataRetriever()
+        return try {
+            setDataSource(context, retriever, path)
+            val candidateTimesUs = longArrayOf(1_000_000L, 5_000_000L)
+            var fallbackFrame: Bitmap? = null
+
+            for (timeUs in candidateTimesUs) {
+                val frame = retriever.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                if (frame != null) {
+                    if (isNonBlackBitmap(frame)) {
+                        fallbackFrame?.recycle()
+                        return frame
+                    }
+                    if (fallbackFrame == null) {
+                        fallbackFrame = frame
+                    } else {
+                        frame.recycle()
+                    }
+                }
+            }
+
+            val defaultFrame = retriever.frameAtTime
+            if (defaultFrame != null) {
+                if (isNonBlackBitmap(defaultFrame) || fallbackFrame == null) {
+                    fallbackFrame?.recycle()
+                    return defaultFrame
+                }
+                defaultFrame.recycle()
+            }
+            fallbackFrame
+        } finally {
+            runCatching { retriever.release() }
+        }
+    }
+
+    private fun decodeAudioCoverThumbnail(context: Context, path: String, targetPx: Int): Bitmap? {
+        val retriever = MediaMetadataRetriever()
+        return try {
+            setDataSource(context, retriever, path)
+            val bytes = retriever.embeddedPicture ?: return null
+            val boundsOpts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, boundsOpts)
+            if (boundsOpts.outWidth <= 0 || boundsOpts.outHeight <= 0) return null
+
+            val decodeOpts = BitmapFactory.Options().apply {
+                inSampleSize = calculateInSampleSize(boundsOpts.outWidth, boundsOpts.outHeight, targetPx, targetPx)
+                inPreferredConfig = Bitmap.Config.ARGB_8888
+            }
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, decodeOpts)
+        } finally {
+            runCatching { retriever.release() }
+        }
+    }
+
+    private fun resolveLocalFilePath(path: String): String =
+        if (path.startsWith("file://")) Uri.parse(path).path ?: path else path
+
+    private fun calculateInSampleSize(
+        rawWidth: Int,
+        rawHeight: Int,
+        reqWidth: Int,
+        reqHeight: Int,
+    ): Int {
+        var inSampleSize = 1
+        if (rawHeight > reqHeight || rawWidth > reqWidth) {
+            val halfHeight = rawHeight / 2
+            val halfWidth = rawWidth / 2
+            while ((halfHeight / inSampleSize) >= reqHeight && (halfWidth / inSampleSize) >= reqWidth) {
+                inSampleSize *= 2
+            }
+        }
+        return inSampleSize
+    }
+
+    /**
+     * Scales [src] so its shorter edge matches [targetPx] (when larger) and center-crops to a square.
+     */
+    private fun centerCropScale(src: Bitmap, targetPx: Int): Bitmap {
+        val argb = ensureArgb8888(src)
+        val w = argb.width
+        val h = argb.height
+        if (w <= 0 || h <= 0) return argb
+
+        val minEdge = minOf(w, h)
+        val scaled = if (minEdge > targetPx) {
+            val scale = targetPx.toFloat() / minEdge.toFloat()
+            val scaledW = (w * scale).roundToInt().coerceAtLeast(targetPx)
+            val scaledH = (h * scale).roundToInt().coerceAtLeast(targetPx)
+            Bitmap.createScaledBitmap(argb, scaledW, scaledH, true)
+        } else {
+            argb
+        }
+
+        val cropSize = minOf(scaled.width, scaled.height, targetPx)
+        val result = if (scaled.width == cropSize && scaled.height == cropSize) {
+            scaled
+        } else {
+            val x = ((scaled.width - cropSize) / 2).coerceAtLeast(0)
+            val y = ((scaled.height - cropSize) / 2).coerceAtLeast(0)
+            Bitmap.createBitmap(scaled, x, y, cropSize, cropSize)
+        }
+
+        if (scaled !== argb && scaled !== result) {
+            scaled.recycle()
+        }
+        if (argb !== src && argb !== result) {
+            argb.recycle()
+        }
+        return result
     }
 }
