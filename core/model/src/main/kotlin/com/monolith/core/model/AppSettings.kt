@@ -14,6 +14,8 @@ data class AppSettings(
     val hapticDragLift: Boolean = true,
     val hapticSliderTick: Boolean = true,
     val hapticPulseFeedback: Boolean = true,
+    val hapticFolderNav: Boolean = true,
+    val hapticLaunchItem: Boolean = true,
 )
 
 data class DefaultAppAssociation(

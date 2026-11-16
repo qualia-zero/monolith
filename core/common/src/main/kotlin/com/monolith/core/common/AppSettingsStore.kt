@@ -16,6 +16,8 @@ object AppSettingsStore {
     private const val KEY_HAPTIC_DRAG = "haptic_drag_lift"
     private const val KEY_HAPTIC_SLIDER = "haptic_slider_tick"
     private const val KEY_HAPTIC_PULSE = "haptic_pulse_feedback"
+    private const val KEY_HAPTIC_FOLDER = "haptic_folder_nav"
+    private const val KEY_HAPTIC_LAUNCH = "haptic_launch_item"
 
     @Volatile
     private var prefs: SharedPreferences? = null
@@ -51,6 +53,8 @@ object AppSettingsStore {
             hapticDragLift = sp.getBoolean(KEY_HAPTIC_DRAG, defaults.hapticDragLift),
             hapticSliderTick = sp.getBoolean(KEY_HAPTIC_SLIDER, defaults.hapticSliderTick),
             hapticPulseFeedback = sp.getBoolean(KEY_HAPTIC_PULSE, defaults.hapticPulseFeedback),
+            hapticFolderNav = sp.getBoolean(KEY_HAPTIC_FOLDER, defaults.hapticFolderNav),
+            hapticLaunchItem = sp.getBoolean(KEY_HAPTIC_LAUNCH, defaults.hapticLaunchItem),
         )
     }
 
@@ -62,6 +66,8 @@ object AppSettingsStore {
             ?.putBoolean(KEY_HAPTIC_DRAG, value.hapticDragLift)
             ?.putBoolean(KEY_HAPTIC_SLIDER, value.hapticSliderTick)
             ?.putBoolean(KEY_HAPTIC_PULSE, value.hapticPulseFeedback)
+            ?.putBoolean(KEY_HAPTIC_FOLDER, value.hapticFolderNav)
+            ?.putBoolean(KEY_HAPTIC_LAUNCH, value.hapticLaunchItem)
             ?.apply()
     }
 }

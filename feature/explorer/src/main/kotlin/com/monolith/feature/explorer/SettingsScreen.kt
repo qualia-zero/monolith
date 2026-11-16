@@ -110,7 +110,7 @@ fun SettingsScreen(
                                     ThemeMode.SYSTEM -> "System"
                                     ThemeMode.LIGHT -> "Hell"
                                     ThemeMode.DARK -> "Dunkel"
-                                    ThemeMode.CYBER_PHOSPHOR -> "Phosphor (Neon)"
+                                    ThemeMode.CYBER_PHOSPHOR -> "Phosphor"
                                 },
                             )
                         },
@@ -168,6 +168,24 @@ fun SettingsScreen(
                         onCheckedChange = { enabled ->
                             AppSettingsStore.update { it.copy(hapticPulseFeedback = enabled) }
                             if (enabled) MonolithHaptics.successPulse(context)
+                        },
+                    )
+                    HapticToggleRow(
+                        title = "Ordner & Zurück",
+                        subtitle = "Kurzer Impuls beim Öffnen von Ordnern und Zurück",
+                        checked = appSettings.hapticFolderNav,
+                        onCheckedChange = { enabled ->
+                            AppSettingsStore.update { it.copy(hapticFolderNav = enabled) }
+                            if (enabled) MonolithHaptics.folderNav(context, view)
+                        },
+                    )
+                    HapticToggleRow(
+                        title = "Datei- & Media-Start",
+                        subtitle = "Ansteigender Doppel-Impuls beim Starten einer Datei",
+                        checked = appSettings.hapticLaunchItem,
+                        onCheckedChange = { enabled ->
+                            AppSettingsStore.update { it.copy(hapticLaunchItem = enabled) }
+                            if (enabled) MonolithHaptics.launchItem(context)
                         },
                     )
                 }

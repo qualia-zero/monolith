@@ -233,6 +233,7 @@ fun ExplorerScreen(
     }
 
     fun navigateUp() {
+        MonolithHaptics.folderNav(context, view)
         if (activeLocation == LocationType.GOOGLE_DRIVE) {
             if (driveStack.size > 1) {
                 driveStack = driveStack.dropLast(1)
@@ -748,6 +749,7 @@ fun ExplorerScreen(
                                 } else {
                                     when {
                                         node.isDirectory -> {
+                                            MonolithHaptics.folderNav(context, view)
                                             if (activeLocation == LocationType.GOOGLE_DRIVE) {
                                                 driveStack = driveStack + (node.path to node.name)
                                             } else {
@@ -755,19 +757,28 @@ fun ExplorerScreen(
                                             }
                                         }
                                         node.category == FileCategory.VIDEO || node.category == FileCategory.AUDIO -> {
+                                            MonolithHaptics.launchItem(context)
                                             val playlist = nodes.filter { it.category == node.category }
                                             onOpenMedia(node, playlist)
                                         }
                                         node.category == FileCategory.IMAGE -> {
+                                            MonolithHaptics.launchItem(context)
                                             val images = nodes.filter { it.category == FileCategory.IMAGE }
                                             onOpenImage(node, images)
                                         }
-                                        node.category == FileCategory.TEXT -> onOpenText(node)
-                                        else -> onOpenOther(node)
+                                        node.category == FileCategory.TEXT -> {
+                                            MonolithHaptics.launchItem(context)
+                                            onOpenText(node)
+                                        }
+                                        else -> {
+                                            MonolithHaptics.launchItem(context)
+                                            onOpenOther(node)
+                                        }
                                     }
                                 }
                             },
                             onLongClick = {
+                                MonolithHaptics.dragLift(view)
                                 selectedPaths = if (isSelected) {
                                     selectedPaths - node.path
                                 } else {
