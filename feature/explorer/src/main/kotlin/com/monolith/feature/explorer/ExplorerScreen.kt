@@ -43,8 +43,8 @@ import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.MusicNote
 import androidx.compose.material.icons.outlined.SelectAll
-import androidx.compose.material.icons.outlined.Smartphone
 import androidx.compose.material.icons.outlined.VideoFile
+import androidx.compose.material.icons.outlined.ViewInAr
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -342,7 +342,7 @@ fun ExplorerScreen(
                                     imageVector = if (activeLocation == LocationType.GOOGLE_DRIVE) {
                                         Icons.Outlined.CloudQueue
                                     } else {
-                                        Icons.Outlined.Smartphone
+                                        Icons.Outlined.ViewInAr
                                     },
                                     contentDescription = null,
                                     tint = MaterialTheme.colorScheme.primary,
