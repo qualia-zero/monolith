@@ -18,6 +18,7 @@ object PlayerSettingsStore {
     private const val KEY_HW_DECODING = "use_hw_decoding"
     private const val KEY_BACKGROUND_PLAY = "use_background_play"
     private const val KEY_PIP_MODE = "use_pip_mode"
+    private const val KEY_SUBTITLES_ENABLED = "subtitles_enabled"
     private const val KEY_SUBTITLE_SIZE = "subtitle_size"
     private const val KEY_RESUME_MODE = "resume_mode"
     private const val KEY_SEEK_GESTURE = "use_seek_gesture"
@@ -60,6 +61,7 @@ object PlayerSettingsStore {
             useHwDecoding = sp.getBoolean(KEY_HW_DECODING, defaults.useHwDecoding),
             useBackgroundPlay = sp.getBoolean(KEY_BACKGROUND_PLAY, defaults.useBackgroundPlay),
             usePipMode = sp.getBoolean(KEY_PIP_MODE, defaults.usePipMode),
+            subtitlesEnabled = sp.getBoolean(KEY_SUBTITLES_ENABLED, defaults.subtitlesEnabled),
             subtitleSize = sp.getFloat(KEY_SUBTITLE_SIZE, defaults.subtitleSize),
             resumeMode = resumeMode,
             useSeekGesture = sp.getBoolean(KEY_SEEK_GESTURE, defaults.useSeekGesture),
@@ -73,6 +75,7 @@ object PlayerSettingsStore {
             ?.putBoolean(KEY_HW_DECODING, value.useHwDecoding)
             ?.putBoolean(KEY_BACKGROUND_PLAY, value.useBackgroundPlay)
             ?.putBoolean(KEY_PIP_MODE, value.usePipMode)
+            ?.putBoolean(KEY_SUBTITLES_ENABLED, value.subtitlesEnabled)
             ?.putFloat(KEY_SUBTITLE_SIZE, value.subtitleSize)
             ?.putString(KEY_RESUME_MODE, value.resumeMode.name)
             ?.putBoolean(KEY_SEEK_GESTURE, value.useSeekGesture)

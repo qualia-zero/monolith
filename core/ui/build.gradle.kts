@@ -28,6 +28,7 @@ kotlin {
 
 dependencies {
     implementation(project(":core:model"))
+    implementation(project(":core:common"))
     implementation(libs.androidx.core.ktx)
     implementation(platform(libs.androidx.compose.bom))
     api(libs.androidx.compose.ui)

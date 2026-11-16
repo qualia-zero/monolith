@@ -24,6 +24,7 @@ data class PlayerSettings(
     val useHwDecoding: Boolean = true,
     val useBackgroundPlay: Boolean = true,
     val usePipMode: Boolean = false,
+    val subtitlesEnabled: Boolean = true,
     val subtitleSize: Float = 22f,
     val resumeMode: ResumeMode = ResumeMode.ASK,
     val useSeekGesture: Boolean = false,

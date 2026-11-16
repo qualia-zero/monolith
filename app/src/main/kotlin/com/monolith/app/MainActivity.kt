@@ -78,7 +78,7 @@ class MainActivity : ComponentActivity() {
             val darkTheme = when (appSettings.themeMode) {
                 ThemeMode.SYSTEM -> isSystemInDarkTheme()
                 ThemeMode.LIGHT -> false
-                ThemeMode.DARK -> true
+                ThemeMode.DARK, ThemeMode.CYBER_PHOSPHOR -> true
             }
 
             fun openLocalWithAssociation(
@@ -188,7 +188,10 @@ class MainActivity : ComponentActivity() {
                 pendingOpen = PendingOpenRequest(node, siblings)
             }
 
-            MonolithTheme(darkTheme = darkTheme) {
+            MonolithTheme(
+                darkTheme = darkTheme,
+                themeMode = appSettings.themeMode,
+            ) {
                 if (showSettings) {
                     SettingsScreen(onBack = { showSettings = false })
                 } else {

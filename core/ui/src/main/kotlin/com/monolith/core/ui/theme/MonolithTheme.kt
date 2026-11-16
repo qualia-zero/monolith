@@ -6,6 +6,7 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
+import com.monolith.core.model.ThemeMode
 
 val MonolithRed = Color(0xFFD32F2F)
 val MonolithRedDark = Color(0xFFB71C1C)
@@ -47,13 +48,38 @@ private val DarkColors = darkColorScheme(
     outline = Color(0xFF2A2A2E),
 )
 
+private val CyberPhosphorColors = darkColorScheme(
+    primary = Color(0xFF00F5D4),
+    onPrimary = Color(0xFF031714),
+    primaryContainer = Color(0xFF0B2926),
+    onPrimaryContainer = Color(0xFF9BFCEB),
+    secondary = Color(0xFFFF3E8A),
+    onSecondary = Color(0xFF280012),
+    secondaryContainer = Color(0xFF2A1222),
+    onSecondaryContainer = Color(0xFFFFC2DC),
+    background = Color(0xFF05070A),
+    onBackground = Color(0xFFE7F7F5),
+    surface = Color(0xFF090D12),
+    onSurface = Color(0xFFE7F7F5),
+    surfaceVariant = Color(0xFF111922),
+    onSurfaceVariant = Color(0xFF8AA8B8),
+    outline = Color(0xFF1D3342),
+)
+
 @Composable
 fun MonolithTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
+    themeMode: ThemeMode? = null,
     content: @Composable () -> Unit,
 ) {
+    val colorScheme = when (themeMode) {
+        ThemeMode.CYBER_PHOSPHOR -> CyberPhosphorColors
+        ThemeMode.LIGHT -> LightColors
+        ThemeMode.DARK -> DarkColors
+        ThemeMode.SYSTEM, null -> if (darkTheme) DarkColors else LightColors
+    }
     MaterialTheme(
-        colorScheme = if (darkTheme) DarkColors else LightColors,
+        colorScheme = colorScheme,
         content = content,
     )
 }

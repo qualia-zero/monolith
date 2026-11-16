@@ -94,7 +94,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
@@ -103,6 +103,7 @@ import com.monolith.core.model.FileCategory
 import com.monolith.core.model.LocationType
 import com.monolith.core.model.SortBy
 import com.monolith.core.model.VfsNode
+import com.monolith.core.ui.haptics.MonolithHaptics
 import com.monolith.core.vfs.FileTransferService
 import com.monolith.core.vfs.GoogleDriveAuthManager
 import com.monolith.core.vfs.GoogleDriveVfsProvider
@@ -126,6 +127,7 @@ fun ExplorerScreen(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
+    val view = LocalView.current
     val localProvider = remember { LocalVfsProvider() }
     val driveProvider = remember(context) { GoogleDriveVfsProvider(context.applicationContext) }
     val rootPath = remember { Environment.getExternalStorageDirectory().absolutePath }
@@ -200,6 +202,8 @@ fun ExplorerScreen(
             refreshTrigger++
             if (event.errorMessage != null) {
                 snackbarHostState.showSnackbar(event.errorMessage ?: "Übertragung fehlgeschlagen")
+            } else {
+                MonolithHaptics.successPulse(context)
             }
         }
     }
@@ -505,7 +509,6 @@ fun ExplorerScreen(
                 .fillMaxSize()
                 .padding(padding),
         ) {
-            val haptics = LocalHapticFeedback.current
             var draggingAccount by remember { mutableStateOf<String?>(null) }
             var dragOffsetX by remember { mutableFloatStateOf(0f) }
             val chipBounds = remember { mutableStateMapOf<String, Pair<Float, Float>>() }
@@ -573,7 +576,7 @@ fun ExplorerScreen(
                                     if (!canReorder) return@pointerInput
                                     detectDragGesturesAfterLongPress(
                                         onDragStart = {
-                                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            MonolithHaptics.dragLift(view)
                                             draggingAccount = email
                                             dragOffsetX = 0f
                                         },
@@ -597,7 +600,7 @@ fun ExplorerScreen(
                                                         }
                                                         signedInAccounts = updated
                                                         dragOffsetX -= (nextX - myX)
-                                                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                                        MonolithHaptics.sliderTick(view)
                                                         swapped = true
                                                     }
                                                 }
@@ -611,7 +614,7 @@ fun ExplorerScreen(
                                                         }
                                                         signedInAccounts = updated
                                                         dragOffsetX += (myX - prevX)
-                                                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                                        MonolithHaptics.sliderTick(view)
                                                     }
                                                 }
                                             }

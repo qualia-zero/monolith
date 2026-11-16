@@ -25,6 +25,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -37,6 +38,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import com.monolith.core.common.AppSettingsStore
 import com.monolith.core.common.DefaultAppsStore
@@ -46,6 +48,7 @@ import com.monolith.core.model.AppSettings
 import com.monolith.core.model.PlayerSettings
 import com.monolith.core.model.ResumeMode
 import com.monolith.core.model.ThemeMode
+import com.monolith.core.ui.haptics.MonolithHaptics
 import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -55,6 +58,7 @@ fun SettingsScreen(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
+    val view = LocalView.current
     AppSettingsStore.init(context)
     PlayerSettingsStore.init(context)
     val appSettings by AppSettingsStore.settings.collectAsState()
@@ -97,6 +101,7 @@ fun SettingsScreen(
                     FilterChip(
                         selected = appSettings.themeMode == mode,
                         onClick = {
+                            MonolithHaptics.tap(view)
                             AppSettingsStore.update { it.copy(themeMode = mode) }
                         },
                         label = {
@@ -105,8 +110,64 @@ fun SettingsScreen(
                                     ThemeMode.SYSTEM -> "System"
                                     ThemeMode.LIGHT -> "Hell"
                                     ThemeMode.DARK -> "Dunkel"
+                                    ThemeMode.CYBER_PHOSPHOR -> "Phosphor (Neon)"
                                 },
                             )
+                        },
+                    )
+                }
+            }
+
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    text = "Haptik",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                HapticToggleRow(
+                    title = "Haptisches Feedback",
+                    subtitle = "Alle taktilen Effekte in der App",
+                    checked = appSettings.hapticsEnabled,
+                    onCheckedChange = { enabled ->
+                        AppSettingsStore.update { it.copy(hapticsEnabled = enabled) }
+                        if (enabled) MonolithHaptics.tap(view)
+                    },
+                )
+                if (appSettings.hapticsEnabled) {
+                    HapticToggleRow(
+                        title = "Taktiler Klick",
+                        subtitle = "Präziser Impuls bei Buttons, Kacheln & Chips",
+                        checked = appSettings.hapticTapClick,
+                        onCheckedChange = { enabled ->
+                            AppSettingsStore.update { it.copy(hapticTapClick = enabled) }
+                            if (enabled) MonolithHaptics.tap(view)
+                        },
+                    )
+                    HapticToggleRow(
+                        title = "Anheben & Verschieben",
+                        subtitle = "Spürbares Einrasten beim Gedrückthalten",
+                        checked = appSettings.hapticDragLift,
+                        onCheckedChange = { enabled ->
+                            AppSettingsStore.update { it.copy(hapticDragLift = enabled) }
+                            if (enabled) MonolithHaptics.dragLift(view)
+                        },
+                    )
+                    HapticToggleRow(
+                        title = "Präzisions-Ticks",
+                        subtitle = "Feine Ticks beim Sortieren & Verschieben",
+                        checked = appSettings.hapticSliderTick,
+                        onCheckedChange = { enabled ->
+                            AppSettingsStore.update { it.copy(hapticSliderTick = enabled) }
+                            if (enabled) MonolithHaptics.sliderTick(view)
+                        },
+                    )
+                    HapticToggleRow(
+                        title = "Bestätigungs-Impuls",
+                        subtitle = "Doppel-Impuls bei abgeschlossenen Transfers",
+                        checked = appSettings.hapticPulseFeedback,
+                        onCheckedChange = { enabled ->
+                            AppSettingsStore.update { it.copy(hapticPulseFeedback = enabled) }
+                            if (enabled) MonolithHaptics.successPulse(context)
                         },
                     )
                 }
@@ -119,6 +180,31 @@ fun SettingsScreen(
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.primary,
             )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Untertitel anzeigen",
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
+                    Text(
+                        text = "Untertitel standardmäßig ein- oder ausblenden",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(
+                    checked = settings.subtitlesEnabled,
+                    onCheckedChange = { enabled ->
+                        MonolithHaptics.tap(view)
+                        MpvEngine.setSubtitlesEnabled(enabled)
+                    },
+                )
+            }
 
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Row(
@@ -318,5 +404,35 @@ fun SettingsScreen(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun HapticToggleRow(
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyLarge,
+            )
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+        )
     }
 }

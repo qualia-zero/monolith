@@ -116,6 +116,7 @@ object MpvEngine : MPVLib.EventObserver, MPVLib.LogObserver {
                 "reconnect=1,reconnect_streamed=1,reconnect_delay_max=5",
             )
             MPVLib.setOptionString("sub-font-size", settings.subtitleSize.toInt().toString())
+            MPVLib.setOptionString("sub-visibility", if (settings.subtitlesEnabled) "yes" else "no")
 
             MPVLib.init()
             MPVLib.addObserver(this)
@@ -296,6 +297,12 @@ object MpvEngine : MPVLib.EventObserver, MPVLib.LogObserver {
         PlayerSettingsStore.update { it.copy(subtitleSize = size) }
         if (!initialized) return
         MPVLib.setPropertyDouble("sub-font-size", size.toDouble())
+    }
+
+    fun setSubtitlesEnabled(enabled: Boolean) {
+        PlayerSettingsStore.update { it.copy(subtitlesEnabled = enabled) }
+        if (!initialized) return
+        MPVLib.setPropertyString("sub-visibility", if (enabled) "yes" else "no")
     }
 
     fun setHwDecoding(enabled: Boolean) {
