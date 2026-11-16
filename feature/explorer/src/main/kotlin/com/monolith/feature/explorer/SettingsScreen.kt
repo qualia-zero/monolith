@@ -284,6 +284,39 @@ fun SettingsScreen(
                     }
                 }
             }
+
+            HorizontalDivider()
+
+            val packageInfo = remember(context) {
+                runCatching { context.packageManager.getPackageInfo(context.packageName, 0) }.getOrNull()
+            }
+            val versionName = packageInfo?.versionName ?: "–"
+            val versionCode = if (packageInfo != null) {
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                    packageInfo.longVersionCode
+                } else {
+                    @Suppress("DEPRECATION")
+                    packageInfo.versionCode.toLong()
+                }
+            } else {
+                0L
+            }
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text = "Über Monolith",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                Text(
+                    text = "Version $versionName (Build $versionCode)",
+                    style = MaterialTheme.typography.bodyLarge,
+                )
+                Text(
+                    text = context.packageName,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
     }
 }

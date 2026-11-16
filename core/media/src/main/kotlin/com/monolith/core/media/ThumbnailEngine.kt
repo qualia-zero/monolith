@@ -192,11 +192,20 @@ object ThumbnailEngine {
         uriString: String,
         isVideo: Boolean,
     ): Bitmap? = withContext(Dispatchers.IO) {
-        if (uriString.isBlank() || isRemoteUri(uriString)) return@withContext null
+        if (uriString.isBlank()) return@withContext null
+        val isRemote = isRemoteUri(uriString)
+        val isDriveStream = isRemote && uriString.contains("googleapis.com/drive/")
+        if (isRemote && !isDriveStream) return@withContext null
 
         val retriever = MediaMetadataRetriever()
         try {
-            setDataSource(context, retriever, uriString)
+            if (isDriveStream) {
+                val token = cloudTokenProvider?.invoke()?.takeIf { it.isNotBlank() }
+                    ?: return@withContext null
+                retriever.setDataSource(uriString, mapOf("Authorization" to "Bearer $token"))
+            } else {
+                setDataSource(context, retriever, uriString)
+            }
 
             var raw: Bitmap? = retriever.embeddedPicture?.let { bytes ->
                 val opts = BitmapFactory.Options().apply {

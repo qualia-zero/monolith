@@ -109,6 +109,7 @@ object MpvEngine : MPVLib.EventObserver, MPVLib.LogObserver {
             MPVLib.setOptionString("hr-seek-framedrop", "yes")
             MPVLib.setOptionString("framedrop", "vo")
             MPVLib.setOptionString("video-sync", "audio")
+            MPVLib.setOptionString("audio-stream-silence", "yes")
             MPVLib.setOptionString("network-timeout", "30")
             MPVLib.setOptionString(
                 "demuxer-lavf-o",
@@ -385,6 +386,10 @@ object MpvEngine : MPVLib.EventObserver, MPVLib.LogObserver {
     fun onSurfaceDestroyed() {
         currentSurface = null
         if (!initialized) return
+        if (_uiState.value.isVideo) {
+            MPVLib.setPropertyString("vid", "no")
+        }
+        MPVLib.setPropertyString("force-window", "no")
         MPVLib.detachSurface()
     }
 
@@ -393,6 +398,7 @@ object MpvEngine : MPVLib.EventObserver, MPVLib.LogObserver {
         if (!initialized) return
         if (inBackground) {
             MPVLib.setPropertyString("vid", "no")
+            MPVLib.setPropertyString("force-window", "no")
             MPVLib.detachSurface()
         } else {
             val surface = currentSurface
