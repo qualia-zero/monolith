@@ -418,7 +418,7 @@ fun ExplorerScreen(
                                         onOpenSettings()
                                     },
                                 )
-                                if (signedInEmail != null) {
+                                if (activeLocation == LocationType.GOOGLE_DRIVE && signedInEmail != null) {
                                     DropdownMenuItem(
                                         text = { Text("Drive abmelden (${signedInEmail!!.substringBefore('@')})") },
                                         onClick = {
