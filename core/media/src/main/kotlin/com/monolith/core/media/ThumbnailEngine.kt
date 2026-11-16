@@ -84,12 +84,14 @@ object ThumbnailEngine {
         listThumbnailCache.get(cacheKey)?.let { return@withContext it }
 
         val decoded = try {
-            val remoteThumb = if (isCloudThumb) decodeRemoteThumbnail(thumbnailUrl!!) else null
             when {
-                remoteThumb != null -> remoteThumb
-                isDriveVideo -> remoteExtractSemaphore.withPermit {
-                    decodeDriveVideoFallback(path, targetPx)
+                isDriveVideo -> {
+                    val nativeThumb = remoteExtractSemaphore.withPermit {
+                        decodeDriveVideoFallback(path, targetPx)
+                    }
+                    nativeThumb ?: if (isCloudThumb) decodeRemoteThumbnail(thumbnailUrl!!) else null
                 }
+                isCloudThumb -> decodeRemoteThumbnail(thumbnailUrl!!)
                 else -> when (category) {
                     FileCategory.IMAGE -> decodeSampledImage(context, path, targetPx)
                     FileCategory.VIDEO -> decodeVideoListThumbnail(context, path, targetPx)
