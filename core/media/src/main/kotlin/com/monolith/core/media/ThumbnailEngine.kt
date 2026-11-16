@@ -62,7 +62,10 @@ object ThumbnailEngine {
         if (path.isBlank() || targetPx <= 0) return@withContext null
         val isCloudThumb = !thumbnailUrl.isNullOrBlank()
         if (!isCloudThumb) {
-            if (isRemoteUri(path) || path.startsWith("gdrive://")) return@withContext null
+            if (isRemoteUri(path) || path.startsWith("gdrive://")) {
+                MonolithDiagnostics.logWarn("ThumbnailEngine", "Cloud item has no thumbnailUrl: $path (category=$category)")
+                return@withContext null
+            }
             if (category != FileCategory.IMAGE &&
                 category != FileCategory.VIDEO &&
                 category != FileCategory.AUDIO
@@ -128,9 +131,14 @@ object ThumbnailEngine {
         if (code == 401 || code == 403) {
             val token = cloudTokenProvider?.invoke()
             if (!token.isNullOrBlank()) {
-                return fetch(token).second
+                val (retryCode, retryBmp) = fetch(token)
+                if (retryBmp == null) {
+                    MonolithDiagnostics.logWarn("ThumbnailEngine", "Remote thumb retry failed ($retryCode) for $urlString")
+                }
+                return retryBmp
             }
         }
+        MonolithDiagnostics.logWarn("ThumbnailEngine", "Remote thumb decode failed (http=$code) for $urlString")
         return null
     }
 
