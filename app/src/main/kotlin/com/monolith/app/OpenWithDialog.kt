@@ -102,22 +102,22 @@ internal fun buildOpenWithOptions(context: Context, node: VfsNode): List<OpenWit
     when (node.category) {
         FileCategory.IMAGE -> options += OpenWithOption(
             handlerId = HANDLER_INTERNAL_IMAGE,
-            label = "Monolith Bildbetrachter",
+            label = "Monolith-Bildbetrachter",
             iconVector = Icons.Outlined.Image,
         )
         FileCategory.VIDEO -> options += OpenWithOption(
             handlerId = HANDLER_INTERNAL_VIDEO,
-            label = "Monolith Videoplayer",
+            label = "Monolith-Videoplayer",
             iconVector = Icons.Outlined.Movie,
         )
         FileCategory.AUDIO -> options += OpenWithOption(
             handlerId = HANDLER_INTERNAL_AUDIO,
-            label = "Monolith Musikplayer",
+            label = "Monolith-Musikplayer",
             iconVector = Icons.Outlined.MusicNote,
         )
         FileCategory.TEXT -> options += OpenWithOption(
             handlerId = HANDLER_INTERNAL_TEXT,
-            label = "Monolith Texteditor",
+            label = "Monolith-Texteditor",
             iconVector = Icons.Outlined.Description,
         )
         else -> Unit
@@ -155,7 +155,7 @@ internal fun buildOpenWithOptions(context: Context, node: VfsNode): List<OpenWit
     if (node.category != FileCategory.TEXT && options.isEmpty()) {
         options += OpenWithOption(
             handlerId = HANDLER_INTERNAL_TEXT,
-            label = "Monolith Texteditor",
+            label = "Monolith-Texteditor",
             iconVector = Icons.Outlined.Description,
         )
     }
