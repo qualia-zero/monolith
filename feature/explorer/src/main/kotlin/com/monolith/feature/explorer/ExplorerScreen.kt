@@ -45,7 +45,9 @@ import androidx.compose.material.icons.outlined.FolderZip
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.MusicNote
+import androidx.compose.material.icons.outlined.SdStorage
 import androidx.compose.material.icons.outlined.SelectAll
+import androidx.compose.material.icons.outlined.Usb
 import androidx.compose.material.icons.outlined.VideoFile
 import androidx.compose.material.icons.outlined.ViewInAr
 import androidx.compose.material3.AlertDialog
@@ -112,10 +114,20 @@ fun ExplorerScreen(
     val localProvider = remember { LocalVfsProvider() }
     val driveProvider = remember(context) { GoogleDriveVfsProvider(context.applicationContext) }
     val rootPath = remember { Environment.getExternalStorageDirectory().absolutePath }
+    val externalVolumes = rememberExternalStorageVolumes(context)
 
     var activeLocation by remember { mutableStateOf(LocationType.LOCAL) }
+    var activeLocalRootPath by remember { mutableStateOf(rootPath) }
     var localPath by remember { mutableStateOf(rootPath) }
     var driveStack by remember { mutableStateOf(listOf("gdrive://root" to "Google Drive")) }
+    val activeExternalVolume = externalVolumes.firstOrNull { it.rootPath == activeLocalRootPath }
+
+    LaunchedEffect(externalVolumes, activeLocalRootPath) {
+        if (activeLocalRootPath != rootPath && externalVolumes.none { it.rootPath == activeLocalRootPath }) {
+            activeLocalRootPath = rootPath
+            localPath = rootPath
+        }
+    }
     val currentPath = if (activeLocation == LocationType.GOOGLE_DRIVE) {
         driveStack.last().first
     } else {
@@ -189,7 +201,7 @@ fun ExplorerScreen(
     val canNavigateUp = if (activeLocation == LocationType.GOOGLE_DRIVE) {
         driveStack.size > 1
     } else {
-        localPath != rootPath
+        localPath != activeLocalRootPath
     }
 
     fun navigateUp() {
@@ -198,7 +210,7 @@ fun ExplorerScreen(
                 driveStack = driveStack.dropLast(1)
             }
         } else {
-            localPath = localPath.substringBeforeLast('/', rootPath).ifEmpty { rootPath }
+            localPath = localPath.substringBeforeLast('/', activeLocalRootPath).ifEmpty { activeLocalRootPath }
         }
     }
 
@@ -326,6 +338,7 @@ fun ExplorerScreen(
                         val label = when {
                             activeLocation == LocationType.GOOGLE_DRIVE -> driveStack.last().second
                             localPath == rootPath -> "Monolith"
+                            localPath == activeLocalRootPath -> activeExternalVolume?.name ?: localPath.substringAfterLast('/')
                             else -> localPath.substringAfterLast('/')
                         }
                         Text(
@@ -345,10 +358,11 @@ fun ExplorerScreen(
                                 contentAlignment = Alignment.Center,
                             ) {
                                 Icon(
-                                    imageVector = if (activeLocation == LocationType.GOOGLE_DRIVE) {
-                                        Icons.Outlined.CloudQueue
-                                    } else {
-                                        Icons.Outlined.ViewInAr
+                                    imageVector = when {
+                                        activeLocation == LocationType.GOOGLE_DRIVE -> Icons.Outlined.CloudQueue
+                                        activeExternalVolume?.kind == ExternalVolumeKind.USB -> Icons.Outlined.Usb
+                                        activeExternalVolume?.kind == ExternalVolumeKind.SD_CARD -> Icons.Outlined.SdStorage
+                                        else -> Icons.Outlined.ViewInAr
                                     },
                                     contentDescription = null,
                                     tint = MaterialTheme.colorScheme.primary,
@@ -510,13 +524,33 @@ fun ExplorerScreen(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 FilterChip(
-                    selected = activeLocation == LocationType.LOCAL,
+                    selected = activeLocation == LocationType.LOCAL && activeLocalRootPath == rootPath,
                     onClick = {
                         activeLocation = LocationType.LOCAL
+                        activeLocalRootPath = rootPath
+                        localPath = rootPath
                         selectedPaths = emptySet()
                     },
                     label = { Text("Intern") },
                 )
+                externalVolumes.forEach { volume ->
+                    FilterChip(
+                        selected = activeLocation == LocationType.LOCAL && activeLocalRootPath == volume.rootPath,
+                        onClick = {
+                            activeLocation = LocationType.LOCAL
+                            activeLocalRootPath = volume.rootPath
+                            localPath = volume.rootPath
+                            selectedPaths = emptySet()
+                        },
+                        label = {
+                            Text(
+                                text = volume.name,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        },
+                    )
+                }
                 signedInAccounts.forEach { email ->
                     val accountLabel = email.substringBefore('@')
                     FilterChip(
