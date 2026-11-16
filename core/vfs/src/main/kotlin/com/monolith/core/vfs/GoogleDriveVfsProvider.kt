@@ -77,7 +77,19 @@ class GoogleDriveVfsProvider(
                 pageToken = json.optString("nextPageToken", "").takeIf { it.isNotEmpty() }
             } while (pageToken != null)
 
-            nodes
+            val folderIds = nodes.filter { it.isDirectory }.map { it.id }
+            val counts = if (folderIds.isNotEmpty()) {
+                runCatching { fetchChildCounts(folderIds, showHidden, token) }.getOrNull()
+            } else {
+                null
+            }
+            if (counts != null) {
+                nodes.map { node ->
+                    if (node.isDirectory) node.copy(childCount = counts[node.id] ?: 0) else node
+                }
+            } else {
+                nodes
+            }
         }
 
     override suspend fun stat(path: String): VfsNode? =
@@ -340,6 +352,50 @@ class GoogleDriveVfsProvider(
             body = body,
         )
         return response.optString("id", "")
+    }
+
+    private fun fetchChildCounts(
+        folderIds: List<String>,
+        showHidden: Boolean,
+        token: String,
+    ): Map<String, Int> {
+        if (folderIds.isEmpty()) return emptyMap()
+        val counts = HashMap<String, Int>(folderIds.size)
+        folderIds.forEach { counts[it] = 0 }
+        val fields = urlEncode("nextPageToken,files(name,parents)")
+        folderIds.chunked(25).forEach { chunk ->
+            val parentsExpr = chunk.joinToString(" or ") { "'$it' in parents" }
+            val query = "($parentsExpr) and trashed = false"
+            val encodedQuery = urlEncode(query)
+            var pageToken: String? = null
+            do {
+                val urlBuilder = StringBuilder(FILES_ENDPOINT)
+                    .append("?q=").append(encodedQuery)
+                    .append("&fields=").append(fields)
+                    .append("&pageSize=1000")
+                if (!pageToken.isNullOrEmpty()) {
+                    urlBuilder.append("&pageToken=").append(urlEncode(pageToken))
+                }
+                val json = executeJsonRequest(urlBuilder.toString(), "GET", token)
+                val filesArray = json.optJSONArray("files")
+                if (filesArray != null) {
+                    for (i in 0 until filesArray.length()) {
+                        val item = filesArray.getJSONObject(i)
+                        val name = item.optString("name", "")
+                        if (!showHidden && name.startsWith(".")) continue
+                        val parents = item.optJSONArray("parents") ?: continue
+                        for (p in 0 until parents.length()) {
+                            val pid = parents.optString(p)
+                            if (pid in counts) {
+                                counts[pid] = (counts[pid] ?: 0) + 1
+                            }
+                        }
+                    }
+                }
+                pageToken = json.optString("nextPageToken", "").takeIf { it.isNotEmpty() }
+            } while (pageToken != null)
+        }
+        return counts
     }
 
     private suspend fun requireToken(): String =

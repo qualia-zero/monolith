@@ -31,7 +31,6 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.AudioFile
-import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.CloudQueue
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.ContentCut
@@ -44,6 +43,7 @@ import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.MusicNote
 import androidx.compose.material.icons.outlined.SelectAll
+import androidx.compose.material.icons.outlined.Smartphone
 import androidx.compose.material.icons.outlined.VideoFile
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -339,7 +339,11 @@ fun ExplorerScreen(
                                 contentAlignment = Alignment.Center,
                             ) {
                                 Icon(
-                                    imageVector = Icons.Outlined.AutoAwesome,
+                                    imageVector = if (activeLocation == LocationType.GOOGLE_DRIVE) {
+                                        Icons.Outlined.CloudQueue
+                                    } else {
+                                        Icons.Outlined.Smartphone
+                                    },
                                     contentDescription = null,
                                     tint = MaterialTheme.colorScheme.primary,
                                     modifier = Modifier.size(22.dp),
@@ -498,7 +502,7 @@ fun ExplorerScreen(
                         activeLocation = LocationType.LOCAL
                         selectedPaths = emptySet()
                     },
-                    label = { Text("Lokal") },
+                    label = { Text("Intern") },
                 )
                 FilterChip(
                     selected = activeLocation == LocationType.GOOGLE_DRIVE,
@@ -944,7 +948,7 @@ private fun FileRow(
                 overflow = TextOverflow.Ellipsis,
             )
             val subtitle = if (node.isDirectory) {
-                "${node.childCount ?: 0} Elemente"
+                node.childCount?.let { "$it Elemente" } ?: "Ordner"
             } else {
                 formatBytes(node.sizeBytes)
             }
