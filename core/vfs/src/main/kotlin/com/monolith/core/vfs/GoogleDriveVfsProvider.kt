@@ -44,7 +44,7 @@ class GoogleDriveVfsProvider(
             val parentId = extractId(path)
             val query = "'$parentId' in parents and trashed = false"
             val encodedQuery = urlEncode(query)
-            val fields = urlEncode("nextPageToken,files(id,name,mimeType,size,modifiedTime)")
+            val fields = urlEncode("nextPageToken,files(id,name,mimeType,size,modifiedTime,thumbnailLink)")
 
             val nodes = mutableListOf<VfsNode>()
             var pageToken: String? = null
@@ -96,7 +96,7 @@ class GoogleDriveVfsProvider(
         withContext(Dispatchers.IO) {
             val token = requireToken()
             val fileId = extractId(path)
-            val fields = urlEncode("id,name,mimeType,size,modifiedTime,parents")
+            val fields = urlEncode("id,name,mimeType,size,modifiedTime,parents,thumbnailLink")
             val urlString = "$FILES_ENDPOINT/${urlEncode(fileId)}?fields=$fields"
             val conn = openConnection(urlString, "GET", token)
             try {
@@ -489,6 +489,8 @@ class GoogleDriveVfsProvider(
             0L
         }
 
+        val thumbnailLink = optString("thumbnailLink", "").takeIf { it.isNotBlank() }
+
         return VfsNode(
             id = id,
             name = name,
@@ -500,6 +502,7 @@ class GoogleDriveVfsProvider(
             lastModifiedMs = lastModifiedMs,
             mimeType = normalizedMime,
             category = category,
+            thumbnailUrl = thumbnailLink,
         )
     }
 

@@ -47,6 +47,7 @@ data class VfsNode(
     val category: FileCategory,
     val isHidden: Boolean = name.startsWith("."),
     val childCount: Int? = null,
+    val thumbnailUrl: String? = null,
 )
 
 enum class SortBy {

@@ -758,7 +758,7 @@ private fun PlayerSettingsSheetContent(
             title = "Hardware-Dekodierung",
             checked = settings.useHwDecoding,
             onCheckedChange = { checked ->
-                onUpdateSettings { it.copy(useHwDecoding = checked) }
+                MpvEngine.setHwDecoding(checked)
             },
         )
         SettingsToggleRow(

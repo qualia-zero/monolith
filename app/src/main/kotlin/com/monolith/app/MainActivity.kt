@@ -30,6 +30,7 @@ import androidx.core.content.FileProvider
 import com.monolith.core.common.AppSettingsStore
 import com.monolith.core.common.DefaultAppsStore
 import com.monolith.core.media.MpvEngine
+import com.monolith.core.media.ThumbnailEngine
 import com.monolith.core.model.DefaultAppAssociation
 import com.monolith.core.model.FileCategory
 import com.monolith.core.model.ThemeMode
@@ -60,6 +61,9 @@ class MainActivity : ComponentActivity() {
         AppSettingsStore.init(applicationContext)
         DefaultAppsStore.init(applicationContext)
         MpvEngine.bearerTokenProvider = { _ ->
+            runBlocking { GoogleDriveAuthManager.getAccessToken(applicationContext) }
+        }
+        ThumbnailEngine.cloudTokenProvider = {
             runBlocking { GoogleDriveAuthManager.getAccessToken(applicationContext) }
         }
         refreshPermission()

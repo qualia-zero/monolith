@@ -297,6 +297,12 @@ object MpvEngine : MPVLib.EventObserver, MPVLib.LogObserver {
         MPVLib.setPropertyDouble("sub-font-size", size.toDouble())
     }
 
+    fun setHwDecoding(enabled: Boolean) {
+        PlayerSettingsStore.update { it.copy(useHwDecoding = enabled) }
+        if (!initialized) return
+        MPVLib.setPropertyString("hwdec", if (enabled) "mediacodec,mediacodec-copy" else "no")
+    }
+
     fun selectAudioTrack(id: Int) {
         if (!initialized) return
         MPVLib.setPropertyInt("aid", id)
@@ -359,7 +365,6 @@ object MpvEngine : MPVLib.EventObserver, MPVLib.LogObserver {
             if (_uiState.value.isVideo) {
                 MPVLib.setPropertyString("vid", "auto")
             }
-            MPVLib.setPropertyString("vo", "gpu")
             val pending = pendingLoadTarget
             if (pending != null) {
                 val pendingHeaders = pendingLoadHeaders
@@ -388,15 +393,16 @@ object MpvEngine : MPVLib.EventObserver, MPVLib.LogObserver {
         if (!initialized) return
         if (inBackground) {
             MPVLib.setPropertyString("vid", "no")
-            MPVLib.setPropertyString("force-window", "no")
             MPVLib.detachSurface()
         } else {
-            MPVLib.setPropertyString("force-window", "yes")
-            if (_uiState.value.isVideo) {
-                MPVLib.setPropertyString("vid", "auto")
+            val surface = currentSurface
+            if (surface != null) {
+                MPVLib.attachSurface(surface)
+                MPVLib.setPropertyString("force-window", "yes")
+                if (_uiState.value.isVideo) {
+                    MPVLib.setPropertyString("vid", "auto")
+                }
             }
-            currentSurface?.let { MPVLib.attachSurface(it) }
-            MPVLib.setPropertyString("vo", "gpu")
         }
     }
 

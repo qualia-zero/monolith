@@ -45,6 +45,9 @@ object ThumbnailEngine {
         return listThumbnailCache.get(listCacheKey(path, lastModifiedMs, targetPx))
     }
 
+    @Volatile
+    var cloudTokenProvider: (() -> String?)? = null
+
     /**
      * Loads, downsamples, and caches a square-cropped thumbnail for list rows on [Dispatchers.IO].
      */
@@ -54,24 +57,33 @@ object ThumbnailEngine {
         category: FileCategory,
         lastModifiedMs: Long = 0L,
         targetPx: Int = LIST_THUMB_DEFAULT_PX,
+        thumbnailUrl: String? = null,
     ): Bitmap? = withContext(Dispatchers.IO) {
-        if (path.isBlank() || targetPx <= 0 || isRemoteUri(path)) return@withContext null
-        if (category != FileCategory.IMAGE &&
-            category != FileCategory.VIDEO &&
-            category != FileCategory.AUDIO
-        ) {
-            return@withContext null
+        if (path.isBlank() || targetPx <= 0) return@withContext null
+        val isCloudThumb = !thumbnailUrl.isNullOrBlank()
+        if (!isCloudThumb) {
+            if (isRemoteUri(path) || path.startsWith("gdrive://")) return@withContext null
+            if (category != FileCategory.IMAGE &&
+                category != FileCategory.VIDEO &&
+                category != FileCategory.AUDIO
+            ) {
+                return@withContext null
+            }
         }
 
         val cacheKey = listCacheKey(path, lastModifiedMs, targetPx)
         listThumbnailCache.get(cacheKey)?.let { return@withContext it }
 
         val decoded = try {
-            when (category) {
-                FileCategory.IMAGE -> decodeSampledImage(context, path, targetPx)
-                FileCategory.VIDEO -> decodeVideoListThumbnail(context, path, targetPx)
-                FileCategory.AUDIO -> decodeAudioCoverThumbnail(context, path, targetPx)
-                else -> null
+            if (isCloudThumb) {
+                decodeRemoteThumbnail(thumbnailUrl!!)
+            } else {
+                when (category) {
+                    FileCategory.IMAGE -> decodeSampledImage(context, path, targetPx)
+                    FileCategory.VIDEO -> decodeVideoListThumbnail(context, path, targetPx)
+                    FileCategory.AUDIO -> decodeAudioCoverThumbnail(context, path, targetPx)
+                    else -> null
+                }
             }
         } catch (t: Throwable) {
             MonolithDiagnostics.logWarn("ThumbnailEngine", "List thumbnail load failed for $path: ${t.message}")
@@ -84,6 +96,42 @@ object ThumbnailEngine {
         }
         listThumbnailCache.put(cacheKey, prepared)
         prepared
+    }
+
+    private fun decodeRemoteThumbnail(urlString: String): Bitmap? {
+        fun fetch(token: String?): Pair<Int, Bitmap?> {
+            val conn = (java.net.URL(urlString).openConnection() as java.net.HttpURLConnection).apply {
+                connectTimeout = 5_000
+                readTimeout = 5_000
+                instanceFollowRedirects = true
+                if (!token.isNullOrBlank()) {
+                    setRequestProperty("Authorization", "Bearer $token")
+                }
+            }
+            return try {
+                val code = conn.responseCode
+                if (code in 200..299) {
+                    val bmp = conn.inputStream.use { stream ->
+                        BitmapFactory.decodeStream(stream)
+                    }
+                    code to bmp
+                } else {
+                    code to null
+                }
+            } finally {
+                conn.disconnect()
+            }
+        }
+
+        val (code, first) = fetch(null)
+        if (first != null) return first
+        if (code == 401 || code == 403) {
+            val token = cloudTokenProvider?.invoke()
+            if (!token.isNullOrBlank()) {
+                return fetch(token).second
+            }
+        }
+        return null
     }
 
     private fun listCacheKey(path: String, lastModifiedMs: Long, targetPx: Int): String =

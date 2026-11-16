@@ -32,7 +32,8 @@ fun FileThumbnail(
     modifier: Modifier = Modifier,
 ) {
     val supportsThumbnail = !node.isDirectory && (
-        node.category == FileCategory.IMAGE ||
+        !node.thumbnailUrl.isNullOrBlank() ||
+            node.category == FileCategory.IMAGE ||
             node.category == FileCategory.VIDEO ||
             node.category == FileCategory.AUDIO
         )
@@ -66,6 +67,7 @@ fun FileThumbnail(
                 path = node.path,
                 category = node.category,
                 lastModifiedMs = node.lastModifiedMs,
+                thumbnailUrl = node.thumbnailUrl,
             )?.asImageBitmap()
         }
     }
