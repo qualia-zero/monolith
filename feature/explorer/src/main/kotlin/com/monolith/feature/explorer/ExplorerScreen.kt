@@ -1,7 +1,10 @@
 package com.monolith.feature.explorer
 
+import android.app.Activity
 import android.os.Environment
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -29,6 +32,7 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.AudioFile
 import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.CloudQueue
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.ContentCut
 import androidx.compose.material.icons.outlined.Delete
@@ -42,9 +46,12 @@ import androidx.compose.material.icons.outlined.MusicNote
 import androidx.compose.material.icons.outlined.SelectAll
 import androidx.compose.material.icons.outlined.VideoFile
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -69,14 +76,20 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.monolith.core.media.MpvEngine
 import com.monolith.core.model.FileCategory
+import com.monolith.core.model.LocationType
 import com.monolith.core.model.SortBy
 import com.monolith.core.model.VfsNode
+import com.monolith.core.vfs.GoogleDriveAuthManager
+import com.monolith.core.vfs.GoogleDriveVfsProvider
 import com.monolith.core.vfs.LocalVfsProvider
+import com.monolith.core.vfs.VfsProvider
 import kotlinx.coroutines.launch
+import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -92,9 +105,48 @@ fun ExplorerScreen(
     onOpenSettings: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
-    val provider = remember { LocalVfsProvider() }
+    val context = LocalContext.current
+    val localProvider = remember { LocalVfsProvider() }
+    val driveProvider = remember(context) { GoogleDriveVfsProvider(context.applicationContext) }
     val rootPath = remember { Environment.getExternalStorageDirectory().absolutePath }
-    var currentPath by remember { mutableStateOf(rootPath) }
+
+    var activeLocation by remember { mutableStateOf(LocationType.LOCAL) }
+    var localPath by remember { mutableStateOf(rootPath) }
+    var driveStack by remember { mutableStateOf(listOf("gdrive://root" to "Google Drive")) }
+    val currentPath = if (activeLocation == LocationType.GOOGLE_DRIVE) {
+        driveStack.last().first
+    } else {
+        localPath
+    }
+    val activeProvider: VfsProvider = if (activeLocation == LocationType.GOOGLE_DRIVE) {
+        driveProvider
+    } else {
+        localProvider
+    }
+
+    var signedInEmail by remember { mutableStateOf(GoogleDriveAuthManager.getSignedInEmail(context)) }
+    var isLoading by remember { mutableStateOf(false) }
+
+    val scope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    val signInLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            GoogleDriveAuthManager.handleSignInResult(result.data)
+                .onSuccess { email ->
+                    signedInEmail = email
+                    driveStack = listOf("gdrive://root" to "Google Drive")
+                }
+                .onFailure { err ->
+                    scope.launch {
+                        snackbarHostState.showSnackbar(err.message ?: "Google-Anmeldung fehlgeschlagen")
+                    }
+                }
+        }
+    }
+
     var nodes by remember { mutableStateOf<List<VfsNode>>(emptyList()) }
     var showHidden by remember { mutableStateOf(false) }
     var sortBy by remember { mutableStateOf(SortBy.NAME) }
@@ -108,8 +160,6 @@ fun ExplorerScreen(
     var showDeleteDialog by remember { mutableStateOf(false) }
     var refreshTrigger by remember { mutableIntStateOf(0) }
 
-    val scope = rememberCoroutineScope()
-    val snackbarHostState = remember { SnackbarHostState() }
     val playbackState by MpvEngine.uiState.collectAsState()
 
     fun runFileOperation(
@@ -130,17 +180,52 @@ fun ExplorerScreen(
         }
     }
 
-    BackHandler(enabled = selectedPaths.isNotEmpty() || currentPath != rootPath) {
-        if (selectedPaths.isNotEmpty()) {
-            selectedPaths = emptySet()
+    val canNavigateUp = if (activeLocation == LocationType.GOOGLE_DRIVE) {
+        driveStack.size > 1
+    } else {
+        localPath != rootPath
+    }
+
+    fun navigateUp() {
+        if (activeLocation == LocationType.GOOGLE_DRIVE) {
+            if (driveStack.size > 1) {
+                driveStack = driveStack.dropLast(1)
+            }
         } else {
-            currentPath = currentPath.substringBeforeLast('/', rootPath).ifEmpty { rootPath }
+            localPath = localPath.substringBeforeLast('/', rootPath).ifEmpty { rootPath }
         }
     }
 
-    LaunchedEffect(currentPath, showHidden, sortBy, hasStoragePermission, refreshTrigger) {
-        if (hasStoragePermission) {
-            val raw = provider.list(currentPath, showHidden)
+    BackHandler(enabled = selectedPaths.isNotEmpty() || canNavigateUp) {
+        if (selectedPaths.isNotEmpty()) {
+            selectedPaths = emptySet()
+        } else {
+            navigateUp()
+        }
+    }
+
+    LaunchedEffect(
+        activeLocation,
+        currentPath,
+        showHidden,
+        sortBy,
+        hasStoragePermission,
+        signedInEmail,
+        refreshTrigger,
+    ) {
+        val ready = if (activeLocation == LocationType.GOOGLE_DRIVE) {
+            signedInEmail != null
+        } else {
+            hasStoragePermission
+        }
+        if (!ready) {
+            nodes = emptyList()
+            return@LaunchedEffect
+        }
+        isLoading = activeLocation == LocationType.GOOGLE_DRIVE
+        runCatching {
+            activeProvider.list(currentPath, showHidden)
+        }.onSuccess { raw ->
             nodes = raw.sortedWith(
                 compareByDescending<VfsNode> { it.isDirectory }.thenBy {
                     when (sortBy) {
@@ -151,7 +236,11 @@ fun ExplorerScreen(
                     }
                 }
             )
+        }.onFailure { err ->
+            nodes = emptyList()
+            snackbarHostState.showSnackbar(err.message ?: "Ordner konnte nicht geladen werden")
         }
+        isLoading = false
     }
 
     val selectedNodes = remember(nodes, selectedPaths) {
@@ -228,7 +317,11 @@ fun ExplorerScreen(
             } else {
                 TopAppBar(
                     title = {
-                        val label = if (currentPath == rootPath) "Monolith" else currentPath.substringAfterLast('/')
+                        val label = when {
+                            activeLocation == LocationType.GOOGLE_DRIVE -> driveStack.last().second
+                            localPath == rootPath -> "Monolith"
+                            else -> localPath.substringAfterLast('/')
+                        }
                         Text(
                             text = label,
                             maxLines = 1,
@@ -236,10 +329,8 @@ fun ExplorerScreen(
                         )
                     },
                     navigationIcon = {
-                        if (currentPath != rootPath) {
-                            IconButton(onClick = {
-                                currentPath = currentPath.substringBeforeLast('/', rootPath).ifEmpty { rootPath }
-                            }) {
+                        if (canNavigateUp) {
+                            IconButton(onClick = { navigateUp() }) {
                                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Zurück")
                             }
                         } else {
@@ -293,6 +384,22 @@ fun ExplorerScreen(
                                         onOpenSettings()
                                     },
                                 )
+                                if (signedInEmail != null) {
+                                    DropdownMenuItem(
+                                        text = { Text("Drive abmelden") },
+                                        onClick = {
+                                            menuExpanded = false
+                                            scope.launch {
+                                                GoogleDriveAuthManager.signOut(context)
+                                                signedInEmail = null
+                                                driveStack = listOf("gdrive://root" to "Google Drive")
+                                                if (activeLocation == LocationType.GOOGLE_DRIVE) {
+                                                    nodes = emptyList()
+                                                }
+                                            }
+                                        },
+                                    )
+                                }
                             }
                         }
                     },
@@ -315,10 +422,42 @@ fun ExplorerScreen(
                                 runFileOperation(
                                     onSuccess = { clipboardPaths = emptyList() },
                                 ) {
-                                    if (move) {
-                                        provider.move(sources, currentPath)
-                                    } else {
-                                        provider.copy(sources, currentPath)
+                                    val srcIsDrive = sources.firstOrNull()?.startsWith("gdrive://") == true
+                                    val dstIsDrive = currentPath.startsWith("gdrive://")
+                                    when {
+                                        srcIsDrive && dstIsDrive -> {
+                                            if (move) driveProvider.move(sources, currentPath)
+                                            else driveProvider.copy(sources, currentPath)
+                                        }
+                                        !srcIsDrive && !dstIsDrive -> {
+                                            if (move) localProvider.move(sources, currentPath)
+                                            else localProvider.copy(sources, currentPath)
+                                        }
+                                        !srcIsDrive && dstIsDrive -> {
+                                            val copyRes = driveProvider.copy(sources, currentPath)
+                                            if (copyRes.isSuccess && move) {
+                                                localProvider.delete(sources)
+                                            } else {
+                                                copyRes
+                                            }
+                                        }
+                                        else -> {
+                                            // Drive -> Lokal: Dateien herunterladen
+                                            runCatching {
+                                                for (src in sources) {
+                                                    val info = driveProvider.stat(src)
+                                                        ?: throw IllegalStateException("Quelle nicht gefunden")
+                                                    if (info.isDirectory) {
+                                                        throw IllegalStateException("Ordner-Download von Drive wird noch nicht unterstützt")
+                                                    }
+                                                    val dest = File(currentPath, info.name)
+                                                    driveProvider.downloadToFile(src, dest).getOrThrow()
+                                                }
+                                                if (move) {
+                                                    driveProvider.delete(sources).getOrThrow()
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             },
@@ -341,69 +480,147 @@ fun ExplorerScreen(
             }
         },
     ) { padding ->
-        if (!hasStoragePermission) {
-            Column(
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding),
+        ) {
+            Row(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding)
-                    .padding(24.dp),
-                verticalArrangement = Arrangement.Center,
-                horizontalAlignment = Alignment.CenterHorizontally,
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
-                    text = "Speicherzugriff erforderlich",
-                    style = MaterialTheme.typography.titleMedium,
+                FilterChip(
+                    selected = activeLocation == LocationType.LOCAL,
+                    onClick = {
+                        activeLocation = LocationType.LOCAL
+                        selectedPaths = emptySet()
+                    },
+                    label = { Text("Lokal") },
                 )
-                TextButton(onClick = onRequestStoragePermission) {
-                    Text("Zugriff erlauben")
-                }
+                FilterChip(
+                    selected = activeLocation == LocationType.GOOGLE_DRIVE,
+                    onClick = {
+                        activeLocation = LocationType.GOOGLE_DRIVE
+                        selectedPaths = emptySet()
+                    },
+                    label = {
+                        Text(
+                            text = signedInEmail?.substringBefore('@') ?: "Google Drive",
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    },
+                )
             }
-        } else {
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding),
-            ) {
-                items(nodes, key = { it.id }) { node ->
-                    val isSelected = node.path in selectedPaths
-                    FileRow(
-                        node = node,
-                        isSelected = isSelected,
+
+            if (activeLocation == LocationType.LOCAL && !hasStoragePermission) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(24.dp),
+                    verticalArrangement = Arrangement.Center,
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Text(
+                        text = "Speicherzugriff erforderlich",
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    TextButton(onClick = onRequestStoragePermission) {
+                        Text("Zugriff erlauben")
+                    }
+                }
+            } else if (activeLocation == LocationType.GOOGLE_DRIVE && signedInEmail == null) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(24.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.CloudQueue,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(48.dp),
+                    )
+                    Text(
+                        text = "Mit Google Drive verbinden",
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    Text(
+                        text = "Melde dich mit deinem Google-Konto an, um Dateien direkt zu durchsuchen und Medien zu streamen.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Button(
                         onClick = {
-                            if (selectedPaths.isNotEmpty()) {
+                            signInLauncher.launch(GoogleDriveAuthManager.getSignInIntent(context))
+                        },
+                    ) {
+                        Text("Mit Google anmelden")
+                    }
+                }
+            } else if (isLoading) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CircularProgressIndicator()
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                ) {
+                    items(nodes, key = { it.id }) { node ->
+                        val isSelected = node.path in selectedPaths
+                        FileRow(
+                            node = node,
+                            isSelected = isSelected,
+                            onClick = {
+                                if (selectedPaths.isNotEmpty()) {
+                                    selectedPaths = if (isSelected) {
+                                        selectedPaths - node.path
+                                    } else {
+                                        selectedPaths + node.path
+                                    }
+                                } else {
+                                    when {
+                                        node.isDirectory -> {
+                                            if (activeLocation == LocationType.GOOGLE_DRIVE) {
+                                                driveStack = driveStack + (node.path to node.name)
+                                            } else {
+                                                localPath = node.path
+                                            }
+                                        }
+                                        node.category == FileCategory.VIDEO || node.category == FileCategory.AUDIO -> {
+                                            val playlist = nodes.filter { it.category == node.category }
+                                            onOpenMedia(node, playlist)
+                                        }
+                                        node.category == FileCategory.IMAGE -> {
+                                            val images = nodes.filter { it.category == FileCategory.IMAGE }
+                                            onOpenImage(node, images)
+                                        }
+                                        node.category == FileCategory.TEXT -> onOpenText(node)
+                                        else -> onOpenOther(node)
+                                    }
+                                }
+                            },
+                            onLongClick = {
                                 selectedPaths = if (isSelected) {
                                     selectedPaths - node.path
                                 } else {
                                     selectedPaths + node.path
                                 }
-                            } else {
-                                when {
-                                    node.isDirectory -> currentPath = node.path
-                                    node.category == FileCategory.VIDEO || node.category == FileCategory.AUDIO -> {
-                                        val playlist = nodes.filter { it.category == node.category }
-                                        onOpenMedia(node, playlist)
-                                    }
-                                    node.category == FileCategory.IMAGE -> {
-                                        val images = nodes.filter { it.category == FileCategory.IMAGE }
-                                        onOpenImage(node, images)
-                                    }
-                                    node.category == FileCategory.TEXT -> onOpenText(node)
-                                    else -> onOpenOther(node)
-                                }
-                            }
-                        },
-                        onLongClick = {
-                            selectedPaths = if (isSelected) {
-                                selectedPaths - node.path
-                            } else {
-                                selectedPaths + node.path
-                            }
-                        },
-                    )
-                    HorizontalDivider(
-                        thickness = 0.5.dp,
-                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f),
-                    )
+                            },
+                        )
+                        HorizontalDivider(
+                            thickness = 0.5.dp,
+                            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f),
+                        )
+                    }
                 }
             }
         }
@@ -474,7 +691,7 @@ fun ExplorerScreen(
                         val name = folderName
                         showCreateFolderDialog = false
                         runFileOperation {
-                            provider.createDirectory(currentPath, name)
+                            activeProvider.createDirectory(currentPath, name)
                         }
                     },
                 ) {
@@ -512,7 +729,7 @@ fun ExplorerScreen(
                         runFileOperation(
                             onSuccess = { selectedPaths = emptySet() },
                         ) {
-                            provider.rename(target.path, updatedName)
+                            activeProvider.rename(target.path, updatedName)
                         }
                     },
                 ) {
@@ -549,7 +766,7 @@ fun ExplorerScreen(
                         runFileOperation(
                             onSuccess = { selectedPaths = emptySet() },
                         ) {
-                            provider.delete(pathsToDelete)
+                            activeProvider.delete(pathsToDelete)
                         }
                     },
                 ) {

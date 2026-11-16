@@ -11,24 +11,39 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Text
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import com.monolith.core.common.AppSettingsStore
 import com.monolith.core.common.DefaultAppsStore
+import com.monolith.core.media.MpvEngine
 import com.monolith.core.model.DefaultAppAssociation
 import com.monolith.core.model.FileCategory
 import com.monolith.core.model.ThemeMode
 import com.monolith.core.model.VfsNode
 import com.monolith.core.ui.theme.MonolithTheme
+import com.monolith.core.vfs.GoogleDriveAuthManager
+import com.monolith.core.vfs.GoogleDriveVfsProvider
 import com.monolith.feature.explorer.ExplorerScreen
 import com.monolith.feature.explorer.SettingsScreen
 import com.monolith.feature.player.PlayerActivity
 import com.monolith.feature.viewers.ImageViewerActivity
 import com.monolith.feature.viewers.TextEditorActivity
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import java.io.File
 
 private data class PendingOpenRequest(
@@ -44,11 +59,17 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         AppSettingsStore.init(applicationContext)
         DefaultAppsStore.init(applicationContext)
+        MpvEngine.bearerTokenProvider = { _ ->
+            runBlocking { GoogleDriveAuthManager.getAccessToken(applicationContext) }
+        }
         refreshPermission()
         setContent {
             val appSettings by AppSettingsStore.settings.collectAsState()
+            val driveProvider = remember { GoogleDriveVfsProvider(applicationContext) }
+            val scope = rememberCoroutineScope()
             var showSettings by remember { mutableStateOf(false) }
             var pendingOpen by remember { mutableStateOf<PendingOpenRequest?>(null) }
+            var downloadingDriveFile by remember { mutableStateOf<String?>(null) }
 
             val darkTheme = when (appSettings.themeMode) {
                 ThemeMode.SYSTEM -> isSystemInDarkTheme()
@@ -56,7 +77,7 @@ class MainActivity : ComponentActivity() {
                 ThemeMode.DARK -> true
             }
 
-            fun openWithAssociation(
+            fun openLocalWithAssociation(
                 node: VfsNode,
                 siblings: List<VfsNode>,
                 handlerId: String,
@@ -76,8 +97,19 @@ class MainActivity : ComponentActivity() {
                     HANDLER_INTERNAL_VIDEO, HANDLER_INTERNAL_AUDIO -> {
                         val isVideo = handlerId == HANDLER_INTERNAL_VIDEO || node.category == FileCategory.VIDEO
                         val playlist = siblings.ifEmpty { listOf(node) }
-                        val uri = Uri.fromFile(File(node.path)).toString()
-                        val pairs = playlist.map { Uri.fromFile(File(it.path)).toString() to it.name }
+                        val uri = if (node.path.startsWith("gdrive://")) {
+                            driveProvider.streamUrl(node.path)
+                        } else {
+                            Uri.fromFile(File(node.path)).toString()
+                        }
+                        val pairs = playlist.map { item ->
+                            val itemUri = if (item.path.startsWith("gdrive://")) {
+                                driveProvider.streamUrl(item.path)
+                            } else {
+                                Uri.fromFile(File(item.path)).toString()
+                            }
+                            itemUri to item.name
+                        }
                         PlayerActivity.launch(
                             context = this@MainActivity,
                             uri = uri,
@@ -96,6 +128,43 @@ class MainActivity : ComponentActivity() {
                     }
                     else -> openExternal(node, packageName, activityName)
                 }
+            }
+
+            fun openWithAssociation(
+                node: VfsNode,
+                siblings: List<VfsNode>,
+                handlerId: String,
+                packageName: String?,
+                activityName: String?,
+            ): Boolean {
+                val isMediaStream = handlerId == HANDLER_INTERNAL_VIDEO || handlerId == HANDLER_INTERNAL_AUDIO
+                if (node.path.startsWith("gdrive://") && !isMediaStream) {
+                    scope.launch {
+                        downloadingDriveFile = node.name
+                        val cacheDir = File(cacheDir, "drive_preview").apply { mkdirs() }
+                        val destFile = File(cacheDir, node.name)
+                        val result = driveProvider.downloadToFile(node.path, destFile)
+                        downloadingDriveFile = null
+                        result.onSuccess { downloaded ->
+                            val localNode = node.copy(path = downloaded.absolutePath)
+                            openLocalWithAssociation(
+                                node = localNode,
+                                siblings = listOf(localNode),
+                                handlerId = handlerId,
+                                packageName = packageName,
+                                activityName = activityName,
+                            )
+                        }
+                    }
+                    return true
+                }
+                return openLocalWithAssociation(
+                    node = node,
+                    siblings = siblings,
+                    handlerId = handlerId,
+                    packageName = packageName,
+                    activityName = activityName,
+                )
             }
 
             fun handleOpenFile(node: VfsNode, siblings: List<VfsNode>) {
@@ -164,6 +233,24 @@ class MainActivity : ComponentActivity() {
                                 activityName = option.activityName,
                             )
                         },
+                    )
+                }
+
+                downloadingDriveFile?.let { fileName ->
+                    AlertDialog(
+                        onDismissRequest = {},
+                        title = { Text("Google Drive") },
+                        text = {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                                modifier = Modifier.padding(top = 4.dp),
+                            ) {
+                                CircularProgressIndicator()
+                                Text("Lade „$fileName“…")
+                            }
+                        },
+                        confirmButton = {},
                     )
                 }
             }

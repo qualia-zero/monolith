@@ -125,12 +125,15 @@ internal fun buildOpenWithOptions(context: Context, node: VfsNode): List<OpenWit
 
     val pm = context.packageManager
     val mimeType = resolveMimeType(node)
-    val contentUri = runCatching {
-        FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", File(node.path))
-    }.getOrElse { Uri.fromFile(File(node.path)) }
-
     val viewIntent = Intent(Intent.ACTION_VIEW).apply {
-        setDataAndType(contentUri, mimeType)
+        if (node.path.startsWith("gdrive://")) {
+            setType(mimeType)
+        } else {
+            val contentUri = runCatching {
+                FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", File(node.path))
+            }.getOrElse { Uri.fromFile(File(node.path)) }
+            setDataAndType(contentUri, mimeType)
+        }
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     }
 

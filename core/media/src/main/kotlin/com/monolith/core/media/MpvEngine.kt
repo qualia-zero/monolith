@@ -20,6 +20,7 @@ import kotlinx.coroutines.launch
 import java.io.File
 import java.io.FileOutputStream
 import java.util.Locale
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Unified libmpv playback engine singleton managing [PlaybackUiState].
@@ -29,9 +30,14 @@ object MpvEngine : MPVLib.EventObserver, MPVLib.LogObserver {
     private const val TAG = "MpvEngine"
     private const val CACERT_ASSET = "cacert.pem"
     private const val HISTORY_SAVE_INTERVAL_MS = 5_000L
+    private const val GOOGLE_DRIVE_API_PREFIX = "https://www.googleapis.com/drive/"
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val initLock = Any()
+    private val loadGeneration = AtomicLong(0L)
+
+    @Volatile
+    var bearerTokenProvider: ((String) -> String?)? = null
 
     @Volatile
     private var initialized = false
@@ -44,6 +50,9 @@ object MpvEngine : MPVLib.EventObserver, MPVLib.LogObserver {
 
     @Volatile
     private var pendingLoadTarget: String? = null
+
+    @Volatile
+    private var pendingLoadHeaders: String? = null
 
     @Volatile
     private var playlistItems: List<Pair<String, String>> = emptyList()
@@ -130,10 +139,12 @@ object MpvEngine : MPVLib.EventObserver, MPVLib.LogObserver {
         isVideo: Boolean = true,
         startPosMs: Long = 0L,
         playlist: List<Pair<String, String>> = emptyList(),
+        httpHeaders: Map<String, String> = emptyMap(),
     ) {
         val appCtx = context.applicationContext
         ensureInitialized(appCtx)
         persistCurrentPosition()
+        val generation = loadGeneration.incrementAndGet()
 
         if (playlist.isNotEmpty()) {
             playlistItems = playlist
@@ -186,12 +197,26 @@ object MpvEngine : MPVLib.EventObserver, MPVLib.LogObserver {
         }
 
         lastHistorySaveWallMs = System.currentTimeMillis()
-        if (isVideo && currentSurface == null && !inBackground) {
-            pendingLoadTarget = target
-        } else {
+        val isDriveUri = uri.startsWith(GOOGLE_DRIVE_API_PREFIX, ignoreCase = true)
+        val hasAuthHeader = httpHeaders.keys.any { it.equals("Authorization", ignoreCase = true) }
+        val tokenProvider = bearerTokenProvider
+
+        if (isDriveUri && !hasAuthHeader && tokenProvider != null) {
             pendingLoadTarget = null
-            MPVLib.command(arrayOf("loadfile", target, "replace"))
-            MPVLib.setPropertyBoolean("pause", false)
+            pendingLoadHeaders = null
+            scope.launch(Dispatchers.IO) {
+                val token = runCatching { tokenProvider.invoke(uri) }
+                    .onFailure { err ->
+                        MonolithDiagnostics.logError(TAG, "Failed to resolve bearer token for: $uri", err)
+                    }
+                    .getOrNull()
+                if (generation != loadGeneration.get()) return@launch
+                val headerFields = buildHttpHeaderFields(httpHeaders, token)
+                executeLoad(target, headerFields, isVideo, _uiState.value.isBackground)
+            }
+        } else {
+            val headerFields = buildHttpHeaderFields(httpHeaders, bearerToken = null)
+            executeLoad(target, headerFields, isVideo, inBackground)
         }
 
         scope.launch {
@@ -337,7 +362,10 @@ object MpvEngine : MPVLib.EventObserver, MPVLib.LogObserver {
             MPVLib.setPropertyString("vo", "gpu")
             val pending = pendingLoadTarget
             if (pending != null) {
+                val pendingHeaders = pendingLoadHeaders
                 pendingLoadTarget = null
+                pendingLoadHeaders = null
+                MPVLib.setOptionString("http-header-fields", pendingHeaders ?: "")
                 MPVLib.command(arrayOf("loadfile", pending, "replace"))
                 MPVLib.setPropertyBoolean("pause", false)
             }
@@ -373,14 +401,49 @@ object MpvEngine : MPVLib.EventObserver, MPVLib.LogObserver {
     }
 
     fun stopAndReset() {
+        loadGeneration.incrementAndGet()
+        pendingLoadTarget = null
+        pendingLoadHeaders = null
         persistCurrentPosition()
         if (initialized) {
+            MPVLib.setOptionString("http-header-fields", "")
             MPVLib.command(arrayOf("stop"))
         }
         playlistItems = emptyList()
         currentIndex = -1
         _uiState.value = PlaybackUiState()
         appContext?.let { MediaPlaybackService.stopService(it) }
+    }
+
+    private fun buildHttpHeaderFields(
+        httpHeaders: Map<String, String>,
+        bearerToken: String?,
+    ): String {
+        val merged = LinkedHashMap<String, String>(httpHeaders.size + 1)
+        merged.putAll(httpHeaders)
+        if (!bearerToken.isNullOrBlank()) {
+            merged["Authorization"] = "Bearer $bearerToken"
+        }
+        if (merged.isEmpty()) return ""
+        return merged.entries.joinToString(",") { (key, value) -> "$key: $value" }
+    }
+
+    private fun executeLoad(
+        target: String,
+        headerFields: String,
+        isVideo: Boolean,
+        inBackground: Boolean,
+    ) {
+        MPVLib.setOptionString("http-header-fields", headerFields)
+        if (isVideo && currentSurface == null && !inBackground) {
+            pendingLoadTarget = target
+            pendingLoadHeaders = headerFields
+        } else {
+            pendingLoadTarget = null
+            pendingLoadHeaders = null
+            MPVLib.command(arrayOf("loadfile", target, "replace"))
+            MPVLib.setPropertyBoolean("pause", false)
+        }
     }
 
     fun resolveMediaTarget(context: Context, uriString: String): String {

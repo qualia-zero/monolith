@@ -27,5 +27,6 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.documentfile)
     implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.play.services.auth)
     testImplementation(libs.junit)
 }
