@@ -84,11 +84,12 @@ object ThumbnailEngine {
         listThumbnailCache.get(cacheKey)?.let { return@withContext it }
 
         val decoded = try {
+            val remoteThumb = if (isCloudThumb) decodeRemoteThumbnail(thumbnailUrl!!) else null
             when {
+                remoteThumb != null -> remoteThumb
                 isDriveVideo -> remoteExtractSemaphore.withPermit {
-                    decodeDriveVideoThumbnail(path, targetPx, thumbnailUrl)
+                    decodeDriveVideoFallback(path, targetPx)
                 }
-                isCloudThumb -> decodeRemoteThumbnail(thumbnailUrl!!)
                 else -> when (category) {
                     FileCategory.IMAGE -> decodeSampledImage(context, path, targetPx)
                     FileCategory.VIDEO -> decodeVideoListThumbnail(context, path, targetPx)
@@ -330,31 +331,26 @@ object ThumbnailEngine {
     }
 
     /**
-     * Resolves a Drive video thumbnail in priority order:
-     * 1) embedded cover art, 2) Drive thumbnailLink, 3) extracted 5s/10s/15s frame.
+     * Fallback for Drive videos when Drive's thumbnailLink is missing or fails:
+     * checks embedded cover art first, then extracts a 5s/10s/15s frame.
      */
-    private fun decodeDriveVideoThumbnail(
+    private fun decodeDriveVideoFallback(
         gdrivePath: String,
         targetPx: Int,
-        thumbnailUrl: String?,
     ): Bitmap? {
         val fileId = gdrivePath.removePrefix("gdrive://").trim()
-        val token = cloudTokenProvider?.invoke()?.takeIf { it.isNotBlank() }
-        if (fileId.isEmpty() || token == null) {
-            return thumbnailUrl?.takeIf { it.isNotBlank() }?.let(::decodeRemoteThumbnail)
-        }
+        if (fileId.isEmpty()) return null
+        val token = cloudTokenProvider?.invoke()?.takeIf { it.isNotBlank() } ?: return null
 
         val encodedId = URLEncoder.encode(fileId, Charsets.UTF_8.name())
         val streamUrl = "https://www.googleapis.com/drive/v3/files/$encodedId?alt=media"
         val retriever = MediaMetadataRetriever()
         return try {
             retriever.setDataSource(streamUrl, mapOf("Authorization" to "Bearer $token"))
-            decodeEmbeddedPicture(retriever, targetPx)
-                ?: thumbnailUrl?.takeIf { it.isNotBlank() }?.let(::decodeRemoteThumbnail)
-                ?: extractNonBlackVideoFrame(retriever)
+            decodeEmbeddedPicture(retriever, targetPx) ?: extractNonBlackVideoFrame(retriever)
         } catch (t: Throwable) {
-            MonolithDiagnostics.logWarn("ThumbnailEngine", "Drive video stream thumb failed for $gdrivePath: ${t.message}")
-            thumbnailUrl?.takeIf { it.isNotBlank() }?.let(::decodeRemoteThumbnail)
+            MonolithDiagnostics.logWarn("ThumbnailEngine", "Drive video fallback failed for $gdrivePath: ${t.message}")
+            null
         } finally {
             runCatching { retriever.release() }
         }
