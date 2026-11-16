@@ -189,28 +189,10 @@ object ThumbnailEngine {
             }
 
             if (raw == null) {
-                raw = retriever.frameAtTime
-                if (raw != null && !isNonBlackBitmap(raw)) {
-                    raw.recycle()
-                    raw = null
-                }
-                if (raw == null && isVideo) {
-                    val fiveSec = retriever.getFrameAtTime(
-                        5_000_000L,
-                        MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
-                    )
-                    if (fiveSec != null && isNonBlackBitmap(fiveSec)) {
-                        raw = fiveSec
-                    } else {
-                        fiveSec?.recycle()
-                        val tenSec = retriever.getFrameAtTime(
-                            10_000_000L,
-                            MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
-                        )
-                        if (tenSec != null) {
-                            raw = tenSec
-                        }
-                    }
+                raw = if (isVideo) {
+                    extractNonBlackVideoFrame(retriever)
+                } else {
+                    retriever.frameAtTime
                 }
             }
 
@@ -322,54 +304,55 @@ object ThumbnailEngine {
     }
 
     private fun decodeVideoListThumbnail(context: Context, path: String, targetPx: Int): Bitmap? {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && !path.startsWith("content://")) {
-            val file = File(resolveLocalFilePath(path))
-            if (file.isFile) {
-                val quickThumb = runCatching {
-                    ThumbnailUtils.createVideoThumbnail(file, Size(targetPx, targetPx), null)
-                }.getOrNull()
-                if (quickThumb != null) {
-                    if (isNonBlackBitmap(quickThumb)) {
-                        return quickThumb
-                    }
-                    quickThumb.recycle()
-                }
-            }
-        }
-
         val retriever = MediaMetadataRetriever()
         return try {
             setDataSource(context, retriever, path)
-            val candidateTimesUs = longArrayOf(1_000_000L, 5_000_000L)
-            var fallbackFrame: Bitmap? = null
-
-            for (timeUs in candidateTimesUs) {
-                val frame = retriever.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
-                if (frame != null) {
-                    if (isNonBlackBitmap(frame)) {
-                        fallbackFrame?.recycle()
-                        return frame
+            retriever.embeddedPicture?.let { bytes ->
+                val boundsOpts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                BitmapFactory.decodeByteArray(bytes, 0, bytes.size, boundsOpts)
+                if (boundsOpts.outWidth > 0 && boundsOpts.outHeight > 0) {
+                    val decodeOpts = BitmapFactory.Options().apply {
+                        inSampleSize = calculateInSampleSize(boundsOpts.outWidth, boundsOpts.outHeight, targetPx, targetPx)
+                        inPreferredConfig = Bitmap.Config.ARGB_8888
                     }
-                    if (fallbackFrame == null) {
-                        fallbackFrame = frame
-                    } else {
-                        frame.recycle()
-                    }
+                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, decodeOpts)?.let { return it }
                 }
             }
 
-            val defaultFrame = retriever.frameAtTime
-            if (defaultFrame != null) {
-                if (isNonBlackBitmap(defaultFrame) || fallbackFrame == null) {
-                    fallbackFrame?.recycle()
-                    return defaultFrame
-                }
-                defaultFrame.recycle()
-            }
-            fallbackFrame
+            extractNonBlackVideoFrame(retriever)
         } finally {
             runCatching { retriever.release() }
         }
+    }
+
+    private fun extractNonBlackVideoFrame(retriever: MediaMetadataRetriever): Bitmap? {
+        val candidateTimesUs = longArrayOf(5_000_000L, 10_000_000L, 15_000_000L, 1_000_000L)
+        var fallbackFrame: Bitmap? = null
+
+        for (timeUs in candidateTimesUs) {
+            val frame = retriever.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+            if (frame != null) {
+                if (isNonBlackBitmap(frame)) {
+                    fallbackFrame?.recycle()
+                    return frame
+                }
+                if (fallbackFrame == null) {
+                    fallbackFrame = frame
+                } else {
+                    frame.recycle()
+                }
+            }
+        }
+
+        val defaultFrame = retriever.frameAtTime
+        if (defaultFrame != null) {
+            if (isNonBlackBitmap(defaultFrame) || fallbackFrame == null) {
+                fallbackFrame?.recycle()
+                return defaultFrame
+            }
+            defaultFrame.recycle()
+        }
+        return fallbackFrame
     }
 
     private fun decodeAudioCoverThumbnail(context: Context, path: String, targetPx: Int): Bitmap? {

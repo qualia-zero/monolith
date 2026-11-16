@@ -74,7 +74,6 @@ class MediaPlaybackService : Service() {
     private var pausedByTransientFocusLoss = false
     private var lastLoadedArtUri: String = ""
     private var albumArt480p: Bitmap? = null
-    private var displayIcon192px: Bitmap? = null
     private var artJob: Job? = null
     private var stateJob: Job? = null
 
@@ -224,7 +223,6 @@ class MediaPlaybackService : Service() {
         mediaSession.isActive = false
         mediaSession.release()
         albumArt480p = null
-        displayIcon192px = null
         super.onDestroy()
     }
 
@@ -242,7 +240,6 @@ class MediaPlaybackService : Service() {
         } else if (state.mediaUri.isBlank()) {
             lastLoadedArtUri = ""
             albumArt480p = null
-            displayIcon192px = null
         }
 
         updateMediaSession(state)
@@ -253,13 +250,11 @@ class MediaPlaybackService : Service() {
         artJob?.cancel()
         artJob = serviceScope.launch(Dispatchers.IO) {
             val art = ThumbnailEngine.loadMediaThumbnail(this@MediaPlaybackService, uri, isVideo)
-            val icon = art?.let { ThumbnailEngine.scaleToSmallIcon(it) }
             val mkvInfo = MkvTagParser.parse(this@MediaPlaybackService, uri)
 
             launch(Dispatchers.Main.immediate) {
                 if (MpvEngine.uiState.value.mediaUri != uri) return@launch
                 albumArt480p = art
-                displayIcon192px = icon
                 val current = MpvEngine.uiState.value
                 val enriched = if (mkvInfo != null) {
                     current.copy(
@@ -308,8 +303,6 @@ class MediaPlaybackService : Service() {
 
         albumArt480p?.let {
             metadataBuilder.putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, it)
-        }
-        displayIcon192px?.let {
             metadataBuilder.putBitmap(MediaMetadataCompat.METADATA_KEY_DISPLAY_ICON, it)
         }
 
@@ -344,7 +337,7 @@ class MediaPlaybackService : Service() {
                     .ifBlank { if (state.isVideo) "Video" else "Audio" },
             )
             .setContentIntent(contentIntent)
-            .setLargeIcon(displayIcon192px)
+            .setLargeIcon(albumArt480p)
             .setOngoing(state.isPlaying)
             .setOnlyAlertOnce(true)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
