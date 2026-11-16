@@ -9,6 +9,8 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -30,6 +32,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.AudioFile
 import androidx.compose.material.icons.outlined.CloudQueue
 import androidx.compose.material.icons.outlined.ContentCopy
@@ -124,7 +127,8 @@ fun ExplorerScreen(
         localProvider
     }
 
-    var signedInEmail by remember { mutableStateOf(GoogleDriveAuthManager.getSignedInEmail(context)) }
+    var signedInAccounts by remember { mutableStateOf(GoogleDriveAuthManager.getSignedInAccounts(context)) }
+    var signedInEmail by remember { mutableStateOf(GoogleDriveAuthManager.getActiveEmail(context)) }
     var isLoading by remember { mutableStateOf(false) }
 
     val scope = rememberCoroutineScope()
@@ -134,10 +138,12 @@ fun ExplorerScreen(
         contract = ActivityResultContracts.StartActivityForResult(),
     ) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
-            GoogleDriveAuthManager.handleSignInResult(result.data)
+            GoogleDriveAuthManager.handleSignInResult(context, result.data)
                 .onSuccess { email ->
+                    signedInAccounts = GoogleDriveAuthManager.getSignedInAccounts(context)
                     signedInEmail = email
-                    driveStack = listOf("gdrive://root" to "Google Drive")
+                    activeLocation = LocationType.GOOGLE_DRIVE
+                    driveStack = listOf("gdrive://root" to email.substringBefore('@'))
                 }
                 .onFailure { err ->
                     scope.launch {
@@ -390,14 +396,20 @@ fun ExplorerScreen(
                                 )
                                 if (signedInEmail != null) {
                                     DropdownMenuItem(
-                                        text = { Text("Drive abmelden") },
+                                        text = { Text("Drive abmelden (${signedInEmail!!.substringBefore('@')})") },
                                         onClick = {
+                                            val targetEmail = signedInEmail
                                             menuExpanded = false
                                             scope.launch {
-                                                GoogleDriveAuthManager.signOut(context)
-                                                signedInEmail = null
-                                                driveStack = listOf("gdrive://root" to "Google Drive")
-                                                if (activeLocation == LocationType.GOOGLE_DRIVE) {
+                                                GoogleDriveAuthManager.signOut(context, targetEmail)
+                                                signedInAccounts = GoogleDriveAuthManager.getSignedInAccounts(context)
+                                                val nextEmail = GoogleDriveAuthManager.getActiveEmail(context)
+                                                signedInEmail = nextEmail
+                                                driveStack = listOf(
+                                                    "gdrive://root" to (nextEmail?.substringBefore('@') ?: "Google Drive"),
+                                                )
+                                                if (nextEmail == null && activeLocation == LocationType.GOOGLE_DRIVE) {
+                                                    activeLocation = LocationType.LOCAL
                                                     nodes = emptyList()
                                                 }
                                             }
@@ -492,6 +504,7 @@ fun ExplorerScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
                     .padding(horizontal = 16.dp, vertical = 4.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -504,17 +517,42 @@ fun ExplorerScreen(
                     },
                     label = { Text("Intern") },
                 )
+                signedInAccounts.forEach { email ->
+                    val accountLabel = email.substringBefore('@')
+                    FilterChip(
+                        selected = activeLocation == LocationType.GOOGLE_DRIVE && signedInEmail == email,
+                        onClick = {
+                            if (signedInEmail != email) {
+                                GoogleDriveAuthManager.setActiveEmail(context, email)
+                                signedInEmail = email
+                                driveStack = listOf("gdrive://root" to accountLabel)
+                            } else if (driveStack.firstOrNull()?.second == "Google Drive") {
+                                driveStack = listOf("gdrive://root" to accountLabel)
+                            }
+                            activeLocation = LocationType.GOOGLE_DRIVE
+                            selectedPaths = emptySet()
+                        },
+                        label = {
+                            Text(
+                                text = accountLabel,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        },
+                    )
+                }
                 FilterChip(
-                    selected = activeLocation == LocationType.GOOGLE_DRIVE,
+                    selected = false,
                     onClick = {
-                        activeLocation = LocationType.GOOGLE_DRIVE
-                        selectedPaths = emptySet()
+                        scope.launch {
+                            signInLauncher.launch(GoogleDriveAuthManager.getAddAccountIntent(context))
+                        }
                     },
                     label = {
-                        Text(
-                            text = signedInEmail?.substringBefore('@') ?: "Google Drive",
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
+                        Icon(
+                            imageVector = Icons.Outlined.Add,
+                            contentDescription = "Google Drive hinzufügen",
+                            modifier = Modifier.size(18.dp),
                         )
                     },
                 )
