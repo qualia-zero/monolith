@@ -100,8 +100,9 @@ fun SettingsScreen(
                 ThemeMode.entries.forEach { mode ->
                     FilterChip(
                         selected = appSettings.themeMode == mode,
+                        shape = MaterialTheme.shapes.small,
                         onClick = {
-                            MonolithHaptics.tap(view)
+                            MonolithHaptics.navClick(context, view)
                             AppSettingsStore.update { it.copy(themeMode = mode) }
                         },
                         label = {
@@ -130,17 +131,17 @@ fun SettingsScreen(
                     checked = appSettings.hapticsEnabled,
                     onCheckedChange = { enabled ->
                         AppSettingsStore.update { it.copy(hapticsEnabled = enabled) }
-                        if (enabled) MonolithHaptics.tap(view)
+                        if (enabled) MonolithHaptics.navClick(context, view)
                     },
                 )
                 if (appSettings.hapticsEnabled) {
                     HapticToggleRow(
-                        title = "Taktiler Klick",
-                        subtitle = "Präziser Impuls bei Buttons, Kacheln & Chips",
-                        checked = appSettings.hapticTapClick,
+                        title = "Einklicken & Navigation",
+                        subtitle = "Präzises Einklicken bei Intern/USB/GD, Ordnern, Zurück & Buttons",
+                        checked = appSettings.hapticNavClick,
                         onCheckedChange = { enabled ->
-                            AppSettingsStore.update { it.copy(hapticTapClick = enabled) }
-                            if (enabled) MonolithHaptics.tap(view)
+                            AppSettingsStore.update { it.copy(hapticNavClick = enabled) }
+                            if (enabled) MonolithHaptics.navClick(context, view)
                         },
                     )
                     HapticToggleRow(
@@ -153,12 +154,12 @@ fun SettingsScreen(
                         },
                     )
                     HapticToggleRow(
-                        title = "Präzisions-Ticks",
-                        subtitle = "Feine Ticks beim Sortieren & Verschieben",
-                        checked = appSettings.hapticSliderTick,
+                        title = "Datei- & Media-Start",
+                        subtitle = "Ansteigender Doppel-Impuls beim Starten einer Datei",
+                        checked = appSettings.hapticLaunchItem,
                         onCheckedChange = { enabled ->
-                            AppSettingsStore.update { it.copy(hapticSliderTick = enabled) }
-                            if (enabled) MonolithHaptics.sliderTick(view)
+                            AppSettingsStore.update { it.copy(hapticLaunchItem = enabled) }
+                            if (enabled) MonolithHaptics.launchItem(context)
                         },
                     )
                     HapticToggleRow(
@@ -168,24 +169,6 @@ fun SettingsScreen(
                         onCheckedChange = { enabled ->
                             AppSettingsStore.update { it.copy(hapticPulseFeedback = enabled) }
                             if (enabled) MonolithHaptics.successPulse(context)
-                        },
-                    )
-                    HapticToggleRow(
-                        title = "Ordner & Zurück",
-                        subtitle = "Kurzer Impuls beim Öffnen von Ordnern und Zurück",
-                        checked = appSettings.hapticFolderNav,
-                        onCheckedChange = { enabled ->
-                            AppSettingsStore.update { it.copy(hapticFolderNav = enabled) }
-                            if (enabled) MonolithHaptics.folderNav(context, view)
-                        },
-                    )
-                    HapticToggleRow(
-                        title = "Datei- & Media-Start",
-                        subtitle = "Ansteigender Doppel-Impuls beim Starten einer Datei",
-                        checked = appSettings.hapticLaunchItem,
-                        onCheckedChange = { enabled ->
-                            AppSettingsStore.update { it.copy(hapticLaunchItem = enabled) }
-                            if (enabled) MonolithHaptics.launchItem(context)
                         },
                     )
                 }
@@ -218,7 +201,7 @@ fun SettingsScreen(
                 Switch(
                     checked = settings.subtitlesEnabled,
                     onCheckedChange = { enabled ->
-                        MonolithHaptics.tap(view)
+                        MonolithHaptics.navClick(context, view)
                         MpvEngine.setSubtitlesEnabled(enabled)
                     },
                 )

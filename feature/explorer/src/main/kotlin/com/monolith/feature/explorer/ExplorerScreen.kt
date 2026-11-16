@@ -233,7 +233,7 @@ fun ExplorerScreen(
     }
 
     fun navigateUp() {
-        MonolithHaptics.folderNav(context, view)
+        MonolithHaptics.navClick(context, view)
         if (activeLocation == LocationType.GOOGLE_DRIVE) {
             if (driveStack.size > 1) {
                 driveStack = driveStack.dropLast(1)
@@ -525,7 +525,9 @@ fun ExplorerScreen(
             ) {
                 FilterChip(
                     selected = activeLocation == LocationType.LOCAL && activeLocalRootPath == rootPath,
+                    shape = MaterialTheme.shapes.small,
                     onClick = {
+                        MonolithHaptics.navClick(context, view)
                         activeLocation = LocationType.LOCAL
                         activeLocalRootPath = rootPath
                         localPath = rootPath
@@ -536,7 +538,9 @@ fun ExplorerScreen(
                 externalVolumes.forEach { volume ->
                     FilterChip(
                         selected = activeLocation == LocationType.LOCAL && activeLocalRootPath == volume.rootPath,
+                        shape = MaterialTheme.shapes.small,
                         onClick = {
+                            MonolithHaptics.navClick(context, view)
                             activeLocation = LocationType.LOCAL
                             activeLocalRootPath = volume.rootPath
                             localPath = volume.rootPath
@@ -601,7 +605,7 @@ fun ExplorerScreen(
                                                         }
                                                         signedInAccounts = updated
                                                         dragOffsetX -= (nextX - myX)
-                                                        MonolithHaptics.sliderTick(view)
+                                                        MonolithHaptics.tick(context, view)
                                                         swapped = true
                                                     }
                                                 }
@@ -615,7 +619,7 @@ fun ExplorerScreen(
                                                         }
                                                         signedInAccounts = updated
                                                         dragOffsetX += (myX - prevX)
-                                                        MonolithHaptics.sliderTick(view)
+                                                        MonolithHaptics.tick(context, view)
                                                     }
                                                 }
                                             }
@@ -634,7 +638,9 @@ fun ExplorerScreen(
                         ) {
                             FilterChip(
                                 selected = activeLocation == LocationType.GOOGLE_DRIVE && signedInEmail == email,
+                                shape = MaterialTheme.shapes.small,
                                 onClick = {
+                                    MonolithHaptics.navClick(context, view)
                                     if (signedInEmail != email) {
                                         GoogleDriveAuthManager.setActiveEmail(context, email)
                                         signedInEmail = email
@@ -661,7 +667,9 @@ fun ExplorerScreen(
                 }
                 FilterChip(
                     selected = false,
+                    shape = MaterialTheme.shapes.small,
                     onClick = {
+                        MonolithHaptics.navClick(context, view)
                         scope.launch {
                             signInLauncher.launch(GoogleDriveAuthManager.getAddAccountIntent(context))
                         }
@@ -749,7 +757,7 @@ fun ExplorerScreen(
                                 } else {
                                     when {
                                         node.isDirectory -> {
-                                            MonolithHaptics.folderNav(context, view)
+                                            MonolithHaptics.navClick(context, view)
                                             if (activeLocation == LocationType.GOOGLE_DRIVE) {
                                                 driveStack = driveStack + (node.path to node.name)
                                             } else {

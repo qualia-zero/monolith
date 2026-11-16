@@ -10,12 +10,10 @@ enum class ThemeMode {
 data class AppSettings(
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
     val hapticsEnabled: Boolean = true,
-    val hapticTapClick: Boolean = true,
+    val hapticNavClick: Boolean = true,
     val hapticDragLift: Boolean = true,
-    val hapticSliderTick: Boolean = true,
-    val hapticPulseFeedback: Boolean = true,
-    val hapticFolderNav: Boolean = true,
     val hapticLaunchItem: Boolean = true,
+    val hapticPulseFeedback: Boolean = true,
 )
 
 data class DefaultAppAssociation(

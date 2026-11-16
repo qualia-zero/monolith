@@ -11,45 +11,36 @@ import com.monolith.core.common.AppSettingsStore
 
 object MonolithHaptics {
 
-    fun tap(view: View) {
+    /**
+     * Crisp, non-buzzy mechanical click for chips, folders, back navigation, and buttons.
+     */
+    fun navClick(context: Context, view: View) {
         val settings = AppSettingsStore.settings.value
-        if (!settings.hapticsEnabled || !settings.hapticTapClick) return
-        val constant = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
-            HapticFeedbackConstants.KEYBOARD_TAP
-        } else {
-            HapticFeedbackConstants.VIRTUAL_KEY
+        if (!settings.hapticsEnabled || !settings.hapticNavClick) return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val clicked = vibratePredefined(context, VibrationEffect.EFFECT_CLICK)
+            if (clicked) return
         }
-        view.performHapticFeedback(constant)
+        view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
+    }
+
+    /**
+     * Subtle detent tick for reordering and precision steps.
+     */
+    fun tick(context: Context, view: View) {
+        val settings = AppSettingsStore.settings.value
+        if (!settings.hapticsEnabled || !settings.hapticNavClick) return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val ticked = vibratePredefined(context, VibrationEffect.EFFECT_TICK)
+            if (ticked) return
+        }
+        view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
     }
 
     fun dragLift(view: View) {
         val settings = AppSettingsStore.settings.value
         if (!settings.hapticsEnabled || !settings.hapticDragLift) return
         view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
-    }
-
-    fun sliderTick(view: View) {
-        val settings = AppSettingsStore.settings.value
-        if (!settings.hapticsEnabled || !settings.hapticSliderTick) return
-        val constant = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
-            HapticFeedbackConstants.TEXT_HANDLE_MOVE
-        } else {
-            HapticFeedbackConstants.CLOCK_TICK
-        }
-        view.performHapticFeedback(constant)
-    }
-
-    fun folderNav(context: Context, view: View) {
-        val settings = AppSettingsStore.settings.value
-        if (!settings.hapticsEnabled || !settings.hapticFolderNav) return
-        val vibrated = vibrateWaveform(
-            context = context,
-            timings = longArrayOf(0L, 12L),
-            amplitudes = intArrayOf(0, 150),
-        )
-        if (!vibrated) {
-            view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
-        }
     }
 
     /**
@@ -73,6 +64,16 @@ object MonolithHaptics {
             timings = longArrayOf(0L, 18L, 45L, 28L),
             amplitudes = intArrayOf(0, 140, 0, 220),
         )
+    }
+
+    private fun vibratePredefined(context: Context, effectId: Int): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return false
+        return runCatching {
+            val vibrator = resolveVibrator(context) ?: return@runCatching false
+            if (!vibrator.hasVibrator()) return@runCatching false
+            vibrator.vibrate(VibrationEffect.createPredefined(effectId))
+            true
+        }.getOrDefault(false)
     }
 
     private fun vibrateWaveform(

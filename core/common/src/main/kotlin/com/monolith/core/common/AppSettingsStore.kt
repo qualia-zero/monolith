@@ -12,12 +12,10 @@ object AppSettingsStore {
     private const val PREFS_NAME = "monolith_app_settings"
     private const val KEY_THEME_MODE = "theme_mode"
     private const val KEY_HAPTICS_ENABLED = "haptics_enabled"
-    private const val KEY_HAPTIC_TAP = "haptic_tap_click"
+    private const val KEY_HAPTIC_NAV_CLICK = "haptic_nav_click"
     private const val KEY_HAPTIC_DRAG = "haptic_drag_lift"
-    private const val KEY_HAPTIC_SLIDER = "haptic_slider_tick"
-    private const val KEY_HAPTIC_PULSE = "haptic_pulse_feedback"
-    private const val KEY_HAPTIC_FOLDER = "haptic_folder_nav"
     private const val KEY_HAPTIC_LAUNCH = "haptic_launch_item"
+    private const val KEY_HAPTIC_PULSE = "haptic_pulse_feedback"
 
     @Volatile
     private var prefs: SharedPreferences? = null
@@ -49,12 +47,10 @@ object AppSettingsStore {
         return AppSettings(
             themeMode = themeMode,
             hapticsEnabled = sp.getBoolean(KEY_HAPTICS_ENABLED, defaults.hapticsEnabled),
-            hapticTapClick = sp.getBoolean(KEY_HAPTIC_TAP, defaults.hapticTapClick),
+            hapticNavClick = sp.getBoolean(KEY_HAPTIC_NAV_CLICK, defaults.hapticNavClick),
             hapticDragLift = sp.getBoolean(KEY_HAPTIC_DRAG, defaults.hapticDragLift),
-            hapticSliderTick = sp.getBoolean(KEY_HAPTIC_SLIDER, defaults.hapticSliderTick),
-            hapticPulseFeedback = sp.getBoolean(KEY_HAPTIC_PULSE, defaults.hapticPulseFeedback),
-            hapticFolderNav = sp.getBoolean(KEY_HAPTIC_FOLDER, defaults.hapticFolderNav),
             hapticLaunchItem = sp.getBoolean(KEY_HAPTIC_LAUNCH, defaults.hapticLaunchItem),
+            hapticPulseFeedback = sp.getBoolean(KEY_HAPTIC_PULSE, defaults.hapticPulseFeedback),
         )
     }
 
@@ -62,12 +58,10 @@ object AppSettingsStore {
         prefs?.edit()
             ?.putString(KEY_THEME_MODE, value.themeMode.name)
             ?.putBoolean(KEY_HAPTICS_ENABLED, value.hapticsEnabled)
-            ?.putBoolean(KEY_HAPTIC_TAP, value.hapticTapClick)
+            ?.putBoolean(KEY_HAPTIC_NAV_CLICK, value.hapticNavClick)
             ?.putBoolean(KEY_HAPTIC_DRAG, value.hapticDragLift)
-            ?.putBoolean(KEY_HAPTIC_SLIDER, value.hapticSliderTick)
-            ?.putBoolean(KEY_HAPTIC_PULSE, value.hapticPulseFeedback)
-            ?.putBoolean(KEY_HAPTIC_FOLDER, value.hapticFolderNav)
             ?.putBoolean(KEY_HAPTIC_LAUNCH, value.hapticLaunchItem)
+            ?.putBoolean(KEY_HAPTIC_PULSE, value.hapticPulseFeedback)
             ?.apply()
     }
 }
