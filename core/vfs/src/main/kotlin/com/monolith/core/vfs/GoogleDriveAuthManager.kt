@@ -19,6 +19,7 @@ object GoogleDriveAuthManager {
     private const val DRIVE_SCOPE = "https://www.googleapis.com/auth/drive"
     private const val PREFS_NAME = "monolith_drive_auth"
     private const val KEY_ACCOUNTS = "drive_accounts"
+    private const val KEY_ACCOUNTS_ORDER = "drive_accounts_order"
     private const val KEY_ACTIVE_EMAIL = "active_drive_email"
 
     private fun buildSignInOptions(): GoogleSignInOptions =
@@ -68,8 +69,15 @@ object GoogleDriveAuthManager {
 
     fun getSignedInAccounts(context: Context): List<String> {
         val sp = prefs(context)
-        val stored = sp.getStringSet(KEY_ACCOUNTS, null)?.filter { it.isNotBlank() }?.sorted()
-        if (!stored.isNullOrEmpty()) return stored
+        val storedSet = sp.getStringSet(KEY_ACCOUNTS, null)?.filter { it.isNotBlank() }.orEmpty()
+        if (storedSet.isNotEmpty()) {
+            val ordered = sp.getString(KEY_ACCOUNTS_ORDER, null)
+                ?.split('\n')
+                ?.filter { it.isNotBlank() && it in storedSet }
+                .orEmpty()
+            val remaining = (storedSet - ordered.toSet()).sorted()
+            return ordered + remaining
+        }
 
         val last = GoogleSignIn.getLastSignedInAccount(context)
         if (last != null && GoogleSignIn.hasPermissions(last, Scope(DRIVE_SCOPE))) {
@@ -80,6 +88,14 @@ object GoogleDriveAuthManager {
             }
         }
         return emptyList()
+    }
+
+    fun saveAccountOrder(context: Context, orderedAccounts: List<String>) {
+        val clean = orderedAccounts.filter { it.isNotBlank() }.distinct()
+        prefs(context).edit()
+            .putStringSet(KEY_ACCOUNTS, clean.toSet())
+            .putString(KEY_ACCOUNTS_ORDER, clean.joinToString("\n"))
+            .apply()
     }
 
     fun getActiveEmail(context: Context): String? {
@@ -94,23 +110,36 @@ object GoogleDriveAuthManager {
     }
 
     private fun addAccount(context: Context, email: String) {
-        val sp = prefs(context)
-        val updated = (sp.getStringSet(KEY_ACCOUNTS, emptySet()) ?: emptySet()) + email
-        sp.edit()
-            .putStringSet(KEY_ACCOUNTS, updated)
+        val current = getSignedInAccountsWithoutLastFallback(context)
+        val updated = if (email in current) current else current + email
+        prefs(context).edit()
+            .putStringSet(KEY_ACCOUNTS, updated.toSet())
+            .putString(KEY_ACCOUNTS_ORDER, updated.joinToString("\n"))
             .putString(KEY_ACTIVE_EMAIL, email)
             .apply()
+    }
+
+    private fun getSignedInAccountsWithoutLastFallback(context: Context): List<String> {
+        val sp = prefs(context)
+        val storedSet = sp.getStringSet(KEY_ACCOUNTS, null)?.filter { it.isNotBlank() }.orEmpty()
+        if (storedSet.isEmpty()) return emptyList()
+        val ordered = sp.getString(KEY_ACCOUNTS_ORDER, null)
+            ?.split('\n')
+            ?.filter { it.isNotBlank() && it in storedSet }
+            .orEmpty()
+        val remaining = (storedSet - ordered.toSet()).sorted()
+        return ordered + remaining
     }
 
     fun getSignedInEmail(context: Context): String? = getActiveEmail(context)
 
     suspend fun signOut(context: Context, email: String? = getActiveEmail(context)) {
-        val sp = prefs(context)
-        val current = sp.getStringSet(KEY_ACCOUNTS, emptySet()) ?: emptySet()
-        val updated = if (email != null) current - email else emptySet()
-        val nextActive = updated.sorted().firstOrNull()
-        sp.edit()
-            .putStringSet(KEY_ACCOUNTS, updated)
+        val current = getSignedInAccountsWithoutLastFallback(context)
+        val updated = if (email != null) current.filterNot { it == email } else emptyList()
+        val nextActive = updated.firstOrNull()
+        prefs(context).edit()
+            .putStringSet(KEY_ACCOUNTS, updated.toSet())
+            .putString(KEY_ACCOUNTS_ORDER, updated.joinToString("\n"))
             .putString(KEY_ACTIVE_EMAIL, nextActive)
             .apply()
 

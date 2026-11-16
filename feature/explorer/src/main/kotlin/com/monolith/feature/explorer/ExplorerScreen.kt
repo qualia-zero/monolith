@@ -5,10 +5,12 @@ import android.os.Environment
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
@@ -57,6 +59,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -74,16 +77,27 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import com.monolith.core.media.MpvEngine
 import com.monolith.core.model.FileCategory
 import com.monolith.core.model.LocationType
@@ -491,6 +505,12 @@ fun ExplorerScreen(
                 .fillMaxSize()
                 .padding(padding),
         ) {
+            val haptics = LocalHapticFeedback.current
+            var draggingAccount by remember { mutableStateOf<String?>(null) }
+            var dragOffsetX by remember { mutableFloatStateOf(0f) }
+            val chipBounds = remember { mutableStateMapOf<String, Pair<Float, Float>>() }
+            val currentAccounts by rememberUpdatedState(signedInAccounts)
+
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -528,28 +548,112 @@ fun ExplorerScreen(
                     )
                 }
                 signedInAccounts.forEach { email ->
-                    val accountLabel = email.substringBefore('@')
-                    FilterChip(
-                        selected = activeLocation == LocationType.GOOGLE_DRIVE && signedInEmail == email,
-                        onClick = {
-                            if (signedInEmail != email) {
-                                GoogleDriveAuthManager.setActiveEmail(context, email)
-                                signedInEmail = email
-                                driveStack = listOf("gdrive://root" to accountLabel)
-                            } else if (driveStack.firstOrNull()?.second == "Google Drive") {
-                                driveStack = listOf("gdrive://root" to accountLabel)
-                            }
-                            activeLocation = LocationType.GOOGLE_DRIVE
-                            selectedPaths = emptySet()
-                        },
-                        label = {
-                            Text(
-                                text = accountLabel,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
+                    key(email) {
+                        val accountLabel = email.substringBefore('@')
+                        val isDragging = draggingAccount == email
+                        val dragScale by animateFloatAsState(
+                            targetValue = if (isDragging) 1.07f else 1f,
+                            label = "driveChipScale",
+                        )
+                        val canReorder = signedInAccounts.size > 1
+
+                        Box(
+                            modifier = Modifier
+                                .zIndex(if (isDragging) 1f else 0f)
+                                .onGloballyPositioned { coords ->
+                                    chipBounds[email] = coords.positionInParent().x to coords.size.width.toFloat()
+                                }
+                                .graphicsLayer {
+                                    translationX = if (isDragging) dragOffsetX else 0f
+                                    scaleX = dragScale
+                                    scaleY = dragScale
+                                    alpha = if (isDragging) 0.92f else 1f
+                                }
+                                .pointerInput(email, canReorder) {
+                                    if (!canReorder) return@pointerInput
+                                    detectDragGesturesAfterLongPress(
+                                        onDragStart = {
+                                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            draggingAccount = email
+                                            dragOffsetX = 0f
+                                        },
+                                        onDrag = { change, dragAmount ->
+                                            change.consume()
+                                            dragOffsetX += dragAmount.x
+                                            val list = currentAccounts
+                                            val idx = list.indexOf(email)
+                                            if (idx != -1) {
+                                                val (myX, myW) = chipBounds[email] ?: return@detectDragGesturesAfterLongPress
+                                                val draggedCenter = myX + (myW / 2f) + dragOffsetX
+
+                                                var swapped = false
+                                                if (idx < list.lastIndex) {
+                                                    val nextEmail = list[idx + 1]
+                                                    val (nextX, nextW) = chipBounds[nextEmail] ?: return@detectDragGesturesAfterLongPress
+                                                    val nextCenter = nextX + (nextW / 2f)
+                                                    if (draggedCenter > nextCenter) {
+                                                        val updated = list.toMutableList().apply {
+                                                            add(idx + 1, removeAt(idx))
+                                                        }
+                                                        signedInAccounts = updated
+                                                        dragOffsetX -= (nextX - myX)
+                                                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                                        swapped = true
+                                                    }
+                                                }
+                                                if (!swapped && idx > 0) {
+                                                    val prevEmail = list[idx - 1]
+                                                    val (prevX, prevW) = chipBounds[prevEmail] ?: return@detectDragGesturesAfterLongPress
+                                                    val prevCenter = prevX + (prevW / 2f)
+                                                    if (draggedCenter < prevCenter) {
+                                                        val updated = list.toMutableList().apply {
+                                                            add(idx - 1, removeAt(idx))
+                                                        }
+                                                        signedInAccounts = updated
+                                                        dragOffsetX += (myX - prevX)
+                                                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        onDragEnd = {
+                                            draggingAccount = null
+                                            dragOffsetX = 0f
+                                            GoogleDriveAuthManager.saveAccountOrder(context, currentAccounts)
+                                        },
+                                        onDragCancel = {
+                                            draggingAccount = null
+                                            dragOffsetX = 0f
+                                        },
+                                    )
+                                },
+                        ) {
+                            FilterChip(
+                                selected = activeLocation == LocationType.GOOGLE_DRIVE && signedInEmail == email,
+                                onClick = {
+                                    if (signedInEmail != email) {
+                                        GoogleDriveAuthManager.setActiveEmail(context, email)
+                                        signedInEmail = email
+                                        driveStack = listOf("gdrive://root" to accountLabel)
+                                    } else if (driveStack.firstOrNull()?.second == "Google Drive") {
+                                        driveStack = listOf("gdrive://root" to accountLabel)
+                                    }
+                                    activeLocation = LocationType.GOOGLE_DRIVE
+                                    selectedPaths = emptySet()
+                                },
+                                elevation = FilterChipDefaults.filterChipElevation(
+                                    elevation = if (isDragging) 6.dp else 0.dp,
+                                ),
+                                label = {
+                                    Text(
+                                        text = accountLabel,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                },
                             )
-                        },
-                    )
+                        }
+                    }
                 }
                 FilterChip(
                     selected = false,
