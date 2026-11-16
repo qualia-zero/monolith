@@ -309,6 +309,7 @@ private fun VideoPlayerContent(
                         positionMs = state.positionMs,
                         durationMs = state.durationMs,
                         cacheDurationSec = state.cacheDurationSec,
+                        showBufferIndicator = isNetworkUri(state.mediaUri),
                         timeTextColor = Color.White,
                     )
                     Spacer(modifier = Modifier.height(4.dp))
@@ -475,6 +476,7 @@ private fun AudioPlayerContent(
                     positionMs = state.positionMs,
                     durationMs = state.durationMs,
                     cacheDurationSec = state.cacheDurationSec,
+                    showBufferIndicator = isNetworkUri(state.mediaUri),
                     timeTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
 
@@ -496,6 +498,7 @@ private fun SeekBarRow(
     positionMs: Long,
     durationMs: Long,
     cacheDurationSec: Double,
+    showBufferIndicator: Boolean,
     timeTextColor: Color,
 ) {
     val safeDuration = durationMs.coerceAtLeast(0L)
@@ -510,7 +513,7 @@ private fun SeekBarRow(
         0f
     }
 
-    val bufferedFraction = if (safeDuration > 0L && cacheDurationSec > 0.0) {
+    val bufferedFraction = if (showBufferIndicator && safeDuration > 0L && cacheDurationSec > 0.0) {
         ((positionMs + (cacheDurationSec * 1000.0)).toFloat() / safeDuration.toFloat()).coerceIn(0f, 1f)
     } else {
         0f
@@ -812,4 +815,12 @@ private fun formatDuration(ms: Long): String {
     } else {
         String.format(Locale.US, "%02d:%02d", minutes, seconds)
     }
+}
+
+private fun isNetworkUri(uri: String): Boolean {
+    val lower = uri.trim().lowercase(Locale.ROOT)
+    if (lower.isEmpty() || lower.startsWith("/") || lower.startsWith("file:") || lower.startsWith("content:")) {
+        return false
+    }
+    return lower.contains("://")
 }
