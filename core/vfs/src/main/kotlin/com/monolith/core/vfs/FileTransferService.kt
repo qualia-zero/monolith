@@ -15,6 +15,7 @@ import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import com.monolith.core.model.TransferOperation
 import com.monolith.core.model.TransferProgress
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -245,8 +246,14 @@ class FileTransferService : Service() {
                         if (info.isDirectory) {
                             throw IllegalStateException("Ordner-Download von Drive wird noch nicht unterstützt")
                         }
-                        val dest = File(job.destinationDir, info.name)
-                        driveProvider.downloadToFile(src, dest, onProgress).getOrThrow()
+                        val safeName = File(info.name).name.takeIf { it.isNotBlank() && it != "." && it != ".." } ?: "download"
+                        val dest = resolveUniqueLocalTarget(File(job.destinationDir), safeName)
+                        driveProvider.downloadToFile(
+                            path = src,
+                            destFile = dest,
+                            onProgress = onProgress,
+                            expectedSize = info.sizeBytes,
+                        ).getOrThrow()
                         if (job.isMove) {
                             driveProvider.delete(singleList).getOrThrow()
                         }
@@ -256,6 +263,22 @@ class FileTransferService : Service() {
         }
 
         val error = result.exceptionOrNull()
+        if (error is CancellationException) {
+            _progress.value = TransferProgress(
+                taskId = job.taskId,
+                operation = operation,
+                currentFileName = currentFileName,
+                processedItems = processedItems,
+                totalItems = totalItems,
+                bytesProcessed = bytesProcessed,
+                totalBytes = totalBytes,
+                bytesPerSecond = bytesPerSecond,
+                isFinished = true,
+                errorMessage = null,
+            )
+            throw error
+        }
+
         _progress.value = TransferProgress(
             taskId = job.taskId,
             operation = operation,
@@ -290,15 +313,37 @@ class FileTransferService : Service() {
         )
     }
 
-    private fun scanLocalSource(file: File): Pair<Long, Int> {
+    private fun resolveUniqueLocalTarget(targetDir: File, name: String): File {
+        val direct = File(targetDir, name)
+        if (!direct.exists()) return direct
+        val dotIndex = name.lastIndexOf('.')
+        val (base, ext) = if (dotIndex > 0) {
+            name.substring(0, dotIndex) to name.substring(dotIndex)
+        } else {
+            name to ""
+        }
+        var index = 1
+        while (true) {
+            val candidate = File(targetDir, "$base ($index)$ext")
+            if (!candidate.exists()) return candidate
+            index++
+        }
+    }
+
+    private fun scanLocalSource(
+        file: File,
+        visitedDirs: MutableSet<String> = HashSet(),
+    ): Pair<Long, Int> {
         if (!file.exists()) return 0L to 0
         if (!file.isDirectory) return file.length() to 1
+        val canonical = runCatching { file.canonicalPath }.getOrNull() ?: file.absolutePath
+        if (!visitedDirs.add(canonical)) return 0L to 0
         val children = file.listFiles()
         if (children.isNullOrEmpty()) return 0L to 1
         var bytes = 0L
         var items = 0
         for (child in children) {
-            val (childBytes, childItems) = scanLocalSource(child)
+            val (childBytes, childItems) = scanLocalSource(child, visitedDirs)
             bytes += childBytes
             items += childItems
         }

@@ -14,6 +14,7 @@ import java.io.FileOutputStream
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
+import java.util.UUID
 
 class LocalVfsProvider : VfsProvider {
     override val locationType: LocationType = LocationType.LOCAL
@@ -136,6 +137,7 @@ class LocalVfsProvider : VfsProvider {
                     reportMovedNode(dest, onProgress)
                 } else {
                     copyRecursivelyWithProgress(source, dest, onProgress)
+                    verifyTreeMatches(source, dest)
                     if (!source.deleteRecursively()) {
                         throw IOException("Quelle konnte nach Verschieben nicht gelöscht werden: ${source.name}")
                     }
@@ -147,9 +149,14 @@ class LocalVfsProvider : VfsProvider {
         source: File,
         dest: File,
         onProgress: ((VfsTransferUpdate) -> Unit)?,
+        visitedDirs: MutableSet<String> = HashSet(),
     ) {
         currentCoroutineContext().ensureActive()
         if (source.isDirectory) {
+            val canonical = source.canonicalPath
+            if (!visitedDirs.add(canonical)) {
+                throw IOException("Symlink-Zyklus erkannt beim Kopieren: ${source.absolutePath}")
+            }
             if (dest.exists() && !dest.isDirectory) {
                 throw IOException("Ziel existiert bereits: ${dest.absolutePath}")
             }
@@ -162,45 +169,102 @@ class LocalVfsProvider : VfsProvider {
                 return
             }
             for (child in children) {
-                copyRecursivelyWithProgress(child, File(dest, child.name), onProgress)
+                copyRecursivelyWithProgress(child, File(dest, child.name), onProgress, visitedDirs)
             }
         } else {
-            dest.parentFile?.let { parent ->
-                if (!parent.exists() && !parent.mkdirs()) {
-                    throw IOException("Zielordner konnte nicht erstellt werden: ${parent.absolutePath}")
+            copyFileWithProgress(source, dest, overwrite = false, onProgress = onProgress)
+        }
+    }
+
+    private suspend fun copyFileWithProgress(
+        source: File,
+        dest: File,
+        overwrite: Boolean = false,
+        onProgress: ((VfsTransferUpdate) -> Unit)? = null,
+    ) {
+        val parentDir = dest.parentFile
+        parentDir?.let { parent ->
+            if (!parent.exists() && !parent.mkdirs()) {
+                throw IOException("Zielordner konnte nicht erstellt werden: ${parent.absolutePath}")
+            }
+        }
+        if (!overwrite && dest.exists()) {
+            throw IOException("Ziel existiert bereits: ${dest.absolutePath}")
+        }
+        val expectedSize = source.length()
+        val tempFile = File(parentDir ?: File("."), ".monolith_tmp_${UUID.randomUUID()}")
+        val buffer = ByteArray(COPY_BUFFER_SIZE)
+        var bytesCopied = 0L
+        try {
+            FileInputStream(source).use { input ->
+                FileOutputStream(tempFile).use { output ->
+                    while (true) {
+                        currentCoroutineContext().ensureActive()
+                        val read = input.read(buffer)
+                        if (read == -1) break
+                        output.write(buffer, 0, read)
+                        bytesCopied += read
+                        onProgress?.invoke(
+                            VfsTransferUpdate(
+                                currentFileName = source.name,
+                                bytesDelta = read.toLong(),
+                            ),
+                        )
+                    }
+                    output.flush()
+                    output.fd.sync()
                 }
             }
-            if (dest.exists()) {
+            if (bytesCopied != expectedSize) {
+                throw IOException("Unvollständige Kopie für ${source.name}: $bytesCopied von $expectedSize Bytes kopiert")
+            }
+            if (!overwrite && dest.exists()) {
                 throw IOException("Ziel existiert bereits: ${dest.absolutePath}")
             }
-            val buffer = ByteArray(COPY_BUFFER_SIZE)
-            try {
-                FileInputStream(source).use { input ->
-                    FileOutputStream(dest).use { output ->
-                        while (true) {
-                            currentCoroutineContext().ensureActive()
-                            val read = input.read(buffer)
-                            if (read <= 0) break
-                            output.write(buffer, 0, read)
-                            onProgress?.invoke(
-                                VfsTransferUpdate(
-                                    currentFileName = source.name,
-                                    bytesDelta = read.toLong(),
-                                ),
-                            )
-                        }
-                    }
-                }
-            } catch (e: Throwable) {
-                dest.delete()
-                throw e
+            if (overwrite && dest.exists() && !dest.delete()) {
+                throw IOException("Bestehendes Ziel konnte nicht ersetzt werden: ${dest.absolutePath}")
             }
-            onProgress?.invoke(
-                VfsTransferUpdate(
-                    currentFileName = source.name,
-                    itemsDelta = 1,
-                ),
-            )
+            if (!tempFile.renameTo(dest)) {
+                throw IOException("Temporäre Datei konnte nicht verschoben werden: ${dest.absolutePath}")
+            }
+            runCatching { dest.setLastModified(source.lastModified()) }
+        } finally {
+            if (tempFile.exists()) {
+                tempFile.delete()
+            }
+        }
+        onProgress?.invoke(
+            VfsTransferUpdate(
+                currentFileName = source.name,
+                itemsDelta = 1,
+            ),
+        )
+    }
+
+    private fun verifyTreeMatches(
+        source: File,
+        dest: File,
+        visitedDirs: MutableSet<String> = HashSet(),
+    ) {
+        if (!dest.exists()) {
+            throw IOException("Verifizierung fehlgeschlagen: Ziel fehlt (${dest.absolutePath})")
+        }
+        if (source.isDirectory) {
+            if (!dest.isDirectory) {
+                throw IOException("Verifizierung fehlgeschlagen: Ziel ist kein Ordner (${dest.absolutePath})")
+            }
+            if (!visitedDirs.add(source.canonicalPath)) {
+                return
+            }
+            for (child in source.listFiles().orEmpty()) {
+                verifyTreeMatches(child, File(dest, child.name), visitedDirs)
+            }
+        } else {
+            if (!dest.isFile || dest.length() != source.length()) {
+                throw IOException(
+                    "Verifizierung fehlgeschlagen für ${source.name}: erwartet ${source.length()} Bytes, gefunden ${dest.length()} Bytes",
+                )
+            }
         }
     }
 

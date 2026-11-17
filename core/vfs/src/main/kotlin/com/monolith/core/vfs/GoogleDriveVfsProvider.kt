@@ -175,7 +175,9 @@ class GoogleDriveVfsProvider(
                 setRequestProperty("Content-Type", "multipart/related; boundary=$boundary")
             }
 
+            val expectedSize = localFile.length()
             try {
+                var bytesSent = 0L
                 DataOutputStream(conn.outputStream).use { out ->
                     out.writeBytes("--$boundary\r\n")
                     out.writeBytes("Content-Type: application/json; charset=UTF-8\r\n\r\n")
@@ -188,8 +190,9 @@ class GoogleDriveVfsProvider(
                         while (true) {
                             currentCoroutineContext().ensureActive()
                             val read = input.read(buffer)
-                            if (read <= 0) break
+                            if (read == -1) break
                             out.write(buffer, 0, read)
+                            bytesSent += read
                             onProgress?.invoke(
                                 VfsTransferUpdate(
                                     currentFileName = localFile.name,
@@ -203,10 +206,27 @@ class GoogleDriveVfsProvider(
                     out.flush()
                 }
 
+                if (bytesSent != expectedSize) {
+                    throw IOException("Unvollständiger Upload für ${localFile.name}: $bytesSent von $expectedSize Bytes gesendet")
+                }
+
                 val code = conn.responseCode
                 if (code !in 200..299) {
                     throw IOException(readErrorMessage(conn, code))
                 }
+
+                val responseText = conn.inputStream?.bufferedReader()?.use { it.readText() }.orEmpty()
+                if (responseText.isNotBlank()) {
+                    val responseJson = JSONObject(responseText)
+                    if (responseJson.has("size")) {
+                        val remoteSize = responseJson.optString("size", "").toLongOrNull()
+                            ?: responseJson.optLong("size", -1L)
+                        if (remoteSize != expectedSize) {
+                            throw IOException("Upload-Größenprüfung fehlgeschlagen für ${localFile.name}: lokal $expectedSize Bytes, Drive $remoteSize Bytes")
+                        }
+                    }
+                }
+
                 onProgress?.invoke(
                     VfsTransferUpdate(
                         currentFileName = localFile.name,
@@ -222,18 +242,32 @@ class GoogleDriveVfsProvider(
         path: String,
         destFile: File,
         onProgress: ((VfsTransferUpdate) -> Unit)? = null,
+        expectedSize: Long = -1L,
     ): Result<File> =
         withContext(Dispatchers.IO) {
+            val parentDir = destFile.parentFile
+            val tempFile = File(parentDir ?: File("."), ".monolith_dl_${UUID.randomUUID()}")
             try {
-                destFile.parentFile?.mkdirs()
+                parentDir?.let { dir ->
+                    if (!dir.exists() && !dir.mkdirs()) {
+                        throw IOException("Zielordner konnte nicht erstellt werden: ${dir.absolutePath}")
+                    }
+                }
+                val resolvedExpectedSize = if (expectedSize >= 0L) {
+                    expectedSize
+                } else {
+                    runCatching { stat(path)?.sizeBytes ?: -1L }.getOrDefault(-1L)
+                }
+                var bytesWritten = 0L
                 openInputStream(path).use { input ->
-                    FileOutputStream(destFile).use { output ->
+                    FileOutputStream(tempFile).use { output ->
                         val buffer = ByteArray(TRANSFER_BUFFER_SIZE)
                         while (true) {
                             currentCoroutineContext().ensureActive()
                             val read = input.read(buffer)
-                            if (read <= 0) break
+                            if (read == -1) break
                             output.write(buffer, 0, read)
+                            bytesWritten += read
                             onProgress?.invoke(
                                 VfsTransferUpdate(
                                     currentFileName = destFile.name,
@@ -241,7 +275,18 @@ class GoogleDriveVfsProvider(
                                 ),
                             )
                         }
+                        output.flush()
+                        output.fd.sync()
                     }
+                }
+                if (resolvedExpectedSize >= 0L && bytesWritten != resolvedExpectedSize) {
+                    throw IOException("Unvollständiger Download für ${destFile.name}: $bytesWritten von $resolvedExpectedSize Bytes empfangen")
+                }
+                if (destFile.exists() && !destFile.delete()) {
+                    throw IOException("Bestehende Zieldatei konnte nicht ersetzt werden: ${destFile.absolutePath}")
+                }
+                if (!tempFile.renameTo(destFile)) {
+                    throw IOException("Heruntergeladene Datei konnte nicht gespeichert werden: ${destFile.absolutePath}")
                 }
                 onProgress?.invoke(
                     VfsTransferUpdate(
@@ -254,6 +299,10 @@ class GoogleDriveVfsProvider(
                 throw e
             } catch (e: Exception) {
                 Result.failure(e)
+            } finally {
+                if (tempFile.exists()) {
+                    tempFile.delete()
+                }
             }
         }
 
@@ -598,7 +647,7 @@ class GoogleDriveVfsProvider(
         const val ROOT_ID = "root"
         const val FOLDER_MIME_TYPE = "application/vnd.google-apps.folder"
         const val FILES_ENDPOINT = "https://www.googleapis.com/drive/v3/files"
-        const val UPLOAD_ENDPOINT = "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart"
+        const val UPLOAD_ENDPOINT = "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,size"
         const val CONNECT_TIMEOUT_MS = 15_000
         const val READ_TIMEOUT_MS = 30_000
         const val TRANSFER_BUFFER_SIZE = 64 * 1024
