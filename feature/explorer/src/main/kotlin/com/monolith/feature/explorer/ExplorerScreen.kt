@@ -46,6 +46,7 @@ import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.FolderZip
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.MoreVert
+import androidx.compose.material.icons.outlined.Movie
 import androidx.compose.material.icons.outlined.MusicNote
 import androidx.compose.material.icons.outlined.SdStorage
 import androidx.compose.material.icons.outlined.SelectAll
@@ -495,6 +496,7 @@ fun ExplorerScreen(
                             subtitle = listOf(playbackState.artist, playbackState.album)
                                 .filter { it.isNotBlank() }
                                 .joinToString(" • "),
+                            isVideo = playbackState.isVideo,
                             isPlaying = playbackState.isPlaying,
                             onOpen = onOpenMiniPlayer,
                             onTogglePlayPause = { MpvEngine.togglePlayPause() },
@@ -1005,6 +1007,7 @@ private fun ClipboardActionBar(
 private fun MiniPlayerBar(
     title: String,
     subtitle: String,
+    isVideo: Boolean,
     isPlaying: Boolean,
     onOpen: () -> Unit,
     onTogglePlayPause: () -> Unit,
@@ -1024,10 +1027,10 @@ private fun MiniPlayerBar(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(
-                    imageVector = Icons.Outlined.MusicNote,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(22.dp),
+                    imageVector = if (isVideo) Icons.Outlined.Movie else Icons.Outlined.MusicNote,
+                    contentDescription = if (isVideo) "Video" else "Musik",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
+                    modifier = Modifier.size(18.dp),
                 )
                 Spacer(modifier = Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {

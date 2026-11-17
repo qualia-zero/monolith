@@ -7,6 +7,8 @@ import com.monolith.core.model.LocationType
 import com.monolith.core.model.VfsNode
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -144,7 +146,11 @@ class GoogleDriveVfsProvider(
     override suspend fun openOutputStream(path: String): OutputStream =
         throw UnsupportedOperationException("Use uploadFile() for Google Drive uploads")
 
-    suspend fun uploadFile(localFile: File, targetFolderPath: String): Result<Unit> =
+    suspend fun uploadFile(
+        localFile: File,
+        targetFolderPath: String,
+        onProgress: ((VfsTransferUpdate) -> Unit)? = null,
+    ): Result<Unit> =
         runIoResult {
             if (!localFile.exists() || !localFile.isFile) {
                 throw IOException("Lokale Datei nicht gefunden: ${localFile.absolutePath}")
@@ -164,7 +170,7 @@ class GoogleDriveVfsProvider(
                 doInput = true
                 connectTimeout = CONNECT_TIMEOUT_MS
                 readTimeout = READ_TIMEOUT_MS
-                setChunkedStreamingMode(64 * 1024)
+                setChunkedStreamingMode(TRANSFER_BUFFER_SIZE)
                 setRequestProperty("Authorization", "Bearer $token")
                 setRequestProperty("Content-Type", "multipart/related; boundary=$boundary")
             }
@@ -178,11 +184,18 @@ class GoogleDriveVfsProvider(
                     out.writeBytes("Content-Type: $fileMime\r\n\r\n")
 
                     localFile.inputStream().use { input ->
-                        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                        val buffer = ByteArray(TRANSFER_BUFFER_SIZE)
                         while (true) {
+                            currentCoroutineContext().ensureActive()
                             val read = input.read(buffer)
                             if (read <= 0) break
                             out.write(buffer, 0, read)
+                            onProgress?.invoke(
+                                VfsTransferUpdate(
+                                    currentFileName = localFile.name,
+                                    bytesDelta = read.toLong(),
+                                ),
+                            )
                         }
                     }
 
@@ -194,20 +207,48 @@ class GoogleDriveVfsProvider(
                 if (code !in 200..299) {
                     throw IOException(readErrorMessage(conn, code))
                 }
+                onProgress?.invoke(
+                    VfsTransferUpdate(
+                        currentFileName = localFile.name,
+                        itemsDelta = 1,
+                    ),
+                )
             } finally {
                 conn.disconnect()
             }
         }
 
-    suspend fun downloadToFile(path: String, destFile: File): Result<File> =
+    suspend fun downloadToFile(
+        path: String,
+        destFile: File,
+        onProgress: ((VfsTransferUpdate) -> Unit)? = null,
+    ): Result<File> =
         withContext(Dispatchers.IO) {
             try {
                 destFile.parentFile?.mkdirs()
                 openInputStream(path).use { input ->
                     FileOutputStream(destFile).use { output ->
-                        input.copyTo(output)
+                        val buffer = ByteArray(TRANSFER_BUFFER_SIZE)
+                        while (true) {
+                            currentCoroutineContext().ensureActive()
+                            val read = input.read(buffer)
+                            if (read <= 0) break
+                            output.write(buffer, 0, read)
+                            onProgress?.invoke(
+                                VfsTransferUpdate(
+                                    currentFileName = destFile.name,
+                                    bytesDelta = read.toLong(),
+                                ),
+                            )
+                        }
                     }
                 }
+                onProgress?.invoke(
+                    VfsTransferUpdate(
+                        currentFileName = destFile.name,
+                        itemsDelta = 1,
+                    ),
+                )
                 Result.success(destFile)
             } catch (e: CancellationException) {
                 throw e
@@ -254,27 +295,37 @@ class GoogleDriveVfsProvider(
             }
         }
 
-    override suspend fun copy(sourcePaths: List<String>, targetDir: String): Result<Unit> =
+    override suspend fun copy(
+        sourcePaths: List<String>,
+        targetDir: String,
+        onProgress: ((VfsTransferUpdate) -> Unit)?,
+    ): Result<Unit> =
         runIoResult {
             val token = requireToken()
             val targetId = extractId(targetDir)
             for (sourcePath in sourcePaths) {
+                currentCoroutineContext().ensureActive()
                 if (sourcePath.startsWith(SCHEME_PREFIX)) {
-                    copyDriveNode(token, sourcePath, targetId)
+                    copyDriveNode(token, sourcePath, targetId, onProgress)
                 } else {
-                    uploadLocalNode(File(sourcePath), targetDir)
+                    uploadLocalNode(File(sourcePath), targetDir, onProgress)
                 }
             }
         }
 
-    override suspend fun move(sourcePaths: List<String>, targetDir: String): Result<Unit> =
+    override suspend fun move(
+        sourcePaths: List<String>,
+        targetDir: String,
+        onProgress: ((VfsTransferUpdate) -> Unit)?,
+    ): Result<Unit> =
         runIoResult {
             val token = requireToken()
             val targetId = extractId(targetDir)
             for (sourcePath in sourcePaths) {
+                currentCoroutineContext().ensureActive()
                 val fileId = extractId(sourcePath)
                 val meta = executeJsonRequest(
-                    urlString = "$FILES_ENDPOINT/${urlEncode(fileId)}?fields=parents",
+                    urlString = "$FILES_ENDPOINT/${urlEncode(fileId)}?fields=${urlEncode("parents,name,size")}",
                     method = "GET",
                     token = token,
                 )
@@ -300,16 +351,33 @@ class GoogleDriveVfsProvider(
                     token = token,
                     body = JSONObject(),
                 )
+                onProgress?.invoke(
+                    VfsTransferUpdate(
+                        currentFileName = meta.optString("name", fileId),
+                        bytesDelta = meta.optString("size", "0").toLongOrNull() ?: 0L,
+                        itemsDelta = 1,
+                    ),
+                )
             }
         }
 
-    private suspend fun copyDriveNode(token: String, sourcePath: String, targetParentId: String) {
+    private suspend fun copyDriveNode(
+        token: String,
+        sourcePath: String,
+        targetParentId: String,
+        onProgress: ((VfsTransferUpdate) -> Unit)? = null,
+    ) {
+        currentCoroutineContext().ensureActive()
         val node = stat(sourcePath) ?: throw IOException("Quelle nicht gefunden: $sourcePath")
         if (node.isDirectory) {
             val newFolderId = createDriveFolder(token, targetParentId, node.name)
             val children = list(sourcePath, showHidden = true)
+            if (children.isEmpty()) {
+                onProgress?.invoke(VfsTransferUpdate(currentFileName = node.name, itemsDelta = 1))
+                return
+            }
             for (child in children) {
-                copyDriveNode(token, child.path, newFolderId)
+                copyDriveNode(token, child.path, newFolderId, onProgress)
             }
         } else {
             val fileId = extractId(sourcePath)
@@ -320,22 +388,38 @@ class GoogleDriveVfsProvider(
                 token = token,
                 body = body,
             )
+            onProgress?.invoke(
+                VfsTransferUpdate(
+                    currentFileName = node.name,
+                    bytesDelta = node.sizeBytes,
+                    itemsDelta = 1,
+                ),
+            )
         }
     }
 
-    private suspend fun uploadLocalNode(localFile: File, targetFolderPath: String) {
+    private suspend fun uploadLocalNode(
+        localFile: File,
+        targetFolderPath: String,
+        onProgress: ((VfsTransferUpdate) -> Unit)? = null,
+    ) {
+        currentCoroutineContext().ensureActive()
         if (!localFile.exists()) {
             throw IOException("Lokale Quelle nicht gefunden: ${localFile.absolutePath}")
         }
         if (localFile.isDirectory) {
             val token = requireToken()
             val newFolderId = createDriveFolder(token, extractId(targetFolderPath), localFile.name)
-            val children = localFile.listFiles() ?: return
+            val children = localFile.listFiles()
+            if (children.isNullOrEmpty()) {
+                onProgress?.invoke(VfsTransferUpdate(currentFileName = localFile.name, itemsDelta = 1))
+                return
+            }
             for (child in children) {
-                uploadLocalNode(child, "$SCHEME_PREFIX$newFolderId")
+                uploadLocalNode(child, "$SCHEME_PREFIX$newFolderId", onProgress)
             }
         } else {
-            uploadFile(localFile, targetFolderPath).getOrThrow()
+            uploadFile(localFile, targetFolderPath, onProgress).getOrThrow()
         }
     }
 
@@ -517,5 +601,6 @@ class GoogleDriveVfsProvider(
         const val UPLOAD_ENDPOINT = "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart"
         const val CONNECT_TIMEOUT_MS = 15_000
         const val READ_TIMEOUT_MS = 30_000
+        const val TRANSFER_BUFFER_SIZE = 64 * 1024
     }
 }

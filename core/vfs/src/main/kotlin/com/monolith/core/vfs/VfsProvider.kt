@@ -5,6 +5,12 @@ import com.monolith.core.model.VfsNode
 import java.io.InputStream
 import java.io.OutputStream
 
+data class VfsTransferUpdate(
+    val currentFileName: String,
+    val bytesDelta: Long = 0L,
+    val itemsDelta: Int = 0,
+)
+
 interface VfsProvider {
     val locationType: LocationType
 
@@ -15,6 +21,15 @@ interface VfsProvider {
     suspend fun createDirectory(parentPath: String, name: String): Result<Unit>
     suspend fun rename(path: String, newName: String): Result<Unit>
     suspend fun delete(paths: List<String>): Result<Unit>
-    suspend fun copy(sourcePaths: List<String>, targetDir: String): Result<Unit>
-    suspend fun move(sourcePaths: List<String>, targetDir: String): Result<Unit>
+    suspend fun copy(
+        sourcePaths: List<String>,
+        targetDir: String,
+        onProgress: ((VfsTransferUpdate) -> Unit)? = null,
+    ): Result<Unit>
+
+    suspend fun move(
+        sourcePaths: List<String>,
+        targetDir: String,
+        onProgress: ((VfsTransferUpdate) -> Unit)? = null,
+    ): Result<Unit>
 }

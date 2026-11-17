@@ -5,6 +5,8 @@ import com.monolith.core.model.LocationType
 import com.monolith.core.model.VfsNode
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileInputStream
@@ -92,27 +94,35 @@ class LocalVfsProvider : VfsProvider {
             }
         }
 
-    override suspend fun copy(sourcePaths: List<String>, targetDir: String): Result<Unit> =
+    override suspend fun copy(
+        sourcePaths: List<String>,
+        targetDir: String,
+        onProgress: ((VfsTransferUpdate) -> Unit)?,
+    ): Result<Unit> =
         runIoResult {
             val targetRoot = requireDirectory(targetDir)
             for (sourcePath in sourcePaths) {
+                currentCoroutineContext().ensureActive()
                 val source = File(sourcePath)
                 if (!source.exists()) {
                     throw IOException("Quelle nicht gefunden: $sourcePath")
                 }
                 ensureNotDescendant(source, targetRoot, "kopiert")
                 val dest = resolveUniqueTarget(targetRoot, source.name, source.isDirectory)
-                if (!source.copyRecursively(dest, overwrite = false)) {
-                    throw IOException("Kopieren fehlgeschlagen: ${source.name}")
-                }
+                copyRecursivelyWithProgress(source, dest, onProgress)
             }
         }
 
-    override suspend fun move(sourcePaths: List<String>, targetDir: String): Result<Unit> =
+    override suspend fun move(
+        sourcePaths: List<String>,
+        targetDir: String,
+        onProgress: ((VfsTransferUpdate) -> Unit)?,
+    ): Result<Unit> =
         runIoResult {
             val targetRoot = requireDirectory(targetDir)
             val targetCanonical = targetRoot.canonicalPath
             for (sourcePath in sourcePaths) {
+                currentCoroutineContext().ensureActive()
                 val source = File(sourcePath)
                 if (!source.exists()) {
                     throw IOException("Quelle nicht gefunden: $sourcePath")
@@ -122,10 +132,10 @@ class LocalVfsProvider : VfsProvider {
                 }
                 ensureNotDescendant(source, targetRoot, "verschoben")
                 val dest = resolveUniqueTarget(targetRoot, source.name, source.isDirectory)
-                if (!source.renameTo(dest)) {
-                    if (!source.copyRecursively(dest, overwrite = false)) {
-                        throw IOException("Verschieben fehlgeschlagen: ${source.name}")
-                    }
+                if (source.renameTo(dest)) {
+                    reportMovedNode(dest, onProgress)
+                } else {
+                    copyRecursivelyWithProgress(source, dest, onProgress)
                     if (!source.deleteRecursively()) {
                         throw IOException("Quelle konnte nach Verschieben nicht gelöscht werden: ${source.name}")
                     }
@@ -133,7 +143,90 @@ class LocalVfsProvider : VfsProvider {
             }
         }
 
-    private suspend inline fun runIoResult(crossinline block: () -> Unit): Result<Unit> =
+    private suspend fun copyRecursivelyWithProgress(
+        source: File,
+        dest: File,
+        onProgress: ((VfsTransferUpdate) -> Unit)?,
+    ) {
+        currentCoroutineContext().ensureActive()
+        if (source.isDirectory) {
+            if (dest.exists() && !dest.isDirectory) {
+                throw IOException("Ziel existiert bereits: ${dest.absolutePath}")
+            }
+            if (!dest.exists() && !dest.mkdirs()) {
+                throw IOException("Ordner konnte nicht erstellt werden: ${dest.absolutePath}")
+            }
+            val children = source.listFiles()
+            if (children.isNullOrEmpty()) {
+                onProgress?.invoke(VfsTransferUpdate(currentFileName = source.name, itemsDelta = 1))
+                return
+            }
+            for (child in children) {
+                copyRecursivelyWithProgress(child, File(dest, child.name), onProgress)
+            }
+        } else {
+            dest.parentFile?.let { parent ->
+                if (!parent.exists() && !parent.mkdirs()) {
+                    throw IOException("Zielordner konnte nicht erstellt werden: ${parent.absolutePath}")
+                }
+            }
+            if (dest.exists()) {
+                throw IOException("Ziel existiert bereits: ${dest.absolutePath}")
+            }
+            val buffer = ByteArray(COPY_BUFFER_SIZE)
+            try {
+                FileInputStream(source).use { input ->
+                    FileOutputStream(dest).use { output ->
+                        while (true) {
+                            currentCoroutineContext().ensureActive()
+                            val read = input.read(buffer)
+                            if (read <= 0) break
+                            output.write(buffer, 0, read)
+                            onProgress?.invoke(
+                                VfsTransferUpdate(
+                                    currentFileName = source.name,
+                                    bytesDelta = read.toLong(),
+                                ),
+                            )
+                        }
+                    }
+                }
+            } catch (e: Throwable) {
+                dest.delete()
+                throw e
+            }
+            onProgress?.invoke(
+                VfsTransferUpdate(
+                    currentFileName = source.name,
+                    itemsDelta = 1,
+                ),
+            )
+        }
+    }
+
+    private fun reportMovedNode(node: File, onProgress: ((VfsTransferUpdate) -> Unit)?) {
+        if (onProgress == null) return
+        if (node.isDirectory) {
+            val children = node.listFiles()
+            if (children.isNullOrEmpty()) {
+                onProgress(VfsTransferUpdate(currentFileName = node.name, itemsDelta = 1))
+            } else {
+                for (child in children) {
+                    reportMovedNode(child, onProgress)
+                }
+            }
+        } else {
+            onProgress(
+                VfsTransferUpdate(
+                    currentFileName = node.name,
+                    bytesDelta = node.length(),
+                    itemsDelta = 1,
+                ),
+            )
+        }
+    }
+
+    private suspend inline fun runIoResult(crossinline block: suspend () -> Unit): Result<Unit> =
         withContext(Dispatchers.IO) {
             try {
                 block()
@@ -202,5 +295,9 @@ class LocalVfsProvider : VfsProvider {
             category = MimeNormalizer.categorize(name, isDir, mime),
             childCount = if (isDir) list()?.size else null,
         )
+    }
+
+    private companion object {
+        const val COPY_BUFFER_SIZE = 64 * 1024
     }
 }

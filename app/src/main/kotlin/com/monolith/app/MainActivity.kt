@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -36,6 +37,7 @@ import com.monolith.core.model.FileCategory
 import com.monolith.core.model.ThemeMode
 import com.monolith.core.model.VfsNode
 import com.monolith.core.ui.theme.MonolithTheme
+import com.monolith.core.vfs.FileTransferService
 import com.monolith.core.vfs.GoogleDriveAuthManager
 import com.monolith.core.vfs.GoogleDriveVfsProvider
 import com.monolith.feature.explorer.ExplorerScreen
@@ -54,10 +56,12 @@ private data class PendingOpenRequest(
 
 class MainActivity : ComponentActivity() {
     private var hasStoragePermission by mutableStateOf(false)
+    private var openTransferFromNotification by mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        handleTransferIntent(intent)
         AppSettingsStore.init(applicationContext)
         DefaultAppsStore.init(applicationContext)
         MpvEngine.bearerTokenProvider = { _ ->
@@ -74,6 +78,28 @@ class MainActivity : ComponentActivity() {
             var showSettings by remember { mutableStateOf(false) }
             var pendingOpen by remember { mutableStateOf<PendingOpenRequest?>(null) }
             var downloadingDriveFile by remember { mutableStateOf<String?>(null) }
+            val transferProgress by FileTransferService.progress.collectAsState()
+            var lastSeenTransferTaskId by remember { mutableStateOf<Long?>(null) }
+            var showTransferOverlay by remember { mutableStateOf(false) }
+
+            LaunchedEffect(transferProgress?.taskId) {
+                val current = transferProgress ?: return@LaunchedEffect
+                if (current.taskId != lastSeenTransferTaskId) {
+                    lastSeenTransferTaskId = current.taskId
+                    if (!current.isFinished) {
+                        showTransferOverlay = true
+                    }
+                }
+            }
+
+            LaunchedEffect(openTransferFromNotification) {
+                if (openTransferFromNotification) {
+                    openTransferFromNotification = false
+                    if (FileTransferService.progress.value != null) {
+                        showTransferOverlay = true
+                    }
+                }
+            }
 
             val darkTheme = when (appSettings.themeMode) {
                 ThemeMode.SYSTEM -> isSystemInDarkTheme()
@@ -260,7 +286,29 @@ class MainActivity : ComponentActivity() {
                         confirmButton = {},
                     )
                 }
+
+                if (showTransferOverlay) {
+                    transferProgress?.let { progress ->
+                        TransferProgressDialog(
+                            progress = progress,
+                            onDismiss = { showTransferOverlay = false },
+                        )
+                    }
+                }
             }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleTransferIntent(intent)
+    }
+
+    private fun handleTransferIntent(intent: Intent?) {
+        if (intent?.getBooleanExtra(FileTransferService.EXTRA_OPEN_TRANSFER_PANEL, false) == true) {
+            intent.removeExtra(FileTransferService.EXTRA_OPEN_TRANSFER_PANEL)
+            openTransferFromNotification = true
         }
     }
 
