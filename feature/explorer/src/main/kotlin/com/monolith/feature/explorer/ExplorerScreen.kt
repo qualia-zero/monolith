@@ -103,13 +103,17 @@ import com.monolith.core.media.MpvEngine
 import com.monolith.core.model.FileCategory
 import com.monolith.core.model.LocationType
 import com.monolith.core.model.SortBy
+import com.monolith.core.model.ThemeMode
 import com.monolith.core.model.VfsNode
 import com.monolith.core.ui.haptics.MonolithHaptics
+import com.monolith.core.ui.theme.LocalMonolithButtonShape
+import com.monolith.core.ui.theme.LocalMonolithThemeMode
 import com.monolith.core.vfs.FileTransferService
 import com.monolith.core.vfs.GoogleDriveAuthManager
 import com.monolith.core.vfs.GoogleDriveVfsProvider
 import com.monolith.core.vfs.LocalVfsProvider
 import com.monolith.core.vfs.VfsProvider
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -195,6 +199,7 @@ fun ExplorerScreen(
     var renameTargetNode by remember { mutableStateOf<VfsNode?>(null) }
     var showDeleteDialog by remember { mutableStateOf(false) }
     var refreshTrigger by remember { mutableIntStateOf(0) }
+    var loadRequestSeq by remember { mutableIntStateOf(0) }
 
     val playbackState by MpvEngine.uiState.collectAsState()
 
@@ -261,6 +266,7 @@ fun ExplorerScreen(
         signedInEmail,
         refreshTrigger,
     ) {
+        val requestId = ++loadRequestSeq
         val ready = if (activeLocation == LocationType.GOOGLE_DRIVE) {
             signedInEmail != null
         } else {
@@ -268,12 +274,13 @@ fun ExplorerScreen(
         }
         if (!ready) {
             nodes = emptyList()
+            isLoading = false
             return@LaunchedEffect
         }
         isLoading = activeLocation == LocationType.GOOGLE_DRIVE
-        runCatching {
-            activeProvider.list(currentPath, showHidden)
-        }.onSuccess { raw ->
+        try {
+            val raw = activeProvider.list(currentPath, showHidden)
+            if (requestId != loadRequestSeq) return@LaunchedEffect
             nodes = raw.sortedWith(
                 compareByDescending<VfsNode> { it.isDirectory }.thenBy {
                     when (sortBy) {
@@ -284,11 +291,15 @@ fun ExplorerScreen(
                     }
                 }
             )
-        }.onFailure { err ->
+            isLoading = false
+        } catch (e: CancellationException) {
+            throw e
+        } catch (err: Exception) {
+            if (requestId != loadRequestSeq) return@LaunchedEffect
             nodes = emptyList()
+            isLoading = false
             snackbarHostState.showSnackbar(err.message ?: "Ordner konnte nicht geladen werden")
         }
-        isLoading = false
     }
 
     val selectedNodes = remember(nodes, selectedPaths) {
@@ -297,6 +308,12 @@ fun ExplorerScreen(
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
+        containerColor = if (LocalMonolithThemeMode.current == ThemeMode.OBSIDIAN) {
+            androidx.compose.ui.graphics.Color.Transparent
+        } else {
+            MaterialTheme.colorScheme.background
+        },
+        contentColor = MaterialTheme.colorScheme.onBackground,
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         topBar = {
             if (selectedPaths.isNotEmpty()) {
@@ -527,7 +544,7 @@ fun ExplorerScreen(
             ) {
                 FilterChip(
                     selected = activeLocation == LocationType.LOCAL && activeLocalRootPath == rootPath,
-                    shape = MaterialTheme.shapes.small,
+                    shape = LocalMonolithButtonShape.current,
                     onClick = {
                         MonolithHaptics.navClick(context, view)
                         activeLocation = LocationType.LOCAL
@@ -540,7 +557,7 @@ fun ExplorerScreen(
                 externalVolumes.forEach { volume ->
                     FilterChip(
                         selected = activeLocation == LocationType.LOCAL && activeLocalRootPath == volume.rootPath,
-                        shape = MaterialTheme.shapes.small,
+                        shape = LocalMonolithButtonShape.current,
                         onClick = {
                             MonolithHaptics.navClick(context, view)
                             activeLocation = LocationType.LOCAL
@@ -640,7 +657,7 @@ fun ExplorerScreen(
                         ) {
                             FilterChip(
                                 selected = activeLocation == LocationType.GOOGLE_DRIVE && signedInEmail == email,
-                                shape = MaterialTheme.shapes.small,
+                                shape = LocalMonolithButtonShape.current,
                                 onClick = {
                                     MonolithHaptics.navClick(context, view)
                                     if (signedInEmail != email) {
@@ -669,7 +686,7 @@ fun ExplorerScreen(
                 }
                 FilterChip(
                     selected = false,
-                    shape = MaterialTheme.shapes.small,
+                    shape = LocalMonolithButtonShape.current,
                     onClick = {
                         MonolithHaptics.navClick(context, view)
                         scope.launch {
@@ -726,6 +743,7 @@ fun ExplorerScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Button(
+                        shape = LocalMonolithButtonShape.current,
                         onClick = {
                             signInLauncher.launch(GoogleDriveAuthManager.getSignInIntent(context))
                         },
@@ -798,7 +816,7 @@ fun ExplorerScreen(
                         )
                         HorizontalDivider(
                             thickness = 0.5.dp,
-                            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f),
+                            color = MaterialTheme.colorScheme.outlineVariant,
                         )
                     }
                 }
@@ -977,7 +995,7 @@ private fun ClipboardActionBar(
         color = MaterialTheme.colorScheme.secondaryContainer,
     ) {
         Column {
-            HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outline)
+            HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1018,7 +1036,7 @@ private fun MiniPlayerBar(
         color = MaterialTheme.colorScheme.surfaceVariant,
     ) {
         Column(modifier = Modifier.navigationBarsPadding()) {
-            HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outline)
+            HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()

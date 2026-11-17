@@ -26,6 +26,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import com.monolith.core.common.AppSettingsStore
 import com.monolith.core.media.MediaPlaybackService
 import com.monolith.core.media.MpvEngine
 import com.monolith.core.media.PlaybackHistoryStore
@@ -40,6 +41,7 @@ class PlayerActivity : ComponentActivity() {
 
     private val isInPipFlow = MutableStateFlow(false)
     private var pendingResumePositionMs by mutableStateOf<Long?>(null)
+    private var videoControlsVisible by mutableStateOf(true)
     private var notificationPermissionRequested = false
 
     private val notificationPermissionLauncher =
@@ -56,6 +58,7 @@ class PlayerActivity : ComponentActivity() {
             enableEdgeToEdge()
         }
 
+        AppSettingsStore.init(applicationContext)
         PlayerSettingsStore.init(applicationContext)
         PlaybackHistoryStore.init(applicationContext)
         powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
@@ -69,23 +72,39 @@ class PlayerActivity : ComponentActivity() {
         setContent {
             val state by MpvEngine.uiState.collectAsState()
             val settings by PlayerSettingsStore.settings.collectAsState()
+            val appSettings by AppSettingsStore.settings.collectAsState()
             val isInPip by isInPipFlow.collectAsState()
             val isSystemDark = isSystemInDarkTheme()
             val effectiveInPip = isInPip || state.isInPip
 
-            LaunchedEffect(state.isVideo, effectiveInPip, isSystemDark) {
+            LaunchedEffect(state.isVideo) {
+                if (state.isVideo) {
+                    enableEdgeToEdge(
+                        statusBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
+                        navigationBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
+                    )
+                }
+            }
+
+            LaunchedEffect(state.isVideo, effectiveInPip, isSystemDark, videoControlsVisible) {
                 updateSystemBars(
                     isVideo = state.isVideo,
                     isInPip = effectiveInPip,
                     isSystemDark = isSystemDark,
+                    controlsVisible = videoControlsVisible,
                 )
             }
 
-            MonolithTheme(darkTheme = if (state.isVideo) true else isSystemDark) {
+            MonolithTheme(
+                darkTheme = if (state.isVideo) true else isSystemDark,
+                themeMode = appSettings.themeMode,
+            ) {
                 PlayerScreen(
                     state = state,
                     settings = settings,
                     isInPip = effectiveInPip,
+                    controlsVisible = videoControlsVisible,
+                    onControlsVisibleChange = { videoControlsVisible = it },
                     pendingResumePositionMs = pendingResumePositionMs,
                     onConfirmResume = { posMs ->
                         pendingResumePositionMs = null
@@ -145,18 +164,32 @@ class PlayerActivity : ComponentActivity() {
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         if (hasFocus && MpvEngine.uiState.value.isVideo && !isInPipFlow.value) {
-            updateSystemBars(isVideo = true, isInPip = false, isSystemDark = true)
+            updateSystemBars(
+                isVideo = true,
+                isInPip = false,
+                isSystemDark = true,
+                controlsVisible = videoControlsVisible,
+            )
         }
     }
 
-    private fun updateSystemBars(isVideo: Boolean, isInPip: Boolean, isSystemDark: Boolean) {
+    private fun updateSystemBars(
+        isVideo: Boolean,
+        isInPip: Boolean,
+        isSystemDark: Boolean,
+        controlsVisible: Boolean,
+    ) {
         val controller = WindowCompat.getInsetsController(window, window.decorView)
         if (isVideo && !isInPip) {
-            controller.systemBarsBehavior =
-                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
             controller.isAppearanceLightStatusBars = false
             controller.isAppearanceLightNavigationBars = false
-            controller.hide(WindowInsetsCompat.Type.systemBars())
+            if (controlsVisible) {
+                controller.show(WindowInsetsCompat.Type.systemBars())
+            } else {
+                controller.systemBarsBehavior =
+                    WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                controller.hide(WindowInsetsCompat.Type.systemBars())
+            }
         } else if (!isVideo) {
             controller.isAppearanceLightStatusBars = !isSystemDark
             controller.isAppearanceLightNavigationBars = !isSystemDark

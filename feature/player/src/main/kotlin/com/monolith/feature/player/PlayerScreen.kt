@@ -58,7 +58,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -90,6 +89,7 @@ import com.monolith.core.model.MediaTrackType
 import com.monolith.core.model.PlaybackUiState
 import com.monolith.core.model.PlayerSettings
 import com.monolith.core.model.ResumeMode
+import com.monolith.core.ui.components.MonolithSwitch
 import kotlinx.coroutines.delay
 import java.util.Locale
 import kotlin.math.roundToInt
@@ -102,6 +102,8 @@ fun PlayerScreen(
     state: PlaybackUiState,
     settings: PlayerSettings,
     isInPip: Boolean,
+    controlsVisible: Boolean,
+    onControlsVisibleChange: (Boolean) -> Unit,
     pendingResumePositionMs: Long?,
     onConfirmResume: (Long) -> Unit,
     onDismissResume: () -> Unit,
@@ -115,6 +117,8 @@ fun PlayerScreen(
         VideoPlayerContent(
             state = state,
             isInPip = isInPip,
+            controlsVisible = controlsVisible,
+            onControlsVisibleChange = onControlsVisibleChange,
             onBack = onBack,
             onEnterPip = onEnterPip,
             onOpenSettings = { showSettingsSheet = true },
@@ -166,16 +170,16 @@ fun PlayerScreen(
 private fun VideoPlayerContent(
     state: PlaybackUiState,
     isInPip: Boolean,
+    controlsVisible: Boolean,
+    onControlsVisibleChange: (Boolean) -> Unit,
     onBack: () -> Unit,
     onEnterPip: () -> Unit,
     onOpenSettings: () -> Unit,
 ) {
-    var controlsVisible by remember { mutableStateOf(true) }
-
     LaunchedEffect(controlsVisible, state.isPlaying, isInPip) {
         if (controlsVisible && state.isPlaying && !isInPip) {
             delay(3500L)
-            controlsVisible = false
+            onControlsVisibleChange(false)
         }
     }
 
@@ -188,7 +192,7 @@ private fun VideoPlayerContent(
                 indication = null,
             ) {
                 if (!isInPip) {
-                    controlsVisible = !controlsVisible
+                    onControlsVisibleChange(!controlsVisible)
                 }
             },
     ) {
@@ -263,7 +267,7 @@ private fun VideoPlayerContent(
                             ),
                         )
                         .statusBarsPadding()
-                        .padding(horizontal = 8.dp, vertical = 8.dp),
+                        .padding(start = 8.dp, end = 8.dp, top = 2.dp, bottom = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     IconButton(onClick = onBack) {
@@ -398,7 +402,7 @@ private fun AudioPlayerContent(
                         .background(MaterialTheme.colorScheme.surfaceVariant)
                         .border(
                             width = 0.5.dp,
-                            color = MaterialTheme.colorScheme.outline,
+                            color = MaterialTheme.colorScheme.outlineVariant,
                             shape = RoundedCornerShape(12.dp),
                         ),
                     contentAlignment = Alignment.Center,
@@ -793,7 +797,7 @@ private fun SettingsToggleRow(
             text = title,
             style = MaterialTheme.typography.bodyLarge,
         )
-        Switch(
+        MonolithSwitch(
             checked = checked,
             onCheckedChange = onCheckedChange,
         )

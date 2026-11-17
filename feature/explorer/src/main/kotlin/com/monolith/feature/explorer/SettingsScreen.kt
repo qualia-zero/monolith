@@ -25,7 +25,6 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -48,7 +47,9 @@ import com.monolith.core.model.AppSettings
 import com.monolith.core.model.PlayerSettings
 import com.monolith.core.model.ResumeMode
 import com.monolith.core.model.ThemeMode
+import com.monolith.core.ui.components.MonolithSwitch
 import com.monolith.core.ui.haptics.MonolithHaptics
+import com.monolith.core.ui.theme.LocalMonolithButtonShape
 import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -68,6 +69,12 @@ fun SettingsScreen(
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
+        containerColor = if (com.monolith.core.ui.theme.LocalMonolithThemeMode.current == ThemeMode.OBSIDIAN) {
+            androidx.compose.ui.graphics.Color.Transparent
+        } else {
+            MaterialTheme.colorScheme.background
+        },
+        contentColor = MaterialTheme.colorScheme.onBackground,
         topBar = {
             TopAppBar(
                 title = { Text("Einstellungen") },
@@ -100,7 +107,7 @@ fun SettingsScreen(
                 ThemeMode.entries.forEach { mode ->
                     FilterChip(
                         selected = appSettings.themeMode == mode,
-                        shape = MaterialTheme.shapes.small,
+                        shape = LocalMonolithButtonShape.current,
                         onClick = {
                             MonolithHaptics.navClick(context, view)
                             AppSettingsStore.update { it.copy(themeMode = mode) }
@@ -112,6 +119,7 @@ fun SettingsScreen(
                                     ThemeMode.LIGHT -> "Hell"
                                     ThemeMode.DARK -> "Dunkel"
                                     ThemeMode.CYBER_PHOSPHOR -> "Phosphor"
+                                    ThemeMode.OBSIDIAN -> "Obsidian"
                                 },
                             )
                         },
@@ -198,7 +206,7 @@ fun SettingsScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                Switch(
+                MonolithSwitch(
                     checked = settings.subtitlesEnabled,
                     onCheckedChange = { enabled ->
                         MonolithHaptics.navClick(context, view)
@@ -244,6 +252,7 @@ fun SettingsScreen(
                 ResumeMode.entries.forEach { mode ->
                     FilterChip(
                         selected = settings.resumeMode == mode,
+                        shape = LocalMonolithButtonShape.current,
                         onClick = {
                             PlayerSettingsStore.update { it.copy(resumeMode = mode) }
                         },
@@ -266,6 +275,7 @@ fun SettingsScreen(
 
             OutlinedButton(
                 onClick = { showResetConfirm = true },
+                shape = LocalMonolithButtonShape.current,
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text("App-Einstellungen zurücksetzen")
@@ -431,7 +441,7 @@ private fun HapticToggleRow(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        Switch(
+        MonolithSwitch(
             checked = checked,
             onCheckedChange = onCheckedChange,
         )

@@ -5,6 +5,7 @@ enum class ThemeMode {
     LIGHT,
     DARK,
     CYBER_PHOSPHOR,
+    OBSIDIAN,
 }
 
 data class AppSettings(
