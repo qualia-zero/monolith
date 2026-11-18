@@ -7,6 +7,7 @@ import android.media.MediaMetadataRetriever
 import android.media.ThumbnailUtils
 import android.net.Uri
 import android.os.Build
+import android.provider.MediaStore
 import android.util.LruCache
 import android.util.Size
 import com.monolith.core.common.MonolithDiagnostics
@@ -122,36 +123,53 @@ object ThumbnailEngine {
         }
 
         val isDriveFile = normalizedPath.startsWith("gdrive://")
+        val isDriveVideo = isDriveFile && category == FileCategory.VIDEO
         var effectiveThumbnailUrl = thumbnailUrl?.takeIf { it.isNotBlank() }
             ?: knownThumbnailUrls[normalizedPath]
-        if (effectiveThumbnailUrl == null && isDriveFile) {
-            effectiveThumbnailUrl = fetchDriveThumbnailLink(normalizedPath)?.also {
-                knownThumbnailUrls[normalizedPath] = it
-            }
-        }
 
-        val isCloudThumb = !effectiveThumbnailUrl.isNullOrBlank()
-        val isDriveVideo = isDriveFile && category == FileCategory.VIDEO
-        if (!isCloudThumb && !isDriveVideo) {
-            if (isRemoteUri(normalizedPath) || isDriveFile) {
-                MonolithDiagnostics.logWarn("ThumbnailEngine", "Cloud item has no thumbnailUrl: $normalizedPath (category=$category)")
-                return@withContext null
-            }
-            if (category != FileCategory.IMAGE &&
-                category != FileCategory.VIDEO &&
-                category != FileCategory.AUDIO
-            ) {
-                return@withContext null
-            }
+        if (!isDriveFile && isRemoteUri(normalizedPath) && effectiveThumbnailUrl.isNullOrBlank()) {
+            MonolithDiagnostics.logWarn("ThumbnailEngine", "Cloud item has no thumbnailUrl: $normalizedPath (category=$category)")
+            return@withContext null
+        }
+        if (!isDriveFile && !isRemoteUri(normalizedPath) &&
+            category != FileCategory.IMAGE &&
+            category != FileCategory.VIDEO &&
+            category != FileCategory.AUDIO
+        ) {
+            return@withContext null
         }
 
         val decoded = try {
-            val remoteThumb = if (isCloudThumb) decodeRemoteThumbnail(effectiveThumbnailUrl!!) else null
             when {
-                remoteThumb != null -> remoteThumb
-                isDriveVideo -> remoteExtractSemaphore.withPermit {
-                    decodeDriveVideoFallback(normalizedPath, targetPx)
+                isDriveVideo -> {
+                    val extracted = remoteExtractSemaphore.withPermit {
+                        decodeDriveVideoFallback(normalizedPath, targetPx)
+                    }
+                    if (extracted != null) {
+                        extracted
+                    } else {
+                        if (effectiveThumbnailUrl == null) {
+                            effectiveThumbnailUrl = fetchDriveThumbnailLink(normalizedPath)?.also {
+                                knownThumbnailUrls[normalizedPath] = it
+                            }
+                        }
+                        effectiveThumbnailUrl?.let { decodeRemoteThumbnail(it) }
+                    }
                 }
+                isDriveFile -> {
+                    if (effectiveThumbnailUrl == null) {
+                        effectiveThumbnailUrl = fetchDriveThumbnailLink(normalizedPath)?.also {
+                            knownThumbnailUrls[normalizedPath] = it
+                        }
+                    }
+                    if (effectiveThumbnailUrl.isNullOrBlank()) {
+                        MonolithDiagnostics.logWarn("ThumbnailEngine", "Cloud item has no thumbnailUrl: $normalizedPath (category=$category)")
+                        null
+                    } else {
+                        decodeRemoteThumbnail(effectiveThumbnailUrl)
+                    }
+                }
+                !effectiveThumbnailUrl.isNullOrBlank() -> decodeRemoteThumbnail(effectiveThumbnailUrl)
                 else -> when (category) {
                     FileCategory.IMAGE -> decodeSampledImage(context, normalizedPath, targetPx)
                     FileCategory.VIDEO -> decodeVideoListThumbnail(context, normalizedPath, targetPx)
@@ -429,11 +447,42 @@ object ThumbnailEngine {
 
     private fun decodeVideoListThumbnail(context: Context, path: String, targetPx: Int): Bitmap? {
         val retriever = MediaMetadataRetriever()
-        return try {
+        val extracted = try {
             setDataSource(context, retriever, path)
             decodeEmbeddedPicture(retriever, targetPx) ?: extractNonBlackVideoFrame(retriever)
+        } catch (t: Throwable) {
+            MonolithDiagnostics.logWarn("ThumbnailEngine", "Local video thumbnail extraction failed for $path: ${t.message}")
+            null
         } finally {
             runCatching { retriever.release() }
+        }
+        return extracted ?: decodeAndroidLocalVideoThumbnail(context, path, targetPx)
+    }
+
+    private fun decodeAndroidLocalVideoThumbnail(
+        context: Context,
+        path: String,
+        targetPx: Int,
+    ): Bitmap? {
+        return try {
+            if (path.startsWith("content://")) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    context.contentResolver.loadThumbnail(Uri.parse(path), Size(targetPx, targetPx), null)
+                } else {
+                    null
+                }
+            } else {
+                val localPath = resolveLocalFilePath(path)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    ThumbnailUtils.createVideoThumbnail(File(localPath), Size(targetPx, targetPx), null)
+                } else {
+                    @Suppress("DEPRECATION")
+                    ThumbnailUtils.createVideoThumbnail(localPath, MediaStore.Video.Thumbnails.MINI_KIND)
+                }
+            }
+        } catch (t: Throwable) {
+            MonolithDiagnostics.logWarn("ThumbnailEngine", "Android local video thumbnail fallback failed for $path: ${t.message}")
+            null
         }
     }
 
