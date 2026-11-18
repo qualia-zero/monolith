@@ -37,12 +37,14 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.AudioFile
+import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.CloudQueue
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.ContentCut
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.Explore
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.FolderZip
 import androidx.compose.material.icons.outlined.Image
@@ -89,15 +91,19 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInParent
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.style.TextOverflow
@@ -110,6 +116,8 @@ import com.monolith.core.model.LocationType
 import com.monolith.core.model.SortBy
 import com.monolith.core.model.ThemeMode
 import com.monolith.core.model.VfsNode
+import com.monolith.core.ui.components.MonolithStarMenuOverlay
+import com.monolith.core.ui.components.StarMenuItem
 import com.monolith.core.ui.haptics.MonolithHaptics
 import com.monolith.core.ui.theme.LocalMonolithButtonShape
 import com.monolith.core.ui.theme.LocalMonolithThemeMode
@@ -134,6 +142,7 @@ fun ExplorerScreen(
     onOpenWith: (node: VfsNode, siblings: List<VfsNode>) -> Unit = { _, _ -> },
     onOpenMiniPlayer: () -> Unit = {},
     onOpenSettings: () -> Unit = {},
+    onOpenAiChat: (currentDirectory: String) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -254,6 +263,14 @@ fun ExplorerScreen(
         }
     }
 
+    var starMenuExpanded by remember { mutableStateOf(false) }
+    var starAnchorCenter by remember { mutableStateOf(Offset.Unspecified) }
+    var rootOrigin by remember { mutableStateOf(Offset.Zero) }
+
+    BackHandler(enabled = starMenuExpanded) {
+        starMenuExpanded = false
+    }
+
     BackHandler(enabled = selectedPaths.isNotEmpty() || canNavigateUp) {
         if (selectedPaths.isNotEmpty()) {
             selectedPaths = emptySet()
@@ -311,8 +328,37 @@ fun ExplorerScreen(
         nodes.filter { it.path in selectedPaths }
     }
 
+    LaunchedEffect(canNavigateUp, selectedPaths.isNotEmpty()) {
+        if (canNavigateUp || selectedPaths.isNotEmpty()) {
+            starMenuExpanded = false
+        }
+    }
+
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .onGloballyPositioned { rootOrigin = it.positionInRoot() },
+    ) {
+        val backgroundRecede by animateFloatAsState(
+            targetValue = if (starMenuExpanded) 1f else 0f,
+            label = "starMenuBackgroundRecede",
+        )
     Scaffold(
-        modifier = modifier.fillMaxSize(),
+        modifier = Modifier
+            .fillMaxSize()
+            .then(
+                if (backgroundRecede > 0.01f) {
+                    Modifier
+                        .blur(10.dp * backgroundRecede)
+                        .graphicsLayer {
+                            val s = 1f - 0.025f * backgroundRecede
+                            scaleX = s
+                            scaleY = s
+                        }
+                } else {
+                    Modifier
+                }
+            ),
         containerColor = if (LocalMonolithThemeMode.current == ThemeMode.OBSIDIAN) {
             androidx.compose.ui.graphics.Color.Transparent
         } else {
@@ -405,9 +451,14 @@ fun ExplorerScreen(
                                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Zurück")
                             }
                         } else {
-                            Box(
-                                modifier = Modifier.size(48.dp),
-                                contentAlignment = Alignment.Center,
+                            IconButton(
+                                onClick = {
+                                    MonolithHaptics.navClick(context, view)
+                                    starMenuExpanded = !starMenuExpanded
+                                },
+                                modifier = Modifier.onGloballyPositioned { coords ->
+                                    starAnchorCenter = coords.boundsInRoot().center - rootOrigin
+                                },
                             ) {
                                 Icon(
                                     imageVector = when {
@@ -416,7 +467,7 @@ fun ExplorerScreen(
                                         activeExternalVolume?.kind == ExternalVolumeKind.SD_CARD -> Icons.Outlined.SdStorage
                                         else -> Icons.Outlined.ViewInAr
                                     },
-                                    contentDescription = null,
+                                    contentDescription = "Monolith-Menü",
                                     tint = MaterialTheme.colorScheme.primary,
                                     modifier = Modifier.size(22.dp),
                                 )
@@ -828,6 +879,41 @@ fun ExplorerScreen(
                 }
             }
         }
+    }
+
+    val currentAnchorIcon = when {
+        activeLocation == LocationType.GOOGLE_DRIVE -> Icons.Outlined.CloudQueue
+        activeExternalVolume?.kind == ExternalVolumeKind.USB -> Icons.Outlined.Usb
+        activeExternalVolume?.kind == ExternalVolumeKind.SD_CARD -> Icons.Outlined.SdStorage
+        else -> Icons.Outlined.ViewInAr
+    }
+
+    MonolithStarMenuOverlay(
+        expanded = starMenuExpanded,
+        anchorCenter = starAnchorCenter,
+        anchorIcon = currentAnchorIcon,
+        items = listOf(
+            StarMenuItem(
+                id = "ai_chat",
+                label = "AI",
+                icon = Icons.Outlined.AutoAwesome,
+                onClick = {
+                    onOpenAiChat(localPath)
+                },
+            ),
+            StarMenuItem(
+                id = "extend_files",
+                label = "Dateien erweitern",
+                icon = Icons.Outlined.Explore,
+                onClick = {
+                    scope.launch {
+                        snackbarHostState.showSnackbar("Dateien erweitern folgt")
+                    }
+                },
+            ),
+        ),
+        onDismiss = { starMenuExpanded = false },
+    )
     }
 
     if (showSortDialog) {

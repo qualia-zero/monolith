@@ -44,12 +44,19 @@ import com.monolith.core.vfs.GoogleDriveAuthManager
 import com.monolith.core.vfs.GoogleDriveVfsProvider
 import com.monolith.feature.explorer.ExplorerScreen
 import com.monolith.feature.explorer.SettingsScreen
+import com.monolith.feature.explorer.ai.AiChatScreen
 import com.monolith.feature.player.PlayerActivity
 import com.monolith.feature.viewers.ImageViewerActivity
 import com.monolith.feature.viewers.TextEditorActivity
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import java.io.File
+
+private enum class MainDestination {
+    EXPLORER,
+    SETTINGS,
+    AI_CHAT,
+}
 
 private data class PendingOpenRequest(
     val node: VfsNode,
@@ -77,7 +84,9 @@ class MainActivity : ComponentActivity() {
             val appSettings by AppSettingsStore.settings.collectAsState()
             val driveProvider = remember { GoogleDriveVfsProvider(applicationContext) }
             val scope = rememberCoroutineScope()
-            var showSettings by remember { mutableStateOf(false) }
+            var activeDestination by remember { mutableStateOf(MainDestination.EXPLORER) }
+            var settingsReturnToAi by remember { mutableStateOf(false) }
+            var aiCurrentDirectory by remember { mutableStateOf("") }
             var pendingOpen by remember { mutableStateOf<PendingOpenRequest?>(null) }
             var downloadingDriveFile by remember { mutableStateOf<String?>(null) }
             val transferProgress by FileTransferService.progress.collectAsState()
@@ -241,24 +250,53 @@ class MainActivity : ComponentActivity() {
                 darkTheme = darkTheme,
                 themeMode = appSettings.themeMode,
             ) {
-                if (showSettings) {
-                    SettingsScreen(onBack = { showSettings = false })
-                } else {
-                    ExplorerScreen(
-                        hasStoragePermission = hasStoragePermission,
-                        onRequestStoragePermission = ::requestAllFilesAccess,
-                        onOpenMedia = { node, playlist -> handleOpenFile(node, playlist) },
-                        onOpenImage = { node, images -> handleOpenFile(node, images) },
-                        onOpenText = { node -> handleOpenFile(node, emptyList()) },
-                        onOpenOther = { node -> handleOpenFile(node, emptyList()) },
-                        onOpenWith = { node, siblings ->
-                            pendingOpen = PendingOpenRequest(node, siblings)
-                        },
-                        onOpenMiniPlayer = {
-                            PlayerActivity.reopen(this@MainActivity)
-                        },
-                        onOpenSettings = { showSettings = true },
-                    )
+                when (activeDestination) {
+                    MainDestination.SETTINGS -> {
+                        SettingsScreen(
+                            onBack = {
+                                activeDestination = if (settingsReturnToAi) {
+                                    settingsReturnToAi = false
+                                    MainDestination.AI_CHAT
+                                } else {
+                                    MainDestination.EXPLORER
+                                }
+                            },
+                        )
+                    }
+                    MainDestination.AI_CHAT -> {
+                        AiChatScreen(
+                            currentDirectory = aiCurrentDirectory,
+                            onBack = { activeDestination = MainDestination.EXPLORER },
+                            onOpenSettings = {
+                                settingsReturnToAi = true
+                                activeDestination = MainDestination.SETTINGS
+                            },
+                        )
+                    }
+                    MainDestination.EXPLORER -> {
+                        ExplorerScreen(
+                            hasStoragePermission = hasStoragePermission,
+                            onRequestStoragePermission = ::requestAllFilesAccess,
+                            onOpenMedia = { node, playlist -> handleOpenFile(node, playlist) },
+                            onOpenImage = { node, images -> handleOpenFile(node, images) },
+                            onOpenText = { node -> handleOpenFile(node, emptyList()) },
+                            onOpenOther = { node -> handleOpenFile(node, emptyList()) },
+                            onOpenWith = { node, siblings ->
+                                pendingOpen = PendingOpenRequest(node, siblings)
+                            },
+                            onOpenMiniPlayer = {
+                                PlayerActivity.reopen(this@MainActivity)
+                            },
+                            onOpenSettings = {
+                                settingsReturnToAi = false
+                                activeDestination = MainDestination.SETTINGS
+                            },
+                            onOpenAiChat = { currentDir ->
+                                aiCurrentDirectory = currentDir
+                                activeDestination = MainDestination.AI_CHAT
+                            },
+                        )
+                    }
                 }
 
                 pendingOpen?.let { request ->
