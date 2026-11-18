@@ -2,6 +2,8 @@
 
 **Monolith** (`com.monolith.app`) is a native Android file manager, unified media suite, and local-first AI workspace built with **Kotlin**, **Jetpack Compose (Material 3)**, and a multi-module Gradle architecture.
 
+> **Language Note:** The app UI is currently available in **German** only.
+
 ## Highlights
 
 - **File Explorer & Virtual Filesystem (`:feature:explorer`, `:core:vfs`):**
