@@ -24,6 +24,8 @@ data class AppSettings(
     val geminiApiKey: String = "",
     val geminiApiKeys: List<GeminiApiKeyEntry> = emptyList(),
     val activeGeminiApiKeyId: String? = null,
+    val aiModelId: String = "gemini-4-hydrogen",
+    val aiThinkingLevel: String = "medium",
 ) {
     val activeGeminiApiKey: String
         get() = geminiApiKeys.firstOrNull { it.id == activeGeminiApiKeyId }?.key

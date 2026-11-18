@@ -1,6 +1,7 @@
 package com.monolith.feature.explorer.ai
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -16,10 +17,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -31,12 +30,17 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.outlined.Build
 import androidx.compose.material.icons.outlined.DeleteOutline
+import androidx.compose.material.icons.outlined.ExpandLess
+import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.Explore
 import androidx.compose.material.icons.outlined.MoreVert
+import androidx.compose.material.icons.outlined.Psychology
 import androidx.compose.material.icons.outlined.Stop
 import androidx.compose.material.icons.outlined.ViewInAr
 import androidx.compose.material.icons.outlined.Visibility
@@ -88,6 +92,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -116,7 +121,11 @@ data class AiChatMessage(
     val id: Long,
     val role: ChatRole,
     val text: String,
+    val thoughtText: String = "",
+    val toolCalls: List<ToolCallTrace> = emptyList(),
     val toolStatus: String? = null,
+    val modelLabel: String? = null,
+    val thinkingLabel: String? = null,
 )
 
 private data class ThinkingLevelOption(
@@ -127,9 +136,12 @@ private data class ThinkingLevelOption(
 private data class GeminiModelOption(
     val id: String,
     val label: String,
-    val defaultThinkingLevel: String,
     val supportedThinkingLevels: List<ThinkingLevelOption>,
-)
+) {
+    /** One level above the smallest supported level. */
+    val defaultThinkingLevel: String
+        get() = supportedThinkingLevels.getOrElse(1) { supportedThinkingLevels.first() }.id
+}
 
 private val THINKING_MINIMAL = ThinkingLevelOption("minimal", "Minimal")
 private val THINKING_LOW = ThinkingLevelOption("low", "Niedrig")
@@ -141,25 +153,21 @@ private val GEMINI_MODELS = listOf(
     GeminiModelOption(
         id = "gemini-4-hydrogen",
         label = "Gemini 4 Hydrogen",
-        defaultThinkingLevel = "medium",
         supportedThinkingLevels = listOf(THINKING_LOW, THINKING_MEDIUM, THINKING_HIGH, THINKING_XHIGH),
     ),
     GeminiModelOption(
         id = "gemini-3.8-flash",
         label = "Gemini 3.8 Flash",
-        defaultThinkingLevel = "medium",
         supportedThinkingLevels = listOf(THINKING_LOW, THINKING_MEDIUM, THINKING_HIGH),
     ),
     GeminiModelOption(
         id = "gemini-3.6-flash",
         label = "Gemini 3.6 Flash",
-        defaultThinkingLevel = "medium",
         supportedThinkingLevels = listOf(THINKING_MINIMAL, THINKING_LOW, THINKING_MEDIUM, THINKING_HIGH),
     ),
     GeminiModelOption(
         id = "gemini-3.5-flash-lite",
         label = "Gemini 3.5 Flash-Lite",
-        defaultThinkingLevel = "minimal",
         supportedThinkingLevels = listOf(THINKING_MINIMAL, THINKING_LOW, THINKING_MEDIUM, THINKING_HIGH),
     ),
 )
@@ -188,11 +196,14 @@ fun AiChatScreen(
     var activeJob by remember { mutableStateOf<Job?>(null) }
     var nextMessageId by remember { mutableStateOf(1L) }
 
-    var selectedModel by remember { mutableStateOf(GEMINI_MODELS.first().id) }
-    val currentModelOption = remember(selectedModel) {
-        GEMINI_MODELS.firstOrNull { it.id == selectedModel } ?: GEMINI_MODELS.first()
+    val currentModelOption = remember(appSettings.aiModelId) {
+        GEMINI_MODELS.firstOrNull { it.id == appSettings.aiModelId } ?: GEMINI_MODELS.first()
     }
-    var selectedThinkingLevel by remember { mutableStateOf(currentModelOption.defaultThinkingLevel) }
+    val currentThinkingOption = remember(currentModelOption, appSettings.aiThinkingLevel) {
+        currentModelOption.supportedThinkingLevels.firstOrNull { it.id == appSettings.aiThinkingLevel }
+            ?: currentModelOption.supportedThinkingLevels.firstOrNull { it.id == currentModelOption.defaultThinkingLevel }
+            ?: currentModelOption.supportedThinkingLevels.first()
+    }
 
     var starMenuExpanded by remember { mutableStateOf(false) }
     var starAnchorCenter by remember { mutableStateOf(Offset.Unspecified) }
@@ -236,6 +247,9 @@ fun AiChatScreen(
             return
         }
 
+        val usedModel = currentModelOption
+        val usedThinking = currentThinkingOption
+
         MonolithHaptics.navClick(context, view)
         inputText = ""
 
@@ -260,13 +274,27 @@ fun AiChatScreen(
                 userMessage = trimmed,
                 previousInteractionId = previousInteractionId,
                 currentDirectory = currentDirectory,
-                model = selectedModel,
-                thinkingLevel = selectedThinkingLevel,
+                model = usedModel.id,
+                thinkingLevel = usedThinking.id,
                 onTextDelta = { delta ->
                     val idx = messages.indexOfFirst { it.id == assistantId }
                     if (idx >= 0) {
                         val current = messages[idx]
                         messages[idx] = current.copy(text = current.text + delta)
+                    }
+                },
+                onThoughtDelta = { thoughtDelta ->
+                    val idx = messages.indexOfFirst { it.id == assistantId }
+                    if (idx >= 0) {
+                        val current = messages[idx]
+                        messages[idx] = current.copy(thoughtText = current.thoughtText + thoughtDelta)
+                    }
+                },
+                onToolCallTrace = { trace ->
+                    val idx = messages.indexOfFirst { it.id == assistantId }
+                    if (idx >= 0) {
+                        val current = messages[idx]
+                        messages[idx] = current.copy(toolCalls = current.toolCalls + trace)
                     }
                 },
                 onToolStatus = { status ->
@@ -281,10 +309,13 @@ fun AiChatScreen(
             result.onSuccess { newInteractionId ->
                 previousInteractionId = newInteractionId
                 val idx = messages.indexOfFirst { it.id == assistantId }
-                if (idx >= 0 && messages[idx].text.isBlank()) {
-                    messages[idx] = messages[idx].copy(
-                        text = "(Keine Textantwort erhalten)",
+                if (idx >= 0) {
+                    val current = messages[idx]
+                    messages[idx] = current.copy(
+                        text = current.text.ifBlank { "(Keine Textantwort erhalten)" },
                         toolStatus = null,
+                        modelLabel = usedModel.label,
+                        thinkingLabel = usedThinking.label,
                     )
                 }
             }.onFailure { err ->
@@ -298,7 +329,11 @@ fun AiChatScreen(
                             text = err.message ?: "Anfrage an Gemini fehlgeschlagen",
                         )
                     } else {
-                        messages[idx] = messages[idx].copy(toolStatus = null)
+                        messages[idx] = messages[idx].copy(
+                            toolStatus = null,
+                            modelLabel = usedModel.label,
+                            thinkingLabel = usedThinking.label,
+                        )
                         messages.add(
                             AiChatMessage(
                                 id = nextMessageId++,
@@ -387,13 +422,6 @@ fun AiChatScreen(
                                     onClick = {
                                         menuExpanded = false
                                         showModelDialog = true
-                                    },
-                                )
-                                DropdownMenuItem(
-                                    text = { Text("Denkaufwand") },
-                                    onClick = {
-                                        menuExpanded = false
-                                        showThinkingDialog = true
                                     },
                                 )
                                 DropdownMenuItem(
@@ -640,28 +668,27 @@ fun AiChatScreen(
             text = {
                 Column {
                     GEMINI_MODELS.forEach { option ->
+                        fun selectModel() {
+                            val preselectedLevel = option.defaultThinkingLevel
+                            AppSettingsStore.update {
+                                it.copy(
+                                    aiModelId = option.id,
+                                    aiThinkingLevel = preselectedLevel,
+                                )
+                            }
+                            showModelDialog = false
+                            showThinkingDialog = true
+                        }
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable {
-                                    selectedModel = option.id
-                                    if (option.supportedThinkingLevels.none { it.id == selectedThinkingLevel }) {
-                                        selectedThinkingLevel = option.defaultThinkingLevel
-                                    }
-                                    showModelDialog = false
-                                }
+                                .clickable { selectModel() }
                                 .padding(vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             RadioButton(
-                                selected = selectedModel == option.id,
-                                onClick = {
-                                    selectedModel = option.id
-                                    if (option.supportedThinkingLevels.none { it.id == selectedThinkingLevel }) {
-                                        selectedThinkingLevel = option.defaultThinkingLevel
-                                    }
-                                    showModelDialog = false
-                                },
+                                selected = currentModelOption.id == option.id,
+                                onClick = { selectModel() },
                             )
                             Text(
                                 text = option.label,
@@ -688,22 +715,20 @@ fun AiChatScreen(
             text = {
                 Column {
                     supportedLevels.forEach { option ->
+                        fun selectLevel() {
+                            AppSettingsStore.update { it.copy(aiThinkingLevel = option.id) }
+                            showThinkingDialog = false
+                        }
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable {
-                                    selectedThinkingLevel = option.id
-                                    showThinkingDialog = false
-                                }
+                                .clickable { selectLevel() }
                                 .padding(vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             RadioButton(
-                                selected = selectedThinkingLevel == option.id,
-                                onClick = {
-                                    selectedThinkingLevel = option.id
-                                    showThinkingDialog = false
-                                },
+                                selected = currentThinkingOption.id == option.id,
+                                onClick = { selectLevel() },
                             )
                             Text(
                                 text = option.label,
@@ -716,7 +741,7 @@ fun AiChatScreen(
             },
             confirmButton = {
                 TextButton(onClick = { showThinkingDialog = false }) {
-                    Text("Schließen")
+                    Text("Fertig")
                 }
             },
         )
@@ -889,18 +914,14 @@ private fun GeometricNeuralNetwork(modifier: Modifier = Modifier) {
 
     val nodes = remember {
         listOf(
-            // Input layer (left)
             NeuralNode(0.16f, 0.28f, NodeShape.CIRCLE, 7f, false),
             NeuralNode(0.14f, 0.52f, NodeShape.DIAMOND, 8f, true),
             NeuralNode(0.18f, 0.74f, NodeShape.TRIANGLE, 8f, false),
-            // Hidden layer 1
             NeuralNode(0.42f, 0.20f, NodeShape.HEXAGON, 9f, true),
             NeuralNode(0.40f, 0.48f, NodeShape.DIAMOND, 10f, false),
             NeuralNode(0.44f, 0.78f, NodeShape.CIRCLE, 7f, false),
-            // Hidden layer 2
             NeuralNode(0.66f, 0.30f, NodeShape.TRIANGLE, 9f, false),
             NeuralNode(0.64f, 0.62f, NodeShape.HEXAGON, 10f, true),
-            // Output node (right)
             NeuralNode(0.86f, 0.46f, NodeShape.HEXAGON, 12f, true),
         )
     }
@@ -923,7 +944,6 @@ private fun GeometricNeuralNetwork(modifier: Modifier = Modifier) {
         val h = size.height
         val positions = nodes.map { Offset(it.xFrac * w, it.yFrac * h) }
 
-        // Draw synaptic edges + traveling signal dots
         edges.forEachIndexed { idx, (fromIdx, toIdx) ->
             val start = positions[fromIdx]
             val end = positions[toIdx]
@@ -950,7 +970,6 @@ private fun GeometricNeuralNetwork(modifier: Modifier = Modifier) {
             }
         }
 
-        // Draw geometric nodes
         nodes.forEachIndexed { idx, node ->
             val center = positions[idx]
             val r = node.radiusDp.dp.toPx()
@@ -1032,6 +1051,9 @@ private fun ChatBubble(
         else -> MaterialTheme.colorScheme.onSurfaceVariant
     }
 
+    var thoughtsExpanded by remember(message.id) { mutableStateOf(false) }
+    var toolsExpanded by remember(message.id) { mutableStateOf(false) }
+
     Box(
         modifier = Modifier.fillMaxWidth(),
         contentAlignment = alignment,
@@ -1042,10 +1064,125 @@ private fun ChatBubble(
             color = containerColor,
             contentColor = contentColor,
         ) {
-            Column(
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
+            SelectionContainer {
+                Column(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                if (message.thoughtText.isNotBlank()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { thoughtsExpanded = !thoughtsExpanded }
+                            .padding(vertical = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Psychology,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(15.dp),
+                        )
+                        Text(
+                            text = "Denkprozess",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Icon(
+                            imageVector = if (thoughtsExpanded) {
+                                Icons.Outlined.ExpandLess
+                            } else {
+                                Icons.Outlined.ExpandMore
+                            },
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(16.dp),
+                        )
+                    }
+                    AnimatedVisibility(visible = thoughtsExpanded) {
+                        Surface(
+                            shape = MaterialTheme.shapes.small,
+                            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.55f),
+                        ) {
+                            Text(
+                                text = message.thoughtText.trim(),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(8.dp),
+                            )
+                        }
+                    }
+                }
+
+                if (message.toolCalls.isNotEmpty()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { toolsExpanded = !toolsExpanded }
+                            .padding(vertical = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Build,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.secondary,
+                            modifier = Modifier.size(14.dp),
+                        )
+                        Text(
+                            text = "Tool-Calls (${message.toolCalls.size})",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.secondary,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Icon(
+                            imageVector = if (toolsExpanded) {
+                                Icons.Outlined.ExpandLess
+                            } else {
+                                Icons.Outlined.ExpandMore
+                            },
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.secondary,
+                            modifier = Modifier.size(16.dp),
+                        )
+                    }
+                    AnimatedVisibility(visible = toolsExpanded) {
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            message.toolCalls.forEach { trace ->
+                                Surface(
+                                    shape = MaterialTheme.shapes.small,
+                                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.55f),
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(8.dp),
+                                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                                    ) {
+                                        Text(
+                                            text = "${trace.name}(${trace.arguments})",
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontFamily = FontFamily.Monospace,
+                                            ),
+                                            color = MaterialTheme.colorScheme.primary,
+                                        )
+                                        Text(
+                                            text = trace.resultPreview,
+                                            style = MaterialTheme.typography.bodySmall.copy(
+                                                fontFamily = FontFamily.Monospace,
+                                            ),
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 4,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
                 if (!message.toolStatus.isNullOrBlank()) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -1062,6 +1199,7 @@ private fun ChatBubble(
                         )
                     }
                 }
+
                 if (message.text.isNotEmpty()) {
                     Text(
                         text = message.text,
@@ -1082,6 +1220,20 @@ private fun ChatBubble(
                         )
                     }
                 }
+
+                if (!isUser && !isError && !isStreamingThis && message.modelLabel != null) {
+                    val metaText = if (message.thinkingLabel != null) {
+                        "${message.modelLabel} · ${message.thinkingLabel}"
+                    } else {
+                        message.modelLabel
+                    }
+                    Text(
+                        text = metaText,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f),
+                    )
+                }
+            }
             }
         }
     }

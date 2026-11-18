@@ -45,6 +45,7 @@ import com.monolith.core.vfs.GoogleDriveVfsProvider
 import com.monolith.feature.explorer.ExplorerScreen
 import com.monolith.feature.explorer.SettingsScreen
 import com.monolith.feature.explorer.ai.AiChatScreen
+import com.monolith.feature.explorer.rememberExplorerNavigationState
 import com.monolith.feature.player.PlayerActivity
 import com.monolith.feature.viewers.ImageViewerActivity
 import com.monolith.feature.viewers.TextEditorActivity
@@ -87,6 +88,7 @@ class MainActivity : ComponentActivity() {
             var activeDestination by remember { mutableStateOf(MainDestination.EXPLORER) }
             var settingsReturnToAi by remember { mutableStateOf(false) }
             var aiCurrentDirectory by remember { mutableStateOf("") }
+            val explorerNavState = rememberExplorerNavigationState()
             var pendingOpen by remember { mutableStateOf<PendingOpenRequest?>(null) }
             var downloadingDriveFile by remember { mutableStateOf<String?>(null) }
             val transferProgress by FileTransferService.progress.collectAsState()
@@ -295,6 +297,7 @@ class MainActivity : ComponentActivity() {
                                 aiCurrentDirectory = currentDir
                                 activeDestination = MainDestination.AI_CHAT
                             },
+                            navState = explorerNavState,
                         )
                     }
                 }

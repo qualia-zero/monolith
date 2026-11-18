@@ -12,13 +12,19 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
 
+data class ToolCallTrace(
+    val name: String,
+    val arguments: String,
+    val resultPreview: String,
+)
+
 /**
  * Lightweight streaming client for the Gemini Interactions API (`v1beta/interactions`),
- * supporting multi-turn state via `previous_interaction_id` and automatic explorer tool execution.
+ * supporting multi-turn state via `previous_interaction_id`, thinking summaries, and explorer tools.
  */
 object GeminiInteractionsClient {
 
-    const val DEFAULT_MODEL = "gemini-3.8-flash"
+    const val DEFAULT_MODEL = "gemini-4-hydrogen"
     const val DEFAULT_THINKING_LEVEL = "medium"
     private const val ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/interactions"
     private const val API_REVISION = "2026-05-20"
@@ -45,11 +51,13 @@ object GeminiInteractionsClient {
         model: String = DEFAULT_MODEL,
         thinkingLevel: String = DEFAULT_THINKING_LEVEL,
         onTextDelta: (String) -> Unit,
+        onThoughtDelta: (String) -> Unit = {},
+        onToolCallTrace: (ToolCallTrace) -> Unit = {},
         onToolStatus: (String?) -> Unit,
     ): Result<String?> = withContext(Dispatchers.IO) {
         runCatching {
             val systemInstruction = buildString {
-                append("Du bist Monolith AI, ein hilfreicher Assistent direkt im Monolith-Dateiexplorer auf Android. ")
+                append("Du bist Monolith, ein hilfreicher Assistent direkt im Monolith-Dateiexplorer auf Android. ")
                 append("Antworte standardmäßig auf Deutsch, klar und prägnant. ")
                 append("Der Nutzer befindet sich aktuell im Ordner: $currentDirectory. ")
                 append("Du hast Lese-Tools für das lokale Dateisystem (`list_directory`, `read_text_file`, `get_file_info`, `search_files`). ")
@@ -69,6 +77,7 @@ object GeminiInteractionsClient {
                         "generation_config",
                         JSONObject().apply {
                             put("thinking_level", thinkingLevel)
+                            put("thinking_summaries", "auto")
                         },
                     )
                     put("tools", ExplorerAiTools.toolDeclarationsJson())
@@ -84,6 +93,7 @@ object GeminiInteractionsClient {
                     apiKey = apiKey,
                     requestBody = body,
                     onTextDelta = onTextDelta,
+                    onThoughtDelta = onThoughtDelta,
                 )
 
                 if (turn.interactionId != null) {
@@ -107,6 +117,14 @@ object GeminiInteractionsClient {
                         name = call.name,
                         arguments = argsJson,
                         currentDirectory = currentDirectory,
+                    )
+
+                    onToolCallTrace(
+                        ToolCallTrace(
+                            name = call.name,
+                            arguments = argsJson.toString(),
+                            resultPreview = outputText.take(260),
+                        ),
                     )
 
                     toolResults.put(
@@ -145,6 +163,7 @@ object GeminiInteractionsClient {
         apiKey: String,
         requestBody: JSONObject,
         onTextDelta: (String) -> Unit,
+        onThoughtDelta: (String) -> Unit,
     ): TurnResult {
         val encodedKey = URLEncoder.encode(apiKey.trim(), "UTF-8")
         val url = URL("$ENDPOINT?key=$encodedKey")
@@ -232,6 +251,16 @@ object GeminiInteractionsClient {
                                             )
                                         }
                                     }
+                                    "thought" -> {
+                                        val summary = step.optJSONArray("summary")
+                                        if (summary != null) {
+                                            for (i in 0 until summary.length()) {
+                                                val part = summary.optJSONObject(i) ?: continue
+                                                val t = part.optString("text")
+                                                if (t.isNotEmpty()) onThoughtDelta(t)
+                                            }
+                                        }
+                                    }
                                     "model_output" -> {
                                         val content = step.optJSONArray("content")
                                         if (content != null) {
@@ -254,6 +283,14 @@ object GeminiInteractionsClient {
                                         val text = delta.optString("text")
                                         if (text.isNotEmpty()) {
                                             onTextDelta(text)
+                                        }
+                                    }
+                                    "thought_summary", "thought" -> {
+                                        val text = delta.optJSONObject("content")?.optString("text")
+                                            ?.takeIf { it.isNotEmpty() }
+                                            ?: delta.optString("text")
+                                        if (text.isNotEmpty()) {
+                                            onThoughtDelta(text)
                                         }
                                     }
                                     "arguments_delta" -> {

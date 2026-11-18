@@ -1,6 +1,9 @@
 package com.monolith.feature.explorer.ai
 
+import android.graphics.BitmapFactory
+import android.media.MediaMetadataRetriever
 import android.os.Environment
+import android.webkit.MimeTypeMap
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -98,7 +101,11 @@ object ExplorerAiTools {
                 JSONObject().apply {
                     put("type", "function")
                     put("name", "get_file_info")
-                    put("description", "Returns metadata (size, last modified, type) for a local file or directory.")
+                    put(
+                        "description",
+                        "Returns compact metadata (size, last modified, mime type, and for media/images: " +
+                            "duration, resolution, title, artist, album, codec/bitrate) without long text fields.",
+                    )
                     put(
                         "parameters",
                         JSONObject().apply {
@@ -251,14 +258,71 @@ object ExplorerAiTools {
         val file = File(path)
         if (!file.exists()) return JSONObject().put("error", "Path does not exist: $path").toString()
         val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US)
+        val ext = file.extension.lowercase(Locale.US)
+        val mimeType = if (file.isFile && ext.isNotEmpty()) {
+            MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext)
+        } else {
+            null
+        }
+
         return JSONObject().apply {
             put("name", file.name)
             put("path", file.absolutePath)
             put("type", if (file.isDirectory) "directory" else "file")
+            if (ext.isNotEmpty()) put("extension", ext)
+            if (!mimeType.isNullOrBlank()) put("mime_type", mimeType)
             put("size_bytes", file.length())
             put("last_modified", dateFormat.format(Date(file.lastModified())))
             put("can_read", file.canRead())
             put("can_write", file.canWrite())
+
+            if (file.isFile && mimeType != null) {
+                when {
+                    mimeType.startsWith("image/") -> {
+                        runCatching {
+                            val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                            BitmapFactory.decodeFile(file.absolutePath, opts)
+                            if (opts.outWidth > 0 && opts.outHeight > 0) {
+                                put("width", opts.outWidth)
+                                put("height", opts.outHeight)
+                            }
+                        }
+                    }
+                    mimeType.startsWith("audio/") || mimeType.startsWith("video/") -> {
+                        val retriever = MediaMetadataRetriever()
+                        runCatching {
+                            retriever.setDataSource(file.absolutePath)
+                            fun putShort(key: String, metaKey: Int) {
+                                retriever.extractMetadata(metaKey)
+                                    ?.trim()
+                                    ?.takeIf { it.isNotEmpty() }
+                                    ?.take(120)
+                                    ?.let { put(key, it) }
+                            }
+                            putShort("title", MediaMetadataRetriever.METADATA_KEY_TITLE)
+                            putShort("artist", MediaMetadataRetriever.METADATA_KEY_ARTIST)
+                            putShort("album", MediaMetadataRetriever.METADATA_KEY_ALBUM)
+                            putShort("year", MediaMetadataRetriever.METADATA_KEY_YEAR)
+                            putShort("genre", MediaMetadataRetriever.METADATA_KEY_GENRE)
+                            retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+                                ?.toLongOrNull()
+                                ?.let { put("duration_ms", it) }
+                            retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_BITRATE)
+                                ?.toLongOrNull()
+                                ?.let { put("bitrate", it) }
+                            if (mimeType.startsWith("video/")) {
+                                retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)
+                                    ?.toIntOrNull()
+                                    ?.let { put("width", it) }
+                                retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)
+                                    ?.toIntOrNull()
+                                    ?.let { put("height", it) }
+                            }
+                        }
+                        runCatching { retriever.release() }
+                    }
+                }
+            }
         }.toString()
     }
 

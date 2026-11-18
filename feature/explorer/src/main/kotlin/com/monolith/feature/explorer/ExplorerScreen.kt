@@ -130,6 +130,20 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import java.io.File
 
+class ExplorerNavigationState(rootPath: String) {
+    var activeLocation by mutableStateOf(LocationType.LOCAL)
+    var activeLocalRootPath by mutableStateOf(rootPath)
+    var localPath by mutableStateOf(rootPath)
+    var driveStack by mutableStateOf(listOf("gdrive://root" to "Google Drive"))
+}
+
+@Composable
+fun rememberExplorerNavigationState(
+    rootPath: String = remember { Environment.getExternalStorageDirectory().absolutePath },
+): ExplorerNavigationState {
+    return remember(rootPath) { ExplorerNavigationState(rootPath) }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ExplorerScreen(
@@ -143,6 +157,7 @@ fun ExplorerScreen(
     onOpenMiniPlayer: () -> Unit = {},
     onOpenSettings: () -> Unit = {},
     onOpenAiChat: (currentDirectory: String) -> Unit = {},
+    navState: ExplorerNavigationState = rememberExplorerNavigationState(),
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -152,10 +167,10 @@ fun ExplorerScreen(
     val rootPath = remember { Environment.getExternalStorageDirectory().absolutePath }
     val externalVolumes = rememberExternalStorageVolumes(context)
 
-    var activeLocation by remember { mutableStateOf(LocationType.LOCAL) }
-    var activeLocalRootPath by remember { mutableStateOf(rootPath) }
-    var localPath by remember { mutableStateOf(rootPath) }
-    var driveStack by remember { mutableStateOf(listOf("gdrive://root" to "Google Drive")) }
+    var activeLocation by navState::activeLocation
+    var activeLocalRootPath by navState::activeLocalRootPath
+    var localPath by navState::localPath
+    var driveStack by navState::driveStack
     val activeExternalVolume = externalVolumes.firstOrNull { it.rootPath == activeLocalRootPath }
 
     LaunchedEffect(externalVolumes, activeLocalRootPath) {

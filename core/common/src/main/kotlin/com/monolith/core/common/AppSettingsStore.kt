@@ -23,6 +23,8 @@ object AppSettingsStore {
     private const val KEY_GEMINI_API_KEY = "gemini_api_key"
     private const val KEY_GEMINI_API_KEYS = "gemini_api_keys"
     private const val KEY_ACTIVE_GEMINI_API_KEY_ID = "active_gemini_api_key_id"
+    private const val KEY_AI_MODEL_ID = "ai_model_id"
+    private const val KEY_AI_THINKING_LEVEL = "ai_thinking_level"
 
     @Volatile
     private var prefs: SharedPreferences? = null
@@ -154,6 +156,9 @@ object AppSettingsStore {
             geminiApiKey = finalKeys.firstOrNull { it.id == activeId }?.key ?: legacyKey,
             geminiApiKeys = finalKeys,
             activeGeminiApiKeyId = activeId,
+            aiModelId = sp.getString(KEY_AI_MODEL_ID, defaults.aiModelId) ?: defaults.aiModelId,
+            aiThinkingLevel = sp.getString(KEY_AI_THINKING_LEVEL, defaults.aiThinkingLevel)
+                ?: defaults.aiThinkingLevel,
         )
     }
 
@@ -179,6 +184,8 @@ object AppSettingsStore {
             ?.putString(KEY_GEMINI_API_KEY, value.activeGeminiApiKey)
             ?.putString(KEY_GEMINI_API_KEYS, keysArray.toString())
             ?.putString(KEY_ACTIVE_GEMINI_API_KEY_ID, value.activeGeminiApiKeyId)
+            ?.putString(KEY_AI_MODEL_ID, value.aiModelId)
+            ?.putString(KEY_AI_THINKING_LEVEL, value.aiThinkingLevel)
             ?.apply()
     }
 
