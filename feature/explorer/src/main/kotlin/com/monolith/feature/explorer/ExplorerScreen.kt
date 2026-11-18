@@ -1289,7 +1289,7 @@ private fun MiniPlayerBar(
 ) {
     val context = LocalContext.current
     val mediaPath = remember(mediaUri) {
-        if (mediaUri.startsWith("file://")) mediaUri.removePrefix("file://") else mediaUri
+        ThumbnailEngine.resolveMediaPath(mediaUri)
     }
     val lastModified = remember(mediaPath) {
         if (mediaPath.startsWith("/")) {
