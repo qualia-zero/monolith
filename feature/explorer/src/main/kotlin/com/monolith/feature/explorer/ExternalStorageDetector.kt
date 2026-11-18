@@ -34,7 +34,8 @@ object ExternalStorageDetector {
 
     fun listMountedVolumes(context: Context): List<ExternalStorageVolume> {
         val storageManager = context.getSystemService(StorageManager::class.java) ?: return emptyList()
-        val hasUsbMassStorage = hasAttachedUsbMassStorage(context)
+        val usbDeviceName = attachedUsbMassStorageName(context)
+        val hasUsbMassStorage = usbDeviceName != null || hasAttachedUsbMassStorage(context)
 
         return storageManager.storageVolumes.mapNotNull { volume ->
             if (volume.isPrimary) return@mapNotNull null
@@ -46,16 +47,44 @@ object ExternalStorageDetector {
             if (!dir.exists() || !dir.isDirectory) return@mapNotNull null
 
             val description = volume.getDescription(context)?.trim().orEmpty()
-            val label = description.ifBlank {
-                volume.uuid?.takeIf { it.isNotBlank() } ?: dir.name
-            }
             val kind = classifyVolumeKind(description, hasUsbMassStorage)
+            val label = resolveVolumeLabel(
+                description = description,
+                uuid = volume.uuid,
+                dirName = dir.name,
+                kind = kind,
+                usbDeviceName = usbDeviceName,
+            )
             ExternalStorageVolume(
                 id = volume.uuid ?: dir.absolutePath,
                 name = label,
                 rootPath = dir.absolutePath,
                 kind = kind,
             )
+        }
+    }
+
+    private fun resolveVolumeLabel(
+        description: String,
+        uuid: String?,
+        dirName: String,
+        kind: ExternalVolumeKind,
+        usbDeviceName: String?,
+    ): String {
+        val isGenericUsbDesc = description.equals("USB-Laufwerk", ignoreCase = true) ||
+            description.equals("USB drive", ignoreCase = true) ||
+            description.equals("USB storage", ignoreCase = true) ||
+            description.equals("Mass Storage", ignoreCase = true) ||
+            description.matches(Regex("^[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}$"))
+
+        if (kind == ExternalVolumeKind.USB) {
+            if (description.isNotBlank() && !isGenericUsbDesc) return description
+            if (!usbDeviceName.isNullOrBlank()) return usbDeviceName
+            return "USB-Speicher"
+        }
+
+        return description.ifBlank {
+            uuid?.takeIf { it.isNotBlank() } ?: dirName
         }
     }
 
@@ -88,6 +117,25 @@ object ExternalStorageDetector {
             (0 until device.interfaceCount).any { idx ->
                 device.getInterface(idx).interfaceClass == UsbConstants.USB_CLASS_MASS_STORAGE
             }
+        }
+    }
+
+    private fun attachedUsbMassStorageName(context: Context): String? {
+        val usbManager = context.getSystemService(UsbManager::class.java) ?: return null
+        val device = usbManager.deviceList.values.firstOrNull { dev ->
+            (0 until dev.interfaceCount).any { idx ->
+                dev.getInterface(idx).interfaceClass == UsbConstants.USB_CLASS_MASS_STORAGE
+            }
+        } ?: return null
+
+        val product = device.productName?.trim().orEmpty()
+        val manufacturer = device.manufacturerName?.trim().orEmpty()
+        return when {
+            product.isNotBlank() && manufacturer.isNotBlank() &&
+                !product.contains(manufacturer, ignoreCase = true) -> "$manufacturer $product"
+            product.isNotBlank() -> product
+            manufacturer.isNotBlank() -> "$manufacturer USB"
+            else -> null
         }
     }
 }

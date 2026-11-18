@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CutCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.MoreVert
@@ -246,7 +247,7 @@ fun MonolithStarMenuOverlay(
 
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
-                        shape = buttonShape,
+                        shape = CutCornerShape(8.dp),
                         color = rowContainerColor,
                         contentColor = rowContentColor,
                         onClick = {
@@ -405,7 +406,7 @@ fun MonolithCornerMenuOverlay(
                 items.forEach { item ->
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
-                        shape = buttonShape,
+                        shape = CutCornerShape(8.dp),
                         color = Color.Transparent,
                         contentColor = MaterialTheme.colorScheme.onSurface,
                         onClick = {

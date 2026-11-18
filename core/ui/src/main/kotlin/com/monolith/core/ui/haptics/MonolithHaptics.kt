@@ -66,6 +66,26 @@ object MonolithHaptics {
         )
     }
 
+    fun refreshDetent(context: Context, view: View) {
+        val settings = AppSettingsStore.settings.value
+        if (!settings.hapticsEnabled || !settings.hapticPullRefresh) return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val ticked = vibratePredefined(context, VibrationEffect.EFFECT_TICK)
+            if (ticked) return
+        }
+        view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+    }
+
+    fun refreshComplete(context: Context, view: View) {
+        val settings = AppSettingsStore.settings.value
+        if (!settings.hapticsEnabled || !settings.hapticPullRefresh) return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val clicked = vibratePredefined(context, VibrationEffect.EFFECT_CLICK)
+            if (clicked) return
+        }
+        view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
+    }
+
     private fun vibratePredefined(context: Context, effectId: Int): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return false
         return runCatching {

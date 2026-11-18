@@ -24,8 +24,10 @@ import java.net.HttpURLConnection
 import java.net.ProtocolException
 import java.net.URL
 import java.net.URLEncoder
+import java.security.MessageDigest
 import java.time.Instant
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 
 class GoogleDriveVfsProvider(
     private val context: Context,
@@ -34,14 +36,52 @@ class GoogleDriveVfsProvider(
 
     override val locationType: LocationType = LocationType.GOOGLE_DRIVE
 
+    private val memoryCache = ConcurrentHashMap<String, List<VfsNode>>()
+    private val cacheDir by lazy {
+        File(context.applicationContext.cacheDir, "gdrive_dir_cache").apply { mkdirs() }
+    }
+
     fun extractId(path: String): String =
         path.removePrefix(SCHEME_PREFIX).trim('/').ifEmpty { ROOT_ID }
 
     fun streamUrl(path: String): String =
         "$FILES_ENDPOINT/${urlEncode(extractId(path))}?alt=media"
 
+    fun hasCachedList(path: String, showHidden: Boolean): Boolean {
+        val key = cacheKey(path, showHidden)
+        if (memoryCache.containsKey(key)) return true
+        return cacheFileForKey(key).isFile
+    }
+
+    fun invalidateCache(path: String? = null) {
+        if (path == null) {
+            memoryCache.clear()
+            cacheDir.listFiles()?.forEach { it.delete() }
+            return
+        }
+        val parentId = extractId(path)
+        val account = authManager.getActiveEmail(context).orEmpty().ifBlank { "default" }
+        listOf(true, false).forEach { hidden ->
+            val key = "$account|$parentId|$hidden"
+            memoryCache.remove(key)
+            cacheFileForKey(key).delete()
+        }
+    }
+
     override suspend fun list(path: String, showHidden: Boolean): List<VfsNode> =
+        list(path = path, showHidden = showHidden, forceRefresh = false)
+
+    suspend fun list(path: String, showHidden: Boolean, forceRefresh: Boolean): List<VfsNode> =
         withContext(Dispatchers.IO) {
+            val key = cacheKey(path, showHidden)
+            if (!forceRefresh) {
+                memoryCache[key]?.let { return@withContext it }
+                readDiskCache(key)?.let { diskNodes ->
+                    memoryCache[key] = diskNodes
+                    return@withContext diskNodes
+                }
+            }
+
             val token = requireToken()
             val parentId = extractId(path)
             val query = "'$parentId' in parents and trashed = false"
@@ -85,14 +125,86 @@ class GoogleDriveVfsProvider(
             } else {
                 null
             }
-            if (counts != null) {
+            val finalNodes = if (counts != null) {
                 nodes.map { node ->
                     if (node.isDirectory) node.copy(childCount = counts[node.id] ?: 0) else node
                 }
             } else {
                 nodes
             }
+
+            memoryCache[key] = finalNodes
+            writeDiskCache(key, finalNodes)
+            finalNodes
         }
+
+    private fun cacheKey(path: String, showHidden: Boolean): String {
+        val account = authManager.getActiveEmail(context).orEmpty().ifBlank { "default" }
+        return "$account|${extractId(path)}|$showHidden"
+    }
+
+    private fun cacheFileForKey(key: String): File {
+        val digest = MessageDigest.getInstance("SHA-256").digest(key.toByteArray(Charsets.UTF_8))
+        val hex = digest.joinToString("") { "%02x".format(it) }
+        return File(cacheDir, "$hex.json")
+    }
+
+    private fun readDiskCache(key: String): List<VfsNode>? {
+        val file = cacheFileForKey(key)
+        if (!file.isFile) return null
+        return runCatching {
+            val arr = JSONArray(file.readText(Charsets.UTF_8))
+            buildList(arr.length()) {
+                for (i in 0 until arr.length()) {
+                    val obj = arr.getJSONObject(i)
+                    val category = runCatching {
+                        FileCategory.valueOf(obj.optString("category", FileCategory.OTHER.name))
+                    }.getOrDefault(FileCategory.OTHER)
+                    add(
+                        VfsNode(
+                            id = obj.getString("id"),
+                            name = obj.getString("name"),
+                            path = obj.getString("path"),
+                            parentPath = obj.optString("parentPath").ifEmpty { null },
+                            locationType = LocationType.GOOGLE_DRIVE,
+                            isDirectory = obj.optBoolean("isDirectory", false),
+                            sizeBytes = obj.optLong("sizeBytes", 0L),
+                            lastModifiedMs = obj.optLong("lastModifiedMs", 0L),
+                            mimeType = obj.optString("mimeType", ""),
+                            category = category,
+                            thumbnailUrl = obj.optString("thumbnailUrl").ifEmpty { null },
+                            childCount = obj.optInt("childCount", 0),
+                        ),
+                    )
+                }
+            }
+        }.getOrNull()
+    }
+
+    private fun writeDiskCache(key: String, nodes: List<VfsNode>) {
+        runCatching {
+            val arr = JSONArray().apply {
+                nodes.forEach { node ->
+                    put(
+                        JSONObject().apply {
+                            put("id", node.id)
+                            put("name", node.name)
+                            put("path", node.path)
+                            put("parentPath", node.parentPath.orEmpty())
+                            put("isDirectory", node.isDirectory)
+                            put("sizeBytes", node.sizeBytes)
+                            put("lastModifiedMs", node.lastModifiedMs)
+                            put("mimeType", node.mimeType.orEmpty())
+                            put("category", node.category.name)
+                            put("thumbnailUrl", node.thumbnailUrl.orEmpty())
+                            put("childCount", node.childCount)
+                        },
+                    )
+                }
+            }
+            cacheFileForKey(key).writeText(arr.toString(), Charsets.UTF_8)
+        }
+    }
 
     override suspend fun stat(path: String): VfsNode? =
         withContext(Dispatchers.IO) {
@@ -312,6 +424,7 @@ class GoogleDriveVfsProvider(
             if (trimmed.isEmpty()) throw IllegalArgumentException("Ordnername darf nicht leer sein.")
             val token = requireToken()
             createDriveFolder(token, extractId(parentPath), trimmed)
+            invalidateCache(parentPath)
         }
 
     override suspend fun rename(path: String, newName: String): Result<Unit> =
@@ -327,6 +440,7 @@ class GoogleDriveVfsProvider(
                 token = token,
                 body = body,
             )
+            invalidateCache(null)
         }
 
     override suspend fun delete(paths: List<String>): Result<Unit> =
@@ -342,6 +456,7 @@ class GoogleDriveVfsProvider(
                     body = body,
                 )
             }
+            invalidateCache(null)
         }
 
     override suspend fun copy(

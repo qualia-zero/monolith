@@ -20,6 +20,7 @@ object AppSettingsStore {
     private const val KEY_HAPTIC_DRAG = "haptic_drag_lift"
     private const val KEY_HAPTIC_LAUNCH = "haptic_launch_item"
     private const val KEY_HAPTIC_PULSE = "haptic_pulse_feedback"
+    private const val KEY_HAPTIC_PULL_REFRESH = "haptic_pull_refresh"
     private const val KEY_GEMINI_API_KEY = "gemini_api_key"
     private const val KEY_GEMINI_API_KEYS = "gemini_api_keys"
     private const val KEY_ACTIVE_GEMINI_API_KEY_ID = "active_gemini_api_key_id"
@@ -154,6 +155,7 @@ object AppSettingsStore {
             hapticDragLift = sp.getBoolean(KEY_HAPTIC_DRAG, defaults.hapticDragLift),
             hapticLaunchItem = sp.getBoolean(KEY_HAPTIC_LAUNCH, defaults.hapticLaunchItem),
             hapticPulseFeedback = sp.getBoolean(KEY_HAPTIC_PULSE, defaults.hapticPulseFeedback),
+            hapticPullRefresh = sp.getBoolean(KEY_HAPTIC_PULL_REFRESH, defaults.hapticPullRefresh),
             geminiApiKey = finalKeys.firstOrNull { it.id == activeId }?.key ?: legacyKey,
             geminiApiKeys = finalKeys,
             activeGeminiApiKeyId = activeId,
@@ -184,6 +186,7 @@ object AppSettingsStore {
             ?.putBoolean(KEY_HAPTIC_DRAG, value.hapticDragLift)
             ?.putBoolean(KEY_HAPTIC_LAUNCH, value.hapticLaunchItem)
             ?.putBoolean(KEY_HAPTIC_PULSE, value.hapticPulseFeedback)
+            ?.putBoolean(KEY_HAPTIC_PULL_REFRESH, value.hapticPullRefresh)
             ?.putString(KEY_GEMINI_API_KEY, value.activeGeminiApiKey)
             ?.putString(KEY_GEMINI_API_KEYS, keysArray.toString())
             ?.putString(KEY_ACTIVE_GEMINI_API_KEY_ID, value.activeGeminiApiKeyId)

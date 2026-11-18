@@ -1,7 +1,9 @@
 package com.monolith.feature.explorer
 
 import android.app.Activity
+import android.content.Intent
 import android.os.Environment
+import androidx.core.content.FileProvider
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -52,6 +54,7 @@ import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.SdStorage
 import androidx.compose.material.icons.outlined.SelectAll
+import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.Usb
 import androidx.compose.material.icons.outlined.VideoFile
 import androidx.compose.material.icons.outlined.ViewInAr
@@ -121,6 +124,7 @@ import com.monolith.core.model.ThemeMode
 import com.monolith.core.model.VfsNode
 import com.monolith.core.ui.components.CornerMenuItem
 import com.monolith.core.ui.components.MonolithCornerMenuOverlay
+import com.monolith.core.ui.components.MonolithLoadingSpinner
 import com.monolith.core.ui.components.MonolithRefreshIndicator
 import com.monolith.core.ui.components.MonolithStarMenuOverlay
 import com.monolith.core.ui.components.StarMenuItem
@@ -133,8 +137,10 @@ import com.monolith.core.vfs.GoogleDriveVfsProvider
 import com.monolith.core.vfs.LocalVfsProvider
 import com.monolith.core.vfs.VfsProvider
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 
 class ExplorerNavigationState(rootPath: String) {
@@ -234,7 +240,10 @@ fun ExplorerScreen(
     var showCreateFolderDialog by remember { mutableStateOf(false) }
     var renameTargetNode by remember { mutableStateOf<VfsNode?>(null) }
     var showDeleteDialog by remember { mutableStateOf(false) }
+    var shareCloudTarget by remember { mutableStateOf<VfsNode?>(null) }
+    var isDownloadingForShare by remember { mutableStateOf(false) }
     var refreshTrigger by remember { mutableIntStateOf(0) }
+    var forceRefreshNextLoad by remember { mutableStateOf(false) }
     var loadRequestSeq by remember { mutableIntStateOf(0) }
 
     val playbackState by MpvEngine.uiState.collectAsState()
@@ -323,9 +332,19 @@ fun ExplorerScreen(
             isLoading = false
             return@LaunchedEffect
         }
-        isLoading = activeLocation == LocationType.GOOGLE_DRIVE
+        val forceRefresh = forceRefreshNextLoad
+        forceRefreshNextLoad = false
+        isLoading = if (activeLocation == LocationType.GOOGLE_DRIVE) {
+            forceRefresh || !driveProvider.hasCachedList(currentPath, showHidden)
+        } else {
+            false
+        }
         try {
-            val raw = activeProvider.list(currentPath, showHidden)
+            val raw = if (activeLocation == LocationType.GOOGLE_DRIVE) {
+                driveProvider.list(currentPath, showHidden, forceRefresh = forceRefresh)
+            } else {
+                activeProvider.list(currentPath, showHidden)
+            }
             if (requestId != loadRequestSeq) return@LaunchedEffect
             nodes = raw.sortedWith(
                 compareByDescending<VfsNode> { it.isDirectory }.thenBy {
@@ -445,13 +464,27 @@ fun ExplorerScreen(
                                 }
                                 if (!singleNode.isDirectory) {
                                     IconButton(onClick = {
-                                        val siblings = nodes.filter { it.category == singleNode.category }
                                         selectedPaths = emptySet()
-                                        onOpenWith(singleNode, siblings)
+                                        if (singleNode.locationType == LocationType.GOOGLE_DRIVE) {
+                                            shareCloudTarget = singleNode
+                                        } else {
+                                            runCatching {
+                                                shareLocalFile(
+                                                    context = context,
+                                                    file = File(singleNode.path),
+                                                    mimeType = singleNode.mimeType,
+                                                    title = singleNode.name,
+                                                )
+                                            }.onFailure { err ->
+                                                scope.launch {
+                                                    snackbarHostState.showSnackbar(err.message ?: "Teilen fehlgeschlagen")
+                                                }
+                                            }
+                                        }
                                     }) {
                                         Icon(
-                                            Icons.AutoMirrored.Outlined.OpenInNew,
-                                            contentDescription = "Öffnen mit",
+                                            Icons.Outlined.Share,
+                                            contentDescription = "Teilen",
                                         )
                                     }
                                 }
@@ -466,9 +499,8 @@ fun ExplorerScreen(
                 TopAppBar(
                     title = {
                         val label = when {
+                            !canNavigateUp -> "Monolith"
                             activeLocation == LocationType.GOOGLE_DRIVE -> driveStack.last().second
-                            localPath == rootPath -> "Monolith"
-                            localPath == activeLocalRootPath -> activeExternalVolume?.name ?: localPath.substringAfterLast('/')
                             else -> localPath.substringAfterLast('/')
                         }
                         Text(
@@ -794,18 +826,28 @@ fun ExplorerScreen(
             } else if (isLoading) {
                 Box(
                     modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center,
                 ) {
-                    CircularProgressIndicator()
+                    MonolithLoadingSpinner(
+                        modifier = Modifier.align(Alignment.TopCenter),
+                    )
                 }
             } else {
                 var isPullRefreshing by remember { mutableStateOf(false) }
                 val pullState = rememberPullToRefreshState()
                 val pullThresholdReached = pullState.distanceFraction >= 1f
+                val targetContentOffsetDp = if (isPullRefreshing) {
+                    68f
+                } else {
+                    pullState.distanceFraction.coerceIn(0f, 1.2f) * 68f
+                }
+                val contentOffsetDp by animateFloatAsState(
+                    targetValue = targetContentOffsetDp,
+                    label = "pullRefreshContentOffset",
+                )
 
                 LaunchedEffect(pullThresholdReached) {
                     if (pullThresholdReached && !isPullRefreshing) {
-                        MonolithHaptics.tick(context, view)
+                        MonolithHaptics.refreshDetent(context, view)
                     }
                 }
 
@@ -814,7 +856,7 @@ fun ExplorerScreen(
                     onRefresh = {
                         if (!isPullRefreshing) {
                             isPullRefreshing = true
-                            MonolithHaptics.navClick(context, view)
+                            forceRefreshNextLoad = true
                             refreshTrigger++
                             scope.launch {
                                 delay(480L)
@@ -822,7 +864,7 @@ fun ExplorerScreen(
                                     delay(50L)
                                 }
                                 isPullRefreshing = false
-                                MonolithHaptics.successPulse(context)
+                                MonolithHaptics.refreshComplete(context, view)
                             }
                         }
                     },
@@ -837,7 +879,11 @@ fun ExplorerScreen(
                     },
                 ) {
                     LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .graphicsLayer {
+                                translationY = contentOffsetDp.dp.toPx()
+                            },
                     ) {
                     items(nodes, key = { it.id }) { node ->
                         val isSelected = node.path in selectedPaths
@@ -998,6 +1044,81 @@ fun ExplorerScreen(
     )
     }
 
+    shareCloudTarget?.let { target ->
+        AlertDialog(
+            onDismissRequest = {
+                if (!isDownloadingForShare) {
+                    shareCloudTarget = null
+                }
+            },
+            title = { Text("Cloud-Datei teilen") },
+            text = {
+                if (isDownloadingForShare) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                        Text("„${target.name}“ wird zwischengeladen…")
+                    }
+                } else {
+                    Text("„${target.name}“ liegt auf Google Drive. Zum Teilen kurz zwischenladen?")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    enabled = !isDownloadingForShare,
+                    shape = LocalMonolithButtonShape.current,
+                    onClick = { shareCloudTarget = null },
+                ) {
+                    Text("Abbrechen")
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = !isDownloadingForShare,
+                    shape = LocalMonolithButtonShape.current,
+                    onClick = {
+                        isDownloadingForShare = true
+                        scope.launch {
+                            val result = runCatching {
+                                withContext(Dispatchers.IO) {
+                                    val cacheFolder = File(context.cacheDir, "shared_drive").apply { mkdirs() }
+                                    val safeName = target.name.replace('/', '_')
+                                    val outFile = File(cacheFolder, safeName)
+                                    driveProvider.openInputStream(target.path).use { input ->
+                                        outFile.outputStream().use { output ->
+                                            input.copyTo(output)
+                                        }
+                                    }
+                                    outFile
+                                }
+                            }
+                            isDownloadingForShare = false
+                            shareCloudTarget = null
+                            result.onSuccess { cachedFile ->
+                                runCatching {
+                                    shareLocalFile(
+                                        context = context,
+                                        file = cachedFile,
+                                        mimeType = target.mimeType,
+                                        title = target.name,
+                                    )
+                                }.onFailure { err ->
+                                    snackbarHostState.showSnackbar(err.message ?: "Teilen fehlgeschlagen")
+                                }
+                            }.onFailure { err ->
+                                snackbarHostState.showSnackbar(err.message ?: "Zwischenladen fehlgeschlagen")
+                            }
+                        }
+                    },
+                ) {
+                    Text("Zwischenladen & Teilen")
+                }
+            },
+        )
+    }
+
     if (showSortDialog) {
         AlertDialog(
             onDismissRequest = { showSortDialog = false },
@@ -1155,6 +1276,25 @@ fun ExplorerScreen(
             },
         )
     }
+}
+
+private fun shareLocalFile(
+    context: android.content.Context,
+    file: File,
+    mimeType: String,
+    title: String,
+) {
+    val uri = FileProvider.getUriForFile(
+        context,
+        "${context.packageName}.fileprovider",
+        file,
+    )
+    val sendIntent = Intent(Intent.ACTION_SEND).apply {
+        type = mimeType.ifBlank { "*/*" }
+        putExtra(Intent.EXTRA_STREAM, uri)
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+    context.startActivity(Intent.createChooser(sendIntent, title))
 }
 
 @Composable

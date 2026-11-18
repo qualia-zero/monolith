@@ -184,6 +184,15 @@ fun SettingsScreen(
                             if (enabled) MonolithHaptics.successPulse(context)
                         },
                     )
+                    HapticToggleRow(
+                        title = "Aktualisieren",
+                        subtitle = "Einrasten und Abschluss beim Herunterziehen",
+                        checked = appSettings.hapticPullRefresh,
+                        onCheckedChange = { enabled ->
+                            AppSettingsStore.update { it.copy(hapticPullRefresh = enabled) }
+                            if (enabled) MonolithHaptics.refreshDetent(context, view)
+                        },
+                    )
                 }
             }
 
