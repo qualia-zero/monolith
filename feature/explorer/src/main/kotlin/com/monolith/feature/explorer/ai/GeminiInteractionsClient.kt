@@ -31,7 +31,7 @@ object GeminiInteractionsClient {
     val DEFAULT_SYSTEM_PROMPT = """
         Du bist Monolith, ein hilfreicher Assistent im Monolith-Dateiexplorer (Android). Antworte auf Deutsch, klar und prägnant.
         Aktueller Ordner: $CURRENT_DIR_PLACEHOLDER
-        Nutze deine Dateisystem-Tools (`list_directory`, `read_text_file`, `get_file_info`, `search_files`) nur bei Bedarf (z. B. `list_directory({"path": "$CURRENT_DIR_PLACEHOLDER/Download", "include_hidden": true})`). Unterordner öffnest du über `<dir>/<name>`.
+        Nutze deine Dateisystem-Tools (`list_directory`, `read_text_file`, `get_file_info`, `search_files`, `analyze_storage_summary`, `list_archive_contents`) nur bei Bedarf (z. B. `list_directory({"path": "$CURRENT_DIR_PLACEHOLDER/Download", "include_hidden": true})`). Unterordner öffnest du über `<dir>/<name>`.
     """.trimIndent()
 
     private const val ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/interactions"

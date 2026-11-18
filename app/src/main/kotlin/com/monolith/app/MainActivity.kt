@@ -35,6 +35,7 @@ import com.monolith.core.media.MpvEngine
 import com.monolith.core.media.ThumbnailEngine
 import com.monolith.core.model.DefaultAppAssociation
 import com.monolith.core.model.FileCategory
+import com.monolith.core.model.LocationType
 import com.monolith.core.model.ThemeMode
 import com.monolith.core.model.VfsNode
 import com.monolith.core.ui.components.MonolithDialog
@@ -44,9 +45,12 @@ import com.monolith.core.vfs.GoogleDriveAuthManager
 import com.monolith.core.vfs.GoogleDriveVfsProvider
 import com.monolith.feature.explorer.CloudCacheManager
 import com.monolith.feature.explorer.ExplorerScreen
+import com.monolith.feature.explorer.ExternalStorageDetector
 import com.monolith.feature.explorer.SettingsScreen
 import com.monolith.feature.explorer.ai.AiChatScreen
+import com.monolith.feature.explorer.archive.ArchiveToolScreen
 import com.monolith.feature.explorer.rememberExplorerNavigationState
+import com.monolith.feature.explorer.storage.StorageAnalysisScreen
 import com.monolith.feature.player.PlayerActivity
 import com.monolith.feature.viewers.ImageViewerActivity
 import com.monolith.feature.viewers.TextEditorActivity
@@ -56,8 +60,10 @@ import java.io.File
 
 private enum class MainDestination {
     EXPLORER,
-    SETTINGS,
+    ARCHIVE_TOOL,
+    STORAGE_ANALYSIS,
     AI_CHAT,
+    SETTINGS,
 }
 
 private data class PendingOpenRequest(
@@ -88,8 +94,11 @@ class MainActivity : ComponentActivity() {
             val driveProvider = remember { GoogleDriveVfsProvider(applicationContext) }
             val scope = rememberCoroutineScope()
             var activeDestination by remember { mutableStateOf(MainDestination.EXPLORER) }
-            var settingsReturnToAi by remember { mutableStateOf(false) }
+            var settingsReturnDestination by remember { mutableStateOf(MainDestination.EXPLORER) }
             var aiCurrentDirectory by remember { mutableStateOf("") }
+            var archiveInitialFilePath by remember { mutableStateOf<String?>(null) }
+            var archiveInitialPackPaths by remember { mutableStateOf<List<String>>(emptyList()) }
+            var storageInitialRootPath by remember { mutableStateOf<String?>(null) }
             val explorerNavState = rememberExplorerNavigationState()
             var pendingOpen by remember { mutableStateOf<PendingOpenRequest?>(null) }
             var downloadingDriveFile by remember { mutableStateOf<String?>(null) }
@@ -208,6 +217,12 @@ class MainActivity : ComponentActivity() {
                         )
                         true
                     }
+                    HANDLER_INTERNAL_ARCHIVE -> {
+                        archiveInitialFilePath = node.path
+                        archiveInitialPackPaths = emptyList()
+                        activeDestination = MainDestination.ARCHIVE_TOOL
+                        true
+                    }
                     else -> openExternal(node, packageName, activityName)
                 }
             }
@@ -286,6 +301,25 @@ class MainActivity : ComponentActivity() {
                 pendingOpen = PendingOpenRequest(node, siblings)
             }
 
+            fun openLocalFolderInExplorer(folderPath: String) {
+                val dir = File(folderPath)
+                val targetPath = if (dir.isDirectory) {
+                    dir.absolutePath
+                } else {
+                    dir.parent ?: Environment.getExternalStorageDirectory().absolutePath
+                }
+                val internalRoot = Environment.getExternalStorageDirectory().absolutePath
+                val externalVolumes = ExternalStorageDetector.listMountedVolumes(this@MainActivity)
+                val matchingRoot = externalVolumes
+                    .firstOrNull { targetPath == it.rootPath || targetPath.startsWith(it.rootPath.trimEnd('/') + "/") }
+                    ?.rootPath
+                    ?: internalRoot
+                explorerNavState.activeLocation = LocationType.LOCAL
+                explorerNavState.activeLocalRootPath = matchingRoot
+                explorerNavState.localPath = targetPath
+                activeDestination = MainDestination.EXPLORER
+            }
+
             MonolithTheme(
                 darkTheme = darkTheme,
                 themeMode = appSettings.themeMode,
@@ -294,12 +328,49 @@ class MainActivity : ComponentActivity() {
                     MainDestination.SETTINGS -> {
                         SettingsScreen(
                             onBack = {
-                                activeDestination = if (settingsReturnToAi) {
-                                    settingsReturnToAi = false
-                                    MainDestination.AI_CHAT
-                                } else {
-                                    MainDestination.EXPLORER
-                                }
+                                activeDestination = settingsReturnDestination
+                            },
+                        )
+                    }
+                    MainDestination.ARCHIVE_TOOL -> {
+                        ArchiveToolScreen(
+                            initialArchivePath = archiveInitialFilePath,
+                            initialPackSourcePaths = archiveInitialPackPaths,
+                            onBack = { activeDestination = MainDestination.EXPLORER },
+                            onNavigateToFiles = { activeDestination = MainDestination.EXPLORER },
+                            onNavigateToStorage = {
+                                storageInitialRootPath = explorerNavState.activeLocalRootPath
+                                activeDestination = MainDestination.STORAGE_ANALYSIS
+                            },
+                            onNavigateToAi = {
+                                aiCurrentDirectory = explorerNavState.localPath
+                                activeDestination = MainDestination.AI_CHAT
+                            },
+                            onOpenSettings = {
+                                settingsReturnDestination = MainDestination.ARCHIVE_TOOL
+                                activeDestination = MainDestination.SETTINGS
+                            },
+                            onOpenExtractedFolder = ::openLocalFolderInExplorer,
+                        )
+                    }
+                    MainDestination.STORAGE_ANALYSIS -> {
+                        StorageAnalysisScreen(
+                            initialRootPath = storageInitialRootPath,
+                            onBack = { activeDestination = MainDestination.EXPLORER },
+                            onNavigateToFiles = { activeDestination = MainDestination.EXPLORER },
+                            onOpenFolderInExplorer = ::openLocalFolderInExplorer,
+                            onNavigateToArchives = { packPaths ->
+                                archiveInitialFilePath = null
+                                archiveInitialPackPaths = packPaths
+                                activeDestination = MainDestination.ARCHIVE_TOOL
+                            },
+                            onNavigateToAi = {
+                                aiCurrentDirectory = explorerNavState.localPath
+                                activeDestination = MainDestination.AI_CHAT
+                            },
+                            onOpenSettings = {
+                                settingsReturnDestination = MainDestination.STORAGE_ANALYSIS
+                                activeDestination = MainDestination.SETTINGS
                             },
                         )
                     }
@@ -307,8 +378,17 @@ class MainActivity : ComponentActivity() {
                         AiChatScreen(
                             currentDirectory = aiCurrentDirectory,
                             onBack = { activeDestination = MainDestination.EXPLORER },
+                            onOpenArchives = {
+                                archiveInitialFilePath = null
+                                archiveInitialPackPaths = emptyList()
+                                activeDestination = MainDestination.ARCHIVE_TOOL
+                            },
+                            onOpenStorage = {
+                                storageInitialRootPath = explorerNavState.activeLocalRootPath
+                                activeDestination = MainDestination.STORAGE_ANALYSIS
+                            },
                             onOpenSettings = {
-                                settingsReturnToAi = true
+                                settingsReturnDestination = MainDestination.AI_CHAT
                                 activeDestination = MainDestination.SETTINGS
                             },
                         )
@@ -328,12 +408,21 @@ class MainActivity : ComponentActivity() {
                                 PlayerActivity.reopen(this@MainActivity)
                             },
                             onOpenSettings = {
-                                settingsReturnToAi = false
+                                settingsReturnDestination = MainDestination.EXPLORER
                                 activeDestination = MainDestination.SETTINGS
                             },
                             onOpenAiChat = { currentDir ->
                                 aiCurrentDirectory = currentDir
                                 activeDestination = MainDestination.AI_CHAT
+                            },
+                            onOpenArchiveTool = { initialArchive, initialPack ->
+                                archiveInitialFilePath = initialArchive
+                                archiveInitialPackPaths = initialPack
+                                activeDestination = MainDestination.ARCHIVE_TOOL
+                            },
+                            onOpenStorageAnalysis = { root ->
+                                storageInitialRootPath = root
+                                activeDestination = MainDestination.STORAGE_ANALYSIS
                             },
                             navState = explorerNavState,
                         )

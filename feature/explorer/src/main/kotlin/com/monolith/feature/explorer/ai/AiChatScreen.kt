@@ -34,12 +34,10 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
-import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Build
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
-import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.Psychology
 import androidx.compose.material.icons.outlined.Stop
@@ -109,11 +107,11 @@ import com.monolith.core.ui.components.CornerMenuItem
 import com.monolith.core.ui.components.MonolithCornerMenuOverlay
 import com.monolith.core.ui.components.MonolithDialog
 import com.monolith.core.ui.components.MonolithDialogOption
-import com.monolith.core.ui.components.MonolithStarMenuOverlay
-import com.monolith.core.ui.components.StarMenuItem
 import com.monolith.core.ui.haptics.MonolithHaptics
 import com.monolith.core.ui.theme.LocalMonolithButtonShape
 import com.monolith.core.ui.theme.LocalMonolithThemeMode
+import com.monolith.feature.explorer.MonolithToolDestination
+import com.monolith.feature.explorer.MonolithToolStarMenu
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlin.math.PI
@@ -181,6 +179,8 @@ private val GEMINI_MODELS = listOf(
 fun AiChatScreen(
     currentDirectory: String,
     onBack: () -> Unit,
+    onOpenArchives: () -> Unit = {},
+    onOpenStorage: () -> Unit = {},
     onOpenSettings: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
@@ -567,35 +567,31 @@ fun AiChatScreen(
             }
         }
 
-        MonolithStarMenuOverlay(
+        MonolithToolStarMenu(
             expanded = starMenuExpanded,
             anchorCenter = starAnchorCenter,
             anchorIcon = Icons.Outlined.ViewInAr,
+            activeDestination = MonolithToolDestination.AI,
             onAnchorClick = {
                 starMenuExpanded = false
                 activeJob?.cancel()
                 onBack()
             },
-            items = listOf(
-                StarMenuItem(
-                    id = "files",
-                    label = "Dateien",
-                    icon = Icons.Outlined.FolderOpen,
-                    onClick = {
-                        activeJob?.cancel()
-                        onBack()
-                    },
-                ),
-                StarMenuItem(
-                    id = "ai_chat",
-                    label = "AI",
-                    icon = Icons.Outlined.AutoAwesome,
-                    isSelected = true,
-                    onClick = {
-                        starMenuExpanded = false
-                    },
-                ),
-            ),
+            onSelectFiles = {
+                activeJob?.cancel()
+                onBack()
+            },
+            onSelectArchives = {
+                activeJob?.cancel()
+                onOpenArchives()
+            },
+            onSelectStorage = {
+                activeJob?.cancel()
+                onOpenStorage()
+            },
+            onSelectAi = {
+                starMenuExpanded = false
+            },
             onDismiss = { starMenuExpanded = false },
         )
 
@@ -733,6 +729,8 @@ fun AiChatScreen(
                 """read_text_file({"path": "{current_dir}/notes.txt", "max_chars": 12000})""" to "UTF-8-Textdatei lesen (Beispiel)",
                 """get_file_info({"path": "{current_dir}/song.mp3"})""" to "Datei-/Media-Metadaten (Beispiel)",
                 """search_files({"query": "rechnung", "directory": "{current_dir}"})""" to "Rekursive Dateisuche bis Tiefe 4 (Beispiel)",
+                """analyze_storage_summary({"path": "{current_dir}"})""" to "Kompakte Speicheranalyse (Beispiel)",
+                """list_archive_contents({"path": "{current_dir}/backup.zip"})""" to "Archivinhalt auflisten (Beispiel)",
             )
         }
 

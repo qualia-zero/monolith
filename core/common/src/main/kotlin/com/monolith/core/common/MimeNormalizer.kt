@@ -54,7 +54,19 @@ object MimeNormalizer {
     )
 
     private val archiveExtensions = setOf(
-        "zip", "7z", "rar", "tar", "gz", "bz2", "xz", "tgz", "tbz2", "jar",
+        "zip", "7z", "rar", "tar", "gz", "bz2", "xz", "tgz", "tbz2", "jar", "001", "z01", "r00",
+    )
+
+    private val multiPartArchiveSuffixes = listOf(
+        ".tar.gz",
+        ".tar.xz",
+        ".tar.bz2",
+        ".zip.001",
+        ".7z.001",
+        ".tar.gz.001",
+        ".tar.xz.001",
+        ".tar.bz2.001",
+        ".part1.rar",
     )
 
     private val textExtensions = setOf(
@@ -75,6 +87,16 @@ object MimeNormalizer {
     fun extensionOf(fileName: String): String =
         fileName.substringAfterLast('.', "").lowercase(Locale.ROOT)
 
+    fun isArchiveFileName(fileName: String): Boolean {
+        val lower = fileName.lowercase(Locale.ROOT)
+        if (multiPartArchiveSuffixes.any { lower.endsWith(it) }) return true
+        val ext = extensionOf(lower)
+        if (ext in archiveExtensions) return true
+        if (ext.matches(Regex("^(z\\d{2,}|r\\d{2,}|\\d{3})$"))) return true
+        if (lower.matches(Regex("^.+\\.part\\d+\\.rar$"))) return true
+        return false
+    }
+
     fun isVideoContainerMime(mime: String?): Boolean {
         if (mime.isNullOrBlank()) return false
         val normalized = mime.lowercase(Locale.ROOT)
@@ -86,7 +108,7 @@ object MimeNormalizer {
         videoExtensions[ext]?.let { return it }
         audioExtensions[ext]?.let { return it }
         if (ext in imageExtensions) return "image/$ext"
-        if (ext in archiveExtensions) return if (ext == "zip") "application/zip" else "application/x-$ext"
+        if (isArchiveFileName(fileName)) return if (ext == "zip") "application/zip" else "application/x-$ext"
         if (ext in textExtensions) return "text/plain"
         if (!systemMime.isNullOrBlank()) {
             if (isVideoContainerMime(systemMime)) return "video/*"
@@ -102,7 +124,7 @@ object MimeNormalizer {
             ext in videoExtensions || isVideoContainerMime(mimeType) -> FileCategory.VIDEO
             ext in audioExtensions || mimeType?.startsWith("audio/") == true -> FileCategory.AUDIO
             ext in imageExtensions || mimeType?.startsWith("image/") == true -> FileCategory.IMAGE
-            ext in archiveExtensions -> FileCategory.ARCHIVE
+            isArchiveFileName(fileName) -> FileCategory.ARCHIVE
             ext == "apk" -> FileCategory.APK
             ext in textExtensions || mimeType?.startsWith("text/") == true -> FileCategory.TEXT
             ext in setOf("pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx") -> FileCategory.DOCUMENT

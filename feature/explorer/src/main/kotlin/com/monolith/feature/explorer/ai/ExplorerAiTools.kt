@@ -4,6 +4,10 @@ import android.graphics.BitmapFactory
 import android.media.MediaMetadataRetriever
 import android.os.Environment
 import android.webkit.MimeTypeMap
+import com.monolith.feature.explorer.archive.ArchiveEngine
+import com.monolith.feature.explorer.archive.formatArchiveBytes
+import com.monolith.feature.explorer.storage.StorageAiAdvisor
+import com.monolith.feature.explorer.storage.StorageAnalyzer
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -163,10 +167,77 @@ object ExplorerAiTools {
                     )
                 },
             )
+            put(
+                JSONObject().apply {
+                    put("type", "function")
+                    put("name", "analyze_storage_summary")
+                    put(
+                        "description",
+                        "Scans a local directory and returns an ultra-compact storage digest " +
+                            "(capacity, category totals, disjoint top folders without overlapping ancestors, " +
+                            "largest files, and duplicates) using minimal tokens.",
+                    )
+                    put(
+                        "parameters",
+                        JSONObject().apply {
+                            put("type", "object")
+                            put(
+                                "properties",
+                                JSONObject().apply {
+                                    put(
+                                        "path",
+                                        JSONObject().apply {
+                                            put("type", "string")
+                                            put("description", "Directory path to analyze. Leave empty for the current directory.")
+                                        },
+                                    )
+                                },
+                            )
+                        },
+                    )
+                },
+            )
+            put(
+                JSONObject().apply {
+                    put("type", "function")
+                    put("name", "list_archive_contents")
+                    put(
+                        "description",
+                        "Lists entries and multi-volume/encryption metadata inside a local archive " +
+                            "(ZIP, 7z, RAR, TAR.GZ, TAR.XZ, or split parts like .z01/.001/.part1.rar).",
+                    )
+                    put(
+                        "parameters",
+                        JSONObject().apply {
+                            put("type", "object")
+                            put(
+                                "properties",
+                                JSONObject().apply {
+                                    put(
+                                        "path",
+                                        JSONObject().apply {
+                                            put("type", "string")
+                                            put("description", "Absolute or relative path to the archive file.")
+                                        },
+                                    )
+                                    put(
+                                        "password",
+                                        JSONObject().apply {
+                                            put("type", "string")
+                                            put("description", "Optional password for encrypted archives.")
+                                        },
+                                    )
+                                },
+                            )
+                            put("required", JSONArray().put("path"))
+                        },
+                    )
+                },
+            )
         }
     }
 
-    fun execute(
+    suspend fun execute(
         name: String,
         arguments: JSONObject,
         currentDirectory: String,
@@ -198,6 +269,17 @@ object ExplorerAiTools {
                     val rawDir = arguments.optString("directory").trim()
                     val dir = resolvePath(rawDir, defaultDir)
                     searchFiles(query, dir)
+                }
+                "analyze_storage_summary" -> {
+                    val rawPath = arguments.optString("path").trim()
+                    val path = resolvePath(rawPath, defaultDir)
+                    analyzeStorageSummary(path)
+                }
+                "list_archive_contents" -> {
+                    val rawPath = arguments.optString("path").trim()
+                    val path = if (rawPath.isEmpty()) "" else resolvePath(rawPath, defaultDir)
+                    val password = arguments.optString("password").takeIf { it.isNotEmpty() }
+                    listArchiveContents(path, password)
                 }
                 else -> JSONObject().put("error", "Unknown tool: $name").toString()
             }
@@ -384,6 +466,53 @@ object ExplorerAiTools {
             put("query", query)
             put("count", matches.length())
             put("results", matches)
+        }.toString()
+    }
+
+    private suspend fun analyzeStorageSummary(path: String): String {
+        val dir = File(path)
+        if (!dir.exists() || !dir.isDirectory) {
+            return JSONObject().put("error", "Directory not found: $path").toString()
+        }
+        val scan = StorageAnalyzer.scanStorage(
+            rootPath = dir.absolutePath,
+            volumeLabel = dir.name.ifBlank { "Speicher" },
+            maxResults = 40,
+        )
+        val (digest, estimatedTokens) = StorageAiAdvisor.buildCompactDigest(scan)
+        return JSONObject().apply {
+            put("root", scan.rootPath)
+            put("estimated_tokens", estimatedTokens)
+            put("digest", digest)
+        }.toString()
+    }
+
+    private suspend fun listArchiveContents(path: String, password: String?): String {
+        if (path.isBlank()) return JSONObject().put("error", "Missing archive path").toString()
+        val file = File(path)
+        if (!file.exists()) return JSONObject().put("error", "Archive not found: $path").toString()
+        val summary = ArchiveEngine.inspectArchive(file, password).getOrElse { err ->
+            return JSONObject().put("error", err.message ?: "Archive inspection failed").toString()
+        }
+        val items = JSONArray()
+        summary.entries.take(MAX_LIST_ITEMS).forEach { entry ->
+            val prefix = if (entry.isDirectory) "D" else "F"
+            val lock = if (entry.isEncrypted) " [enc]" else ""
+            val sizeInfo = if (entry.isDirectory) "" else " (${formatArchiveBytes(entry.uncompressedSize)})"
+            items.put("$prefix ${entry.path}$sizeInfo$lock")
+        }
+        return JSONObject().apply {
+            put("archive", summary.group.displayName)
+            put("format", summary.group.format.label)
+            put("parts", summary.group.parts.size)
+            put("missing_parts", summary.group.isMissingParts)
+            put("encrypted", summary.isEncrypted)
+            put("requires_password_to_list", summary.requiresPasswordToList)
+            put("files", summary.fileCount)
+            put("folders", summary.folderCount)
+            put("total_uncompressed", formatArchiveBytes(summary.totalUncompressedBytes))
+            if (summary.entries.size > MAX_LIST_ITEMS) put("truncated", true)
+            put("entries", items)
         }.toString()
     }
 

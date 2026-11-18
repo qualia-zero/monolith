@@ -39,7 +39,6 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.AudioFile
-import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.CloudQueue
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.ContentCut
@@ -49,7 +48,6 @@ import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Explore
 import androidx.compose.material.icons.outlined.Folder
-import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.FolderZip
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.MoreVert
@@ -128,8 +126,6 @@ import com.monolith.core.ui.components.MonolithDialog
 import com.monolith.core.ui.components.MonolithDialogOption
 import com.monolith.core.ui.components.MonolithLoadingSpinner
 import com.monolith.core.ui.components.MonolithRefreshIndicator
-import com.monolith.core.ui.components.MonolithStarMenuOverlay
-import com.monolith.core.ui.components.StarMenuItem
 import com.monolith.core.ui.haptics.MonolithHaptics
 import com.monolith.core.ui.theme.LocalMonolithButtonShape
 import com.monolith.core.ui.theme.LocalMonolithThemeMode
@@ -172,6 +168,8 @@ fun ExplorerScreen(
     onOpenMiniPlayer: () -> Unit = {},
     onOpenSettings: () -> Unit = {},
     onOpenAiChat: (currentDirectory: String) -> Unit = {},
+    onOpenArchiveTool: (initialArchivePath: String?, initialPackPaths: List<String>) -> Unit = { _, _ -> },
+    onOpenStorageAnalysis: (rootPath: String) -> Unit = {},
     navState: ExplorerNavigationState = rememberExplorerNavigationState(),
     modifier: Modifier = Modifier,
 ) {
@@ -553,6 +551,18 @@ fun ExplorerScreen(
                                         )
                                     }
                                 }
+                            }
+                        }
+                        if (activeLocation == LocationType.LOCAL) {
+                            IconButton(onClick = {
+                                val pathsToPack = selectedPaths.toList()
+                                selectedPaths = emptySet()
+                                onOpenArchiveTool(null, pathsToPack)
+                            }) {
+                                Icon(
+                                    imageVector = Icons.Outlined.FolderZip,
+                                    contentDescription = "Packen",
+                                )
                             }
                         }
                         IconButton(onClick = { showDeleteDialog = true }) {
@@ -1015,29 +1025,23 @@ fun ExplorerScreen(
         else -> Icons.Outlined.ViewInAr
     }
 
-    MonolithStarMenuOverlay(
+    MonolithToolStarMenu(
         expanded = starMenuExpanded,
         anchorCenter = starAnchorCenter,
         anchorIcon = currentAnchorIcon,
-        items = listOf(
-            StarMenuItem(
-                id = "files",
-                label = "Dateien",
-                icon = Icons.Outlined.FolderOpen,
-                isSelected = true,
-                onClick = {
-                    starMenuExpanded = false
-                },
-            ),
-            StarMenuItem(
-                id = "ai_chat",
-                label = "AI",
-                icon = Icons.Outlined.AutoAwesome,
-                onClick = {
-                    onOpenAiChat(localPath)
-                },
-            ),
-        ),
+        activeDestination = MonolithToolDestination.FILES,
+        onSelectFiles = {
+            starMenuExpanded = false
+        },
+        onSelectArchives = {
+            onOpenArchiveTool(null, emptyList())
+        },
+        onSelectStorage = {
+            onOpenStorageAnalysis(activeLocalRootPath)
+        },
+        onSelectAi = {
+            onOpenAiChat(localPath)
+        },
         onDismiss = { starMenuExpanded = false },
     )
 

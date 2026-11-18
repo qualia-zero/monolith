@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CutCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.outlined.FolderZip
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.Movie
 import androidx.compose.material.icons.outlined.MusicNote
@@ -57,6 +58,7 @@ internal const val HANDLER_INTERNAL_IMAGE = "internal:image"
 internal const val HANDLER_INTERNAL_VIDEO = "internal:video"
 internal const val HANDLER_INTERNAL_AUDIO = "internal:audio"
 internal const val HANDLER_INTERNAL_TEXT = "internal:text"
+internal const val HANDLER_INTERNAL_ARCHIVE = "internal:archive"
 
 internal data class OpenWithOption(
     val handlerId: String,
@@ -133,6 +135,11 @@ internal fun buildOpenWithOptions(context: Context, node: VfsNode): List<OpenWit
             handlerId = HANDLER_INTERNAL_TEXT,
             label = "Monolith-Texteditor",
             iconVector = Icons.Outlined.Description,
+        )
+        FileCategory.ARCHIVE -> options += OpenWithOption(
+            handlerId = HANDLER_INTERNAL_ARCHIVE,
+            label = "Monolith-Archivmanager",
+            iconVector = Icons.Outlined.FolderZip,
         )
         else -> Unit
     }
