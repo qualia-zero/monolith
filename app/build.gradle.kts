@@ -12,8 +12,8 @@ android {
         applicationId = "com.monolith.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 14
-        versionName = "1.1.0"
+        versionCode = 15
+        versionName = "1.1.1"
 
         ndk {
             abiFilters += "arm64-v8a"
