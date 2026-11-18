@@ -9,9 +9,9 @@
 - **File Explorer & Virtual Filesystem (`:feature:explorer`, `:core:vfs`):**
   - Fast local storage, SD card / USB OTG (with product-name labels), and Google Drive integration (multi-account support with drag-to-reorder account chips).
   - Per-folder Drive directory caching with tactile pull-to-refresh invalidation.
-  - Background `FileTransferService` with byte-integrity checks, live transfer progress overlay, system notifications, and Android share-sheet integration (including temporary cloud caching).
+  - Background `FileTransferService` with byte-integrity checks, live transfer progress overlay, system notifications, persistent Google Drive offline downloads (files & folders), and instant Android share-sheet integration.
 - **Unified Media Player (`:feature:player`, `:core:media`):**
-  - Powered by `libmpv` / FFmpeg (`arm64-v8a`) with hardware decoding, track/subtitle selection, speed control, picture-in-picture, background playback, and `MediaPlaybackService` system controls with 480p `ARGB_8888` thumbnails.
+  - Powered by `libmpv` / FFmpeg (`arm64-v8a`) with hardware decoding, track/subtitle selection, speed control, optional double-tap gesture controls, 128 MiB stream caching, picture-in-picture, background playback, and `MediaPlaybackService` system controls with 480p `ARGB_8888` thumbnails.
 - **Built-in Viewers (`:feature:viewers`):**
   - Archive browser, text editor, image viewer, and app manager, plus "Open With" system app discovery.
 - **Integrated Gemini AI Chat (`:feature:explorer`):**
