@@ -246,7 +246,6 @@ fun ExplorerScreen(
     var shareCloudTarget by remember { mutableStateOf<VfsNode?>(null) }
     var isDownloadingForShare by remember { mutableStateOf(false) }
     var cacheVersionTick by remember { mutableIntStateOf(0) }
-    var isCloudCaching by remember { mutableStateOf(false) }
     var refreshTrigger by remember { mutableIntStateOf(0) }
     var forceRefreshNextLoad by remember { mutableStateOf(false) }
     var loadRequestSeq by remember { mutableIntStateOf(0) }
@@ -256,6 +255,7 @@ fun ExplorerScreen(
     LaunchedEffect(Unit) {
         FileTransferService.events.collect { event ->
             refreshTrigger++
+            cacheVersionTick++
             if (event.errorMessage != null) {
                 snackbarHostState.showSnackbar(event.errorMessage ?: "Übertragung fehlgeschlagen")
             }
@@ -466,7 +466,6 @@ fun ExplorerScreen(
                                 }
                             }
                             IconButton(
-                                enabled = !isCloudCaching,
                                 onClick = {
                                     val nodesToProcess = selectedNodes
                                     if (allSelectedCached) {
@@ -479,29 +478,15 @@ fun ExplorerScreen(
                                             snackbarHostState.showSnackbar("Aus Zwischenspeicher gelöscht")
                                         }
                                     } else {
-                                        isCloudCaching = true
-                                        scope.launch {
-                                            val result = runCatching {
-                                                CloudCacheManager.cacheNodes(context, nodesToProcess, driveProvider)
-                                            }
-                                            cacheVersionTick++
-                                            selectedPaths = emptySet()
-                                            isCloudCaching = false
-                                            result.onSuccess { count ->
-                                                snackbarHostState.showSnackbar("$count Datei(en) heruntergeladen")
-                                            }.onFailure { err ->
-                                                snackbarHostState.showSnackbar(err.message ?: "Download fehlgeschlagen")
-                                            }
-                                        }
+                                        FileTransferService.enqueueCloudDownload(
+                                            context = context,
+                                            sources = nodesToProcess.map { it.path },
+                                        )
+                                        selectedPaths = emptySet()
                                     }
                                 },
                             ) {
-                                if (isCloudCaching) {
-                                    CircularProgressIndicator(
-                                        modifier = Modifier.size(20.dp),
-                                        strokeWidth = 2.dp,
-                                    )
-                                } else if (allSelectedCached) {
+                                if (allSelectedCached) {
                                     Icon(
                                         Icons.Default.Close,
                                         contentDescription = "Zwischengespeicherte Dateien löschen",
@@ -954,9 +939,13 @@ fun ExplorerScreen(
                     ) {
                     items(nodes, key = { it.id }) { node ->
                         val isSelected = node.path in selectedPaths
+                        val isOfflineCached = remember(node.path, node.sizeBytes, cacheVersionTick) {
+                            node.locationType == LocationType.GOOGLE_DRIVE && CloudCacheManager.isNodeCached(context, node)
+                        }
                         FileRow(
                             node = node,
                             isSelected = isSelected,
+                            isOfflineCached = isOfflineCached,
                             onClick = {
                                 if (selectedPaths.isNotEmpty()) {
                                     selectedPaths = if (isSelected) {
@@ -1477,6 +1466,7 @@ private fun MiniPlayerBar(
 private fun FileRow(
     node: VfsNode,
     isSelected: Boolean = false,
+    isOfflineCached: Boolean = false,
     onClick: () -> Unit,
     onLongClick: (() -> Unit)? = null,
 ) {
@@ -1522,6 +1512,7 @@ private fun FileRow(
             FileThumbnail(
                 node = node,
                 fallbackIcon = icon,
+                isOfflineCached = isOfflineCached,
             )
         }
         Spacer(modifier = Modifier.width(16.dp))

@@ -31,12 +31,22 @@ fun TransferProgressDialog(
     progress: TransferProgress,
     onDismiss: () -> Unit,
 ) {
-    val isMove = progress.operation == TransferOperation.MOVE
-    val title = when {
-        progress.errorMessage != null -> if (isMove) "Verschieben fehlgeschlagen" else "Kopieren fehlgeschlagen"
-        progress.isFinished -> if (isMove) "Verschieben abgeschlossen" else "Kopieren abgeschlossen"
-        isMove -> "Dateien verschieben"
-        else -> "Dateien kopieren"
+    val title = when (progress.operation) {
+        TransferOperation.MOVE -> when {
+            progress.errorMessage != null -> "Verschieben fehlgeschlagen"
+            progress.isFinished -> "Verschieben abgeschlossen"
+            else -> "Dateien verschieben"
+        }
+        TransferOperation.DOWNLOAD -> when {
+            progress.errorMessage != null -> "Download fehlgeschlagen"
+            progress.isFinished -> "Download abgeschlossen"
+            else -> "Dateien herunterladen"
+        }
+        else -> when {
+            progress.errorMessage != null -> "Kopieren fehlgeschlagen"
+            progress.isFinished -> "Kopieren abgeschlossen"
+            else -> "Dateien kopieren"
+        }
     }
 
     val targetFraction = when {

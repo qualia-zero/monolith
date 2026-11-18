@@ -701,4 +701,23 @@ object ThumbnailEngine {
         }
         return result
     }
+
+    /**
+     * Returns the total size in bytes of all files in the thumbnail disk cache directory.
+     */
+    fun diskCacheSizeBytes(context: Context): Long {
+        val dir = File(context.applicationContext.cacheDir, "thumb_cache")
+        if (!dir.exists()) return 0L
+        return dir.walkTopDown().filter { it.isFile }.sumOf { it.length() }
+    }
+
+    /**
+     * Evicts all in-memory thumbnail caches and deletes the on-disk thumbnail cache directory.
+     */
+    fun clearAllCaches(context: Context) {
+        listThumbnailCache.evictAll()
+        knownThumbnailUrls.clear()
+        latestModifiedByPath.clear()
+        File(context.applicationContext.cacheDir, "thumb_cache").deleteRecursively()
+    }
 }

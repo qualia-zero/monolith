@@ -1,6 +1,7 @@
 package com.monolith.feature.explorer
 
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
@@ -27,6 +28,7 @@ fun FileThumbnail(
     node: VfsNode,
     fallbackIcon: ImageVector,
     modifier: Modifier = Modifier,
+    isOfflineCached: Boolean = false,
 ) {
     val supportsThumbnail = !node.isDirectory && (
         !node.thumbnailUrl.isNullOrBlank() ||
@@ -70,7 +72,20 @@ fun FileThumbnail(
     }
 
     Box(
-        modifier = modifier.size(40.dp),
+        modifier = modifier
+            .size(40.dp)
+            .clip(MaterialTheme.shapes.small)
+            .then(
+                if (isOfflineCached) {
+                    Modifier.border(
+                        width = 1.5.dp,
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.65f),
+                        shape = MaterialTheme.shapes.small,
+                    )
+                } else {
+                    Modifier
+                }
+            ),
         contentAlignment = Alignment.Center,
     ) {
         val bitmap = thumbnail

@@ -70,6 +70,7 @@ enum class ViewMode {
 enum class TransferOperation {
     COPY,
     MOVE,
+    DOWNLOAD,
     DELETE,
     RECYCLE,
     EXTRACT,

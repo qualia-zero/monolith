@@ -15,6 +15,7 @@ import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import com.monolith.core.model.TransferOperation
 import com.monolith.core.model.TransferProgress
+import com.monolith.core.model.VfsNode
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -28,6 +29,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import org.json.JSONArray
 import java.io.File
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
@@ -46,6 +48,7 @@ class FileTransferService : Service() {
         val sources: List<String>,
         val destinationDir: String,
         val isMove: Boolean,
+        val isCloudDownload: Boolean = false,
     )
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -73,6 +76,7 @@ class FileTransferService : Service() {
         val sources = intent?.getStringArrayListExtra(EXTRA_SOURCES).orEmpty()
         val destinationDir = intent?.getStringExtra(EXTRA_DESTINATION).orEmpty()
         val isMove = intent?.getBooleanExtra(EXTRA_IS_MOVE, false) ?: false
+        val isCloudDownload = intent?.getBooleanExtra(EXTRA_IS_CLOUD_DOWNLOAD, false) ?: false
 
         if (sources.isEmpty() || destinationDir.isBlank()) {
             if (pendingJobs.get() <= 0) stopSelf()
@@ -81,7 +85,11 @@ class FileTransferService : Service() {
 
         pendingJobs.incrementAndGet()
         val taskId = nextTaskId.getAndIncrement()
-        val operation = if (isMove) TransferOperation.MOVE else TransferOperation.COPY
+        val operation = when {
+            isCloudDownload -> TransferOperation.DOWNLOAD
+            isMove -> TransferOperation.MOVE
+            else -> TransferOperation.COPY
+        }
         val firstName = sources.firstOrNull()?.let {
             if (it.startsWith("gdrive://")) it.removePrefix("gdrive://") else File(it).name.ifBlank { it }
         }.orEmpty()
@@ -99,7 +107,11 @@ class FileTransferService : Service() {
         )
 
         val initialNotification = buildProgressNotification(
-            title = if (isMove) "Dateien verschieben…" else "Dateien kopieren…",
+            title = when {
+                isCloudDownload -> "Dateien herunterladen…"
+                isMove -> "Dateien verschieben…"
+                else -> "Dateien kopieren…"
+            },
             text = "${sources.size} Element(e) vorbereitet",
             progress = 0,
             max = PROGRESS_NOTIFICATION_MAX,
@@ -116,7 +128,7 @@ class FileTransferService : Service() {
             startForeground(PROGRESS_NOTIFICATION_ID, initialNotification)
         }
 
-        jobQueue.trySend(TransferJob(taskId, sources, destinationDir, isMove))
+        jobQueue.trySend(TransferJob(taskId, sources, destinationDir, isMove, isCloudDownload))
         return START_NOT_STICKY
     }
 
@@ -130,23 +142,33 @@ class FileTransferService : Service() {
     private suspend fun executeJob(job: TransferJob) {
         val localProvider = LocalVfsProvider()
         val driveProvider = GoogleDriveVfsProvider(applicationContext)
-        val operation = if (job.isMove) TransferOperation.MOVE else TransferOperation.COPY
-        val title = if (job.isMove) "Dateien verschieben" else "Dateien kopieren"
+        val operation = when {
+            job.isCloudDownload -> TransferOperation.DOWNLOAD
+            job.isMove -> TransferOperation.MOVE
+            else -> TransferOperation.COPY
+        }
+        val title = when {
+            job.isCloudDownload -> "Dateien herunterladen"
+            job.isMove -> "Dateien verschieben"
+            else -> "Dateien kopieren"
+        }
 
         var totalBytes = 0L
         var scannedItems = 0
-        for (src in job.sources) {
-            if (src.startsWith("gdrive://")) {
-                val info = runCatching { driveProvider.stat(src) }.getOrNull()
-                totalBytes += info?.sizeBytes ?: 0L
-                scannedItems += 1
-            } else {
-                val (bytes, items) = scanLocalSource(File(src))
-                totalBytes += bytes
-                scannedItems += items
+        if (!job.isCloudDownload) {
+            for (src in job.sources) {
+                if (src.startsWith("gdrive://")) {
+                    val info = runCatching { driveProvider.stat(src) }.getOrNull()
+                    totalBytes += info?.sizeBytes ?: 0L
+                    scannedItems += 1
+                } else {
+                    val (bytes, items) = scanLocalSource(File(src))
+                    totalBytes += bytes
+                    scannedItems += items
+                }
             }
         }
-        val totalItems = scannedItems.coerceAtLeast(job.sources.size).coerceAtLeast(1)
+        var totalItems = scannedItems.coerceAtLeast(job.sources.size).coerceAtLeast(1)
 
         var currentFileName = resolveDisplayName(job.sources.first(), driveProvider)
         var bytesProcessed = 0L
@@ -214,48 +236,61 @@ class FileTransferService : Service() {
         publishProgress(forceNotification = true)
 
         val result = runCatching {
-            job.sources.forEach { src ->
-                val displayName = resolveDisplayName(src, driveProvider)
-                if (displayName != currentFileName) {
-                    currentFileName = displayName
-                    publishProgress()
-                }
+            if (job.isCloudDownload) {
+                executeCloudDownload(
+                    sources = job.sources,
+                    driveProvider = driveProvider,
+                    onTotalsReady = { bytes, items ->
+                        totalBytes = bytes
+                        totalItems = items
+                        publishProgress(forceNotification = true)
+                    },
+                    onProgress = onProgress,
+                )
+            } else {
+                job.sources.forEach { src ->
+                    val displayName = resolveDisplayName(src, driveProvider)
+                    if (displayName != currentFileName) {
+                        currentFileName = displayName
+                        publishProgress()
+                    }
 
-                val srcIsDrive = src.startsWith("gdrive://")
-                val dstIsDrive = job.destinationDir.startsWith("gdrive://")
-                val singleList = listOf(src)
+                    val srcIsDrive = src.startsWith("gdrive://")
+                    val dstIsDrive = job.destinationDir.startsWith("gdrive://")
+                    val singleList = listOf(src)
 
-                when {
-                    srcIsDrive && dstIsDrive -> {
-                        if (job.isMove) driveProvider.move(singleList, job.destinationDir, onProgress).getOrThrow()
-                        else driveProvider.copy(singleList, job.destinationDir, onProgress).getOrThrow()
-                    }
-                    !srcIsDrive && !dstIsDrive -> {
-                        if (job.isMove) localProvider.move(singleList, job.destinationDir, onProgress).getOrThrow()
-                        else localProvider.copy(singleList, job.destinationDir, onProgress).getOrThrow()
-                    }
-                    !srcIsDrive && dstIsDrive -> {
-                        driveProvider.copy(singleList, job.destinationDir, onProgress).getOrThrow()
-                        if (job.isMove) {
-                            localProvider.delete(singleList).getOrThrow()
+                    when {
+                        srcIsDrive && dstIsDrive -> {
+                            if (job.isMove) driveProvider.move(singleList, job.destinationDir, onProgress).getOrThrow()
+                            else driveProvider.copy(singleList, job.destinationDir, onProgress).getOrThrow()
                         }
-                    }
-                    else -> {
-                        val info = driveProvider.stat(src)
-                            ?: throw IllegalStateException("Quelle nicht gefunden")
-                        if (info.isDirectory) {
-                            throw IllegalStateException("Ordner-Download von Drive wird noch nicht unterstützt")
+                        !srcIsDrive && !dstIsDrive -> {
+                            if (job.isMove) localProvider.move(singleList, job.destinationDir, onProgress).getOrThrow()
+                            else localProvider.copy(singleList, job.destinationDir, onProgress).getOrThrow()
                         }
-                        val safeName = File(info.name).name.takeIf { it.isNotBlank() && it != "." && it != ".." } ?: "download"
-                        val dest = resolveUniqueLocalTarget(File(job.destinationDir), safeName)
-                        driveProvider.downloadToFile(
-                            path = src,
-                            destFile = dest,
-                            onProgress = onProgress,
-                            expectedSize = info.sizeBytes,
-                        ).getOrThrow()
-                        if (job.isMove) {
-                            driveProvider.delete(singleList).getOrThrow()
+                        !srcIsDrive && dstIsDrive -> {
+                            driveProvider.copy(singleList, job.destinationDir, onProgress).getOrThrow()
+                            if (job.isMove) {
+                                localProvider.delete(singleList).getOrThrow()
+                            }
+                        }
+                        else -> {
+                            val info = driveProvider.stat(src)
+                                ?: throw IllegalStateException("Quelle nicht gefunden")
+                            if (info.isDirectory) {
+                                throw IllegalStateException("Ordner-Download von Drive wird noch nicht unterstützt")
+                            }
+                            val safeName = File(info.name).name.takeIf { it.isNotBlank() && it != "." && it != ".." } ?: "download"
+                            val dest = resolveUniqueLocalTarget(File(job.destinationDir), safeName)
+                            driveProvider.downloadToFile(
+                                path = src,
+                                destFile = dest,
+                                onProgress = onProgress,
+                                expectedSize = info.sizeBytes,
+                            ).getOrThrow()
+                            if (job.isMove) {
+                                driveProvider.delete(singleList).getOrThrow()
+                            }
                         }
                     }
                 }
@@ -293,7 +328,12 @@ class FileTransferService : Service() {
         )
 
         val resultTitle = when {
-            error != null -> if (job.isMove) "Verschieben fehlgeschlagen" else "Kopieren fehlgeschlagen"
+            error != null -> when {
+                job.isCloudDownload -> "Download fehlgeschlagen"
+                job.isMove -> "Verschieben fehlgeschlagen"
+                else -> "Kopieren fehlgeschlagen"
+            }
+            job.isCloudDownload -> "Download abgeschlossen"
             job.isMove -> "Verschieben abgeschlossen"
             else -> "Kopieren abgeschlossen"
         }
@@ -311,6 +351,105 @@ class FileTransferService : Service() {
                 errorMessage = error?.message,
             ),
         )
+    }
+
+    private suspend fun executeCloudDownload(
+        sources: List<String>,
+        driveProvider: GoogleDriveVfsProvider,
+        onTotalsReady: (bytes: Long, items: Int) -> Unit,
+        onProgress: (VfsTransferUpdate) -> Unit,
+    ) {
+        val cacheFolder = File(applicationContext.cacheDir, "shared_drive").apply { mkdirs() }
+        val filesToDownload = mutableListOf<VfsNode>()
+        val seenFileIds = HashSet<String>()
+        val folderFiles = LinkedHashMap<String, MutableList<String>>()
+        val visitedFolders = HashSet<String>()
+
+        suspend fun collectFolder(folderNode: VfsNode) {
+            if (!visitedFolders.add(folderNode.id)) return
+            val cachedNames = folderFiles.getOrPut(folderNode.id) { mutableListOf() }
+            val children = driveProvider.list(folderNode.path, showHidden = true)
+            for (child in children) {
+                if (child.isDirectory) {
+                    collectFolder(child)
+                } else {
+                    val cachedName = "${child.id}_${child.name.replace('/', '_')}"
+                    cachedNames.add(cachedName)
+                    if (seenFileIds.add(child.id)) {
+                        filesToDownload.add(child)
+                    }
+                }
+            }
+        }
+
+        for (src in sources) {
+            val node = driveProvider.stat(src)
+                ?: throw IllegalStateException("Quelle nicht gefunden")
+            if (node.isDirectory) {
+                collectFolder(node)
+            } else if (seenFileIds.add(node.id)) {
+                filesToDownload.add(node)
+            }
+        }
+
+        val totalBytes = filesToDownload.sumOf { it.sizeBytes.coerceAtLeast(0L) }
+        val totalItems = filesToDownload.size.coerceAtLeast(1)
+        onTotalsReady(totalBytes, totalItems)
+
+        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+        for (fileNode in filesToDownload) {
+            val displayName = fileNode.name.ifBlank { fileNode.id }
+            onProgress(VfsTransferUpdate(currentFileName = displayName))
+
+            val cachedName = "${fileNode.id}_${fileNode.name.replace('/', '_')}"
+            val targetFile = File(cacheFolder, cachedName)
+
+            if (targetFile.exists() && fileNode.sizeBytes >= 0L && targetFile.length() == fileNode.sizeBytes) {
+                onProgress(
+                    VfsTransferUpdate(
+                        currentFileName = displayName,
+                        bytesDelta = fileNode.sizeBytes,
+                        itemsDelta = 1,
+                    ),
+                )
+                continue
+            }
+
+            val tmpFile = File(cacheFolder, "$cachedName.tmp")
+            try {
+                driveProvider.openInputStream(fileNode.path).use { input ->
+                    tmpFile.outputStream().use { output ->
+                        while (true) {
+                            val read = input.read(buffer)
+                            if (read < 0) break
+                            if (read > 0) {
+                                output.write(buffer, 0, read)
+                                onProgress(VfsTransferUpdate(currentFileName = displayName, bytesDelta = read.toLong()))
+                            }
+                        }
+                    }
+                }
+                if (targetFile.exists()) {
+                    targetFile.delete()
+                }
+                if (!tmpFile.renameTo(targetFile)) {
+                    tmpFile.copyTo(targetFile, overwrite = true)
+                    tmpFile.delete()
+                }
+            } catch (t: Throwable) {
+                tmpFile.delete()
+                throw t
+            }
+
+            onProgress(VfsTransferUpdate(currentFileName = displayName, itemsDelta = 1))
+        }
+
+        for ((folderId, cachedNames) in folderFiles) {
+            val markerFile = File(cacheFolder, "folder_$folderId.json")
+            val jsonArray = JSONArray()
+            cachedNames.forEach { jsonArray.put(it) }
+            markerFile.writeText(jsonArray.toString())
+        }
     }
 
     private fun resolveUniqueLocalTarget(targetDir: File, name: String): File {
@@ -423,6 +562,7 @@ class FileTransferService : Service() {
         private const val EXTRA_SOURCES = "extra_sources"
         private const val EXTRA_DESTINATION = "extra_destination"
         private const val EXTRA_IS_MOVE = "extra_is_move"
+        private const val EXTRA_IS_CLOUD_DOWNLOAD = "extra_is_cloud_download"
 
         private val nextTaskId = AtomicLong(1L)
 
@@ -443,6 +583,20 @@ class FileTransferService : Service() {
                 putStringArrayListExtra(EXTRA_SOURCES, ArrayList(sources))
                 putExtra(EXTRA_DESTINATION, destinationDir)
                 putExtra(EXTRA_IS_MOVE, isMove)
+            }
+            ContextCompat.startForegroundService(context.applicationContext, intent)
+        }
+
+        fun enqueueCloudDownload(
+            context: Context,
+            sources: List<String>,
+        ) {
+            if (sources.isEmpty()) return
+            val destinationDir = File(context.applicationContext.cacheDir, "shared_drive").absolutePath
+            val intent = Intent(context, FileTransferService::class.java).apply {
+                putStringArrayListExtra(EXTRA_SOURCES, ArrayList(sources))
+                putExtra(EXTRA_DESTINATION, destinationDir)
+                putExtra(EXTRA_IS_CLOUD_DOWNLOAD, true)
             }
             ContextCompat.startForegroundService(context.applicationContext, intent)
         }

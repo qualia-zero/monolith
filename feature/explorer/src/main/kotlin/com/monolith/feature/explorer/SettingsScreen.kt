@@ -52,6 +52,7 @@ import com.monolith.core.common.AppSettingsStore
 import com.monolith.core.common.DefaultAppsStore
 import com.monolith.core.media.MpvEngine
 import com.monolith.core.media.PlayerSettingsStore
+import com.monolith.core.media.ThumbnailEngine
 import com.monolith.core.model.AppSettings
 import com.monolith.core.model.PlayerSettings
 import com.monolith.core.model.ResumeMode
@@ -390,6 +391,51 @@ fun SettingsScreen(
                 ) {
                     Text(
                         "Alle lokal heruntergeladenen Cloud-Dateien und zwischengespeicherten Ordnerlisten (${formatCacheSize(cachedBytes)}) werden gelöscht. Dateien in Google Drive bleiben erhalten.",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+            }
+
+            HorizontalDivider(thickness = 0.5.dp)
+
+            var thumbRefreshTick by remember { mutableIntStateOf(0) }
+            var showResetThumbsConfirm by remember { mutableStateOf(false) }
+            val thumbBytes = remember(thumbRefreshTick) { ThumbnailEngine.diskCacheSizeBytes(context) }
+
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = "Thumbnails",
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                Text(
+                    text = "Zwischengespeicherte Vorschaubilder (${formatCacheSize(thumbBytes)}).",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                OutlinedButton(
+                    onClick = { showResetThumbsConfirm = true },
+                    shape = LocalMonolithButtonShape.current,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("Thumbnails zurücksetzen")
+                }
+            }
+
+            if (showResetThumbsConfirm) {
+                MonolithDialog(
+                    onDismissRequest = { showResetThumbsConfirm = false },
+                    title = "Thumbnails zurücksetzen",
+                    dismissLabel = "Abbrechen",
+                    onDismissClick = { showResetThumbsConfirm = false },
+                    confirmLabel = "Zurücksetzen",
+                    onConfirmClick = {
+                        showResetThumbsConfirm = false
+                        ThumbnailEngine.clearAllCaches(context)
+                        thumbRefreshTick++
+                    },
+                ) {
+                    Text(
+                        "Alle zwischengespeicherten Vorschaubilder (${formatCacheSize(thumbBytes)}) werden gelöscht und bei Bedarf neu erstellt.",
                         style = MaterialTheme.typography.bodyMedium,
                     )
                 }
