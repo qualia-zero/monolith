@@ -1,5 +1,8 @@
 package com.monolith.core.ui.components
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -20,8 +23,11 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -52,10 +58,20 @@ fun MonolithDialog(
         onDismissRequest = onDismissRequest,
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
+        val enterAnim = remember { Animatable(0f) }
+        LaunchedEffect(Unit) {
+            enterAnim.animateTo(1f, tween(durationMillis = 150, easing = FastOutSlowInEasing))
+        }
         Surface(
             modifier = modifier
                 .fillMaxWidth(if (wide) 0.94f else 0.88f)
-                .heightIn(max = maxDialogHeight),
+                .heightIn(max = maxDialogHeight)
+                .graphicsLayer {
+                    val p = enterAnim.value
+                    alpha = p
+                    scaleX = 0.92f + 0.08f * p
+                    scaleY = 0.92f + 0.08f * p
+                },
             shape = MaterialTheme.shapes.large,
             color = MaterialTheme.colorScheme.surfaceContainerHighest,
             contentColor = MaterialTheme.colorScheme.onSurface,

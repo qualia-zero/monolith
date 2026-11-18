@@ -12,11 +12,17 @@ import android.os.storage.StorageManager
 import android.os.storage.StorageVolume
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 enum class ExternalVolumeKind {
     SD_CARD,
@@ -142,12 +148,25 @@ object ExternalStorageDetector {
 
 @Composable
 fun rememberExternalStorageVolumes(context: Context): List<ExternalStorageVolume> {
-    var volumes by remember { mutableStateOf(ExternalStorageDetector.listMountedVolumes(context)) }
+    var volumes by remember { mutableStateOf<List<ExternalStorageVolume>>(emptyList()) }
+    val scope = rememberCoroutineScope()
+
+    LaunchedEffect(context) {
+        volumes = withContext(Dispatchers.IO) {
+            ExternalStorageDetector.listMountedVolumes(context.applicationContext)
+        }
+    }
 
     DisposableEffect(context) {
         val appContext = context.applicationContext
+        var refreshJob: Job? = null
         val refresh = {
-            volumes = ExternalStorageDetector.listMountedVolumes(appContext)
+            refreshJob?.cancel()
+            refreshJob = scope.launch {
+                volumes = withContext(Dispatchers.IO) {
+                    ExternalStorageDetector.listMountedVolumes(appContext)
+                }
+            }
         }
 
         val receiver = object : BroadcastReceiver() {
@@ -186,6 +205,7 @@ fun rememberExternalStorageVolumes(context: Context): List<ExternalStorageVolume
         }
 
         onDispose {
+            refreshJob?.cancel()
             runCatching { appContext.unregisterReceiver(receiver) }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && storageManager != null && volumeCallback != null) {
                 runCatching { storageManager.unregisterStorageVolumeCallback(volumeCallback) }

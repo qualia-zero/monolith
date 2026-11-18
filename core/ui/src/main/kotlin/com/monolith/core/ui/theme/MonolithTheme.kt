@@ -19,11 +19,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Canvas
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.CanvasDrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -252,100 +255,110 @@ fun MonolithTheme(
                             .drawWithCache {
                                 val w = size.width
                                 val h = size.height
-                                val rng = Random(1337)
-
-                                // Subtle fractured stone planes (obsidian facets)
-                                val facet1 = Path().apply {
-                                    moveTo(0f, 0f)
-                                    lineTo(w * 0.72f, 0f)
-                                    lineTo(w * 0.28f, h * 0.48f)
-                                    lineTo(0f, h * 0.34f)
-                                    close()
-                                }
-                                val facet2 = Path().apply {
-                                    moveTo(w, h * 0.18f)
-                                    lineTo(w, h * 0.78f)
-                                    lineTo(w * 0.36f, h * 0.62f)
-                                    close()
-                                }
-                                val facet3 = Path().apply {
-                                    moveTo(0f, h * 0.68f)
-                                    lineTo(w * 0.62f, h * 0.85f)
-                                    lineTo(w * 0.35f, h)
-                                    lineTo(0f, h)
-                                    close()
-                                }
-
-                                // Imperfect carved stone cracks (jagged paths with shadow + highlight edge)
-                                fun buildCrack(startX: Float, startY: Float, dx: Float, dy: Float, steps: Int): Pair<Path, Path> {
-                                    val shadow = Path()
-                                    val highlight = Path()
-                                    shadow.moveTo(startX, startY)
-                                    highlight.moveTo(startX + 1.8f, startY + 1.8f)
-                                    var cx = startX
-                                    var cy = startY
-                                    for (i in 1..steps) {
-                                        val jitterX = (rng.nextFloat() - 0.5f) * 26f
-                                        val jitterY = (rng.nextFloat() - 0.5f) * 26f
-                                        cx += dx / steps + jitterX
-                                        cy += dy / steps + jitterY
-                                        shadow.lineTo(cx, cy)
-                                        highlight.lineTo(cx + 1.8f, cy + 1.8f)
-                                    }
-                                    return shadow to highlight
-                                }
-
-                                val cracks = listOf(
-                                    buildCrack(w * 0.08f, h * 0.10f, w * 0.42f, h * 0.26f, 7),
-                                    buildCrack(w * 0.88f, h * 0.14f, -w * 0.34f, h * 0.22f, 6),
-                                    buildCrack(w * 0.15f, h * 0.46f, w * 0.30f, -h * 0.14f, 5),
-                                    buildCrack(w * 0.78f, h * 0.54f, -w * 0.46f, h * 0.20f, 7),
-                                    buildCrack(w * 0.22f, h * 0.82f, w * 0.48f, -h * 0.12f, 6),
+                                val cachedBitmap = ImageBitmap(
+                                    w.toInt().coerceAtLeast(1),
+                                    h.toInt().coerceAtLeast(1),
                                 )
+                                if (w > 0f && h > 0f) {
+                                    val rng = Random(1337)
 
-                                val grains = List(260) {
-                                    Triple(
-                                        Offset(rng.nextFloat() * w, rng.nextFloat() * h),
-                                        0.7f + rng.nextFloat() * 1.6f,
-                                        if (rng.nextFloat() > 0.82f) {
-                                            Color(0xFFF2C14E).copy(alpha = 0.055f)
-                                        } else {
-                                            Color.White.copy(alpha = 0.03f + rng.nextFloat() * 0.04f)
-                                        },
+                                    // Subtle fractured stone planes (obsidian facets)
+                                    val facet1 = Path().apply {
+                                        moveTo(0f, 0f)
+                                        lineTo(w * 0.72f, 0f)
+                                        lineTo(w * 0.28f, h * 0.48f)
+                                        lineTo(0f, h * 0.34f)
+                                        close()
+                                    }
+                                    val facet2 = Path().apply {
+                                        moveTo(w, h * 0.18f)
+                                        lineTo(w, h * 0.78f)
+                                        lineTo(w * 0.36f, h * 0.62f)
+                                        close()
+                                    }
+                                    val facet3 = Path().apply {
+                                        moveTo(0f, h * 0.68f)
+                                        lineTo(w * 0.62f, h * 0.85f)
+                                        lineTo(w * 0.35f, h)
+                                        lineTo(0f, h)
+                                        close()
+                                    }
+
+                                    // Imperfect carved stone cracks (jagged paths with shadow + highlight edge)
+                                    fun buildCrack(startX: Float, startY: Float, dx: Float, dy: Float, steps: Int): Pair<Path, Path> {
+                                        val shadow = Path()
+                                        val highlight = Path()
+                                        shadow.moveTo(startX, startY)
+                                        highlight.moveTo(startX + 1.8f, startY + 1.8f)
+                                        var cx = startX
+                                        var cy = startY
+                                        for (i in 1..steps) {
+                                            val jitterX = (rng.nextFloat() - 0.5f) * 26f
+                                            val jitterY = (rng.nextFloat() - 0.5f) * 26f
+                                            cx += dx / steps + jitterX
+                                            cy += dy / steps + jitterY
+                                            shadow.lineTo(cx, cy)
+                                            highlight.lineTo(cx + 1.8f, cy + 1.8f)
+                                        }
+                                        return shadow to highlight
+                                    }
+
+                                    val cracks = listOf(
+                                        buildCrack(w * 0.08f, h * 0.10f, w * 0.42f, h * 0.26f, 7),
+                                        buildCrack(w * 0.88f, h * 0.14f, -w * 0.34f, h * 0.22f, 6),
+                                        buildCrack(w * 0.15f, h * 0.46f, w * 0.30f, -h * 0.14f, 5),
+                                        buildCrack(w * 0.78f, h * 0.54f, -w * 0.46f, h * 0.20f, 7),
+                                        buildCrack(w * 0.22f, h * 0.82f, w * 0.48f, -h * 0.12f, 6),
                                     )
+
+                                    val grains = List(260) {
+                                        Triple(
+                                            Offset(rng.nextFloat() * w, rng.nextFloat() * h),
+                                            0.7f + rng.nextFloat() * 1.6f,
+                                            if (rng.nextFloat() > 0.82f) {
+                                                Color(0xFFF2C14E).copy(alpha = 0.055f)
+                                            } else {
+                                                Color.White.copy(alpha = 0.03f + rng.nextFloat() * 0.04f)
+                                            },
+                                        )
+                                    }
+                                    val sheen = Brush.radialGradient(
+                                        colors = listOf(
+                                            Color(0xFF1D222C).copy(alpha = 0.55f),
+                                            Color.Transparent,
+                                        ),
+                                        center = Offset(w * 0.45f, h * 0.16f),
+                                        radius = (size.maxDimension * 0.7f).coerceAtLeast(1f),
+                                    )
+                                    val canvas = Canvas(cachedBitmap)
+                                    CanvasDrawScope().draw(this, layoutDirection, canvas, size) {
+                                        drawRect(brush = sheen)
+                                        drawPath(facet1, color = Color(0xFF141820).copy(alpha = 0.48f))
+                                        drawPath(facet2, color = Color(0xFF040507).copy(alpha = 0.55f))
+                                        drawPath(facet3, color = Color(0xFF12151C).copy(alpha = 0.42f))
+                                        for ((shadow, highlight) in cracks) {
+                                            drawPath(
+                                                path = shadow,
+                                                color = Color.Black.copy(alpha = 0.72f),
+                                                style = Stroke(width = 3.0f, cap = StrokeCap.Round, join = StrokeJoin.Miter),
+                                            )
+                                            drawPath(
+                                                path = highlight,
+                                                color = Color(0xFFD8D4CC).copy(alpha = 0.10f),
+                                                style = Stroke(width = 1.4f, cap = StrokeCap.Round, join = StrokeJoin.Miter),
+                                            )
+                                        }
+                                        for ((pos, radius, grainColor) in grains) {
+                                            drawCircle(
+                                                color = grainColor,
+                                                radius = radius,
+                                                center = pos,
+                                            )
+                                        }
+                                    }
                                 }
-                                val sheen = Brush.radialGradient(
-                                    colors = listOf(
-                                        Color(0xFF1D222C).copy(alpha = 0.55f),
-                                        Color.Transparent,
-                                    ),
-                                    center = Offset(w * 0.45f, h * 0.16f),
-                                    radius = size.maxDimension * 0.7f,
-                                )
                                 onDrawBehind {
-                                    drawRect(brush = sheen)
-                                    drawPath(facet1, color = Color(0xFF141820).copy(alpha = 0.48f))
-                                    drawPath(facet2, color = Color(0xFF040507).copy(alpha = 0.55f))
-                                    drawPath(facet3, color = Color(0xFF12151C).copy(alpha = 0.42f))
-                                    for ((shadow, highlight) in cracks) {
-                                        drawPath(
-                                            path = shadow,
-                                            color = Color.Black.copy(alpha = 0.72f),
-                                            style = Stroke(width = 3.0f, cap = StrokeCap.Round, join = StrokeJoin.Miter),
-                                        )
-                                        drawPath(
-                                            path = highlight,
-                                            color = Color(0xFFD8D4CC).copy(alpha = 0.10f),
-                                            style = Stroke(width = 1.4f, cap = StrokeCap.Round, join = StrokeJoin.Miter),
-                                        )
-                                    }
-                                    for ((pos, radius, grainColor) in grains) {
-                                        drawCircle(
-                                            color = grainColor,
-                                            radius = radius,
-                                            center = pos,
-                                        )
-                                    }
+                                    drawImage(cachedBitmap)
                                 }
                             },
                     ) {

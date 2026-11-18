@@ -7,7 +7,6 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -31,10 +30,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -74,7 +75,7 @@ fun MonolithStarMenuOverlay(
     anchorIcon: ImageVector? = null,
     onAnchorClick: (() -> Unit)? = null,
 ) {
-    val expandProgress by animateFloatAsState(
+    val expandProgressState = animateFloatAsState(
         targetValue = if (expanded) 1f else 0f,
         animationSpec = if (expanded) {
             spring(dampingRatio = 0.78f, stiffness = Spring.StiffnessMedium)
@@ -83,8 +84,11 @@ fun MonolithStarMenuOverlay(
         },
         label = "monolithMenuExpand",
     )
+    val isVisible by remember(expanded) {
+        derivedStateOf { expanded || expandProgressState.value > 0.01f }
+    }
 
-    if (!expanded && expandProgress <= 0.01f) return
+    if (!isVisible) return
     if (anchorCenter == Offset.Unspecified || items.isEmpty()) return
 
     val density = LocalDensity.current
@@ -102,7 +106,9 @@ fun MonolithStarMenuOverlay(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(scrimColor.copy(alpha = 0.78f * expandProgress.coerceIn(0f, 1f)))
+                .drawBehind {
+                    drawRect(scrimColor.copy(alpha = 0.78f * expandProgressState.value.coerceIn(0f, 1f)))
+                }
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
@@ -113,7 +119,7 @@ fun MonolithStarMenuOverlay(
 
         // Anchor halo, ring, and subtle connector trace to the menu card
         Canvas(modifier = Modifier.fillMaxSize()) {
-            val p = expandProgress.coerceIn(0f, 1f)
+            val p = expandProgressState.value.coerceIn(0f, 1f)
 
             drawCircle(
                 brush = Brush.radialGradient(
@@ -168,7 +174,7 @@ fun MonolithStarMenuOverlay(
                     }
                     .size(anchorBoxSize)
                     .graphicsLayer {
-                        alpha = expandProgress.coerceIn(0f, 1f)
+                        alpha = expandProgressState.value.coerceIn(0f, 1f)
                     }
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
@@ -202,7 +208,7 @@ fun MonolithStarMenuOverlay(
                 }
                 .widthIn(min = 210.dp, max = 270.dp)
                 .graphicsLayer {
-                    val p = expandProgress.coerceIn(0f, 1f)
+                    val p = expandProgressState.value.coerceIn(0f, 1f)
                     alpha = p
                     scaleX = 0.86f + 0.14f * p
                     scaleY = 0.86f + 0.14f * p
@@ -295,7 +301,7 @@ fun MonolithCornerMenuOverlay(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val expandProgress by animateFloatAsState(
+    val expandProgressState = animateFloatAsState(
         targetValue = if (expanded) 1f else 0f,
         animationSpec = if (expanded) {
             spring(dampingRatio = 0.82f, stiffness = Spring.StiffnessMedium)
@@ -304,8 +310,11 @@ fun MonolithCornerMenuOverlay(
         },
         label = "monolithCornerMenuExpand",
     )
+    val isVisible by remember(expanded) {
+        derivedStateOf { expanded || expandProgressState.value > 0.01f }
+    }
 
-    if (!expanded && expandProgress <= 0.01f) return
+    if (!isVisible) return
     if (anchorCenter == Offset.Unspecified || items.isEmpty()) return
 
     val density = LocalDensity.current
@@ -324,7 +333,9 @@ fun MonolithCornerMenuOverlay(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(scrimColor.copy(alpha = 0.38f * expandProgress.coerceIn(0f, 1f)))
+                .drawBehind {
+                    drawRect(scrimColor.copy(alpha = 0.38f * expandProgressState.value.coerceIn(0f, 1f)))
+                }
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
@@ -345,7 +356,7 @@ fun MonolithCornerMenuOverlay(
                     )
                 }
                 .size(anchorBoxSize)
-                .graphicsLayer { alpha = expandProgress.coerceIn(0f, 1f) }
+                .graphicsLayer { alpha = expandProgressState.value.coerceIn(0f, 1f) }
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
@@ -372,7 +383,7 @@ fun MonolithCornerMenuOverlay(
                 }
                 .width(menuWidth)
                 .graphicsLayer {
-                    val p = expandProgress.coerceIn(0f, 1f)
+                    val p = expandProgressState.value.coerceIn(0f, 1f)
                     alpha = p
                     scaleX = 0.9f + 0.1f * p
                     scaleY = 0.9f + 0.1f * p

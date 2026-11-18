@@ -98,7 +98,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.ImageBitmap
@@ -349,16 +348,18 @@ fun ExplorerScreen(
                 activeProvider.list(currentPath, showHidden)
             }
             if (requestId != loadRequestSeq) return@LaunchedEffect
-            nodes = raw.sortedWith(
-                compareByDescending<VfsNode> { it.isDirectory }.thenBy {
-                    when (sortBy) {
-                        SortBy.NAME -> it.name.lowercase()
-                        SortBy.SIZE -> it.sizeBytes.toString().padStart(20, '0')
-                        SortBy.DATE_MODIFIED -> it.lastModifiedMs.toString().padStart(20, '0')
-                        SortBy.TYPE -> it.category.name
+            nodes = withContext(Dispatchers.Default) {
+                raw.sortedWith(
+                    compareByDescending<VfsNode> { it.isDirectory }.thenBy {
+                        when (sortBy) {
+                            SortBy.NAME -> it.name.lowercase()
+                            SortBy.SIZE -> it.sizeBytes.toString().padStart(20, '0')
+                            SortBy.DATE_MODIFIED -> it.lastModifiedMs.toString().padStart(20, '0')
+                            SortBy.TYPE -> it.category.name
+                        }
                     }
-                }
-            )
+                )
+            }
             isLoading = false
         } catch (e: CancellationException) {
             throw e
@@ -374,6 +375,19 @@ fun ExplorerScreen(
         nodes.filter { it.path in selectedPaths }
     }
 
+    val offlineCachedPaths by produceState(
+        initialValue = emptySet<String>(),
+        key1 = nodes,
+        key2 = cacheVersionTick,
+    ) {
+        value = withContext(Dispatchers.IO) {
+            nodes.asSequence()
+                .filter { it.locationType == LocationType.GOOGLE_DRIVE && CloudCacheManager.isNodeCached(context, it) }
+                .map { it.path }
+                .toSet()
+        }
+    }
+
     LaunchedEffect(canNavigateUp, selectedPaths.isNotEmpty()) {
         if (canNavigateUp || selectedPaths.isNotEmpty()) {
             starMenuExpanded = false
@@ -385,34 +399,27 @@ fun ExplorerScreen(
             .fillMaxSize()
             .onGloballyPositioned { rootOrigin = it.positionInRoot() },
     ) {
-        val backgroundRecede by animateFloatAsState(
+        val backgroundRecedeState = animateFloatAsState(
             targetValue = if (starMenuExpanded) 1f else 0f,
             label = "starMenuBackgroundRecede",
         )
-        val cornerMenuRecede by animateFloatAsState(
+        val cornerMenuRecedeState = animateFloatAsState(
             targetValue = if (menuExpanded) 1f else 0f,
             label = "cornerMenuBackgroundRecede",
         )
     Scaffold(
         modifier = Modifier
             .fillMaxSize()
-            .then(
-                when {
-                    backgroundRecede > 0.01f -> {
-                        Modifier
-                            .blur(10.dp * backgroundRecede)
-                            .graphicsLayer {
-                                val s = 1f - 0.025f * backgroundRecede
-                                scaleX = s
-                                scaleY = s
-                            }
-                    }
-                    cornerMenuRecede > 0.01f -> {
-                        Modifier.blur(4.dp * cornerMenuRecede)
-                    }
-                    else -> Modifier
+            .graphicsLayer {
+                val starP = backgroundRecedeState.value
+                val cornerP = cornerMenuRecedeState.value
+                val p = maxOf(starP, cornerP * 0.4f)
+                if (p > 0.001f) {
+                    val s = 1f - 0.022f * starP
+                    scaleX = s
+                    scaleY = s
                 }
-            ),
+            },
         containerColor = if (LocalMonolithThemeMode.current == ThemeMode.OBSIDIAN) {
             androidx.compose.ui.graphics.Color.Transparent
         } else {
@@ -939,13 +946,10 @@ fun ExplorerScreen(
                     ) {
                     items(nodes, key = { it.id }) { node ->
                         val isSelected = node.path in selectedPaths
-                        val isOfflineCached = remember(node.path, node.sizeBytes, cacheVersionTick) {
-                            node.locationType == LocationType.GOOGLE_DRIVE && CloudCacheManager.isNodeCached(context, node)
-                        }
                         FileRow(
                             node = node,
                             isSelected = isSelected,
-                            isOfflineCached = isOfflineCached,
+                            isOfflineCached = node.path in offlineCachedPaths,
                             onClick = {
                                 if (selectedPaths.isNotEmpty()) {
                                     selectedPaths = if (isSelected) {

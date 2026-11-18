@@ -5,7 +5,6 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
-import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
@@ -215,22 +214,29 @@ class FileTransferService : Service() {
         var processedItems = 0
         var bytesPerSecond = 0L
         val startTimeMs = System.currentTimeMillis()
+        var lastStateUpdateMs = 0L
         var lastNotificationUpdateMs = 0L
         var lastNotifiedItems = -1
 
         fun publishProgress(forceNotification: Boolean = false) {
-            _progress.value = TransferProgress(
-                taskId = job.taskId,
-                operation = operation,
-                currentFileName = currentFileName,
-                processedItems = processedItems,
-                totalItems = totalItems,
-                bytesProcessed = bytesProcessed,
-                totalBytes = totalBytes,
-                bytesPerSecond = bytesPerSecond,
-                isFinished = false,
-            )
             val now = System.currentTimeMillis()
+            if (forceNotification ||
+                now - lastStateUpdateMs >= STATE_THROTTLE_MS ||
+                processedItems != lastNotifiedItems
+            ) {
+                lastStateUpdateMs = now
+                _progress.value = TransferProgress(
+                    taskId = job.taskId,
+                    operation = operation,
+                    currentFileName = currentFileName,
+                    processedItems = processedItems,
+                    totalItems = totalItems,
+                    bytesProcessed = bytesProcessed,
+                    totalBytes = totalBytes,
+                    bytesPerSecond = bytesPerSecond,
+                    isFinished = false,
+                )
+            }
             if (forceNotification ||
                 now - lastNotificationUpdateMs >= NOTIFICATION_THROTTLE_MS ||
                 processedItems != lastNotifiedItems
@@ -444,7 +450,7 @@ class FileTransferService : Service() {
         val totalItems = filesToDownload.size.coerceAtLeast(1)
         onTotalsReady(totalBytes, totalItems)
 
-        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+        val buffer = ByteArray(64 * 1024)
         for (fileNode in filesToDownload) {
             val displayName = fileNode.name.ifBlank { fileNode.id }
             onProgress(VfsTransferUpdate(currentFileName = displayName))
@@ -576,6 +582,7 @@ class FileTransferService : Service() {
             .setContentText(text)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
+            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
             .setProgress(max, progress, indeterminate)
             .setContentIntent(cachedLaunchPendingIntent)
             .build()
@@ -596,17 +603,9 @@ class FileTransferService : Service() {
     }
 
     private fun createLaunchPendingIntent(): PendingIntent? {
-        val explicitIntent = Intent().apply {
-            component = ComponentName(packageName, "com.monolith.app.MainActivity")
-        }
-        val launchIntent = (if (explicitIntent.resolveActivity(packageManager) != null) {
-            explicitIntent
-        } else {
-            packageManager.getLaunchIntentForPackage(packageName)
-        })?.apply {
-            action = EXTRA_OPEN_TRANSFER_PANEL
+        val launchIntent = packageManager.getLaunchIntentForPackage(packageName)?.apply {
             putExtra(EXTRA_OPEN_TRANSFER_PANEL, true)
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         } ?: return null
         return PendingIntent.getActivity(
             this,
@@ -637,7 +636,8 @@ class FileTransferService : Service() {
         private const val RESULT_NOTIFICATION_ID = 20042
         private const val REQUEST_CODE_OPEN_TRANSFER_PANEL = 20043
         private const val PROGRESS_NOTIFICATION_MAX = 1000
-        private const val NOTIFICATION_THROTTLE_MS = 750L
+        private const val NOTIFICATION_THROTTLE_MS = 500L
+        private const val STATE_THROTTLE_MS = 80L
 
         private const val EXTRA_SOURCES = "extra_sources"
         private const val EXTRA_DESTINATION = "extra_destination"
