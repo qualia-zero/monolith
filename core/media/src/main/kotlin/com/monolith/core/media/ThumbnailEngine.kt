@@ -21,12 +21,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLDecoder
 import java.net.URLEncoder
-import java.util.concurrent.Callable
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.ExecutionException
-import java.util.concurrent.Executors
-import java.util.concurrent.TimeUnit
-import java.util.concurrent.TimeoutException
 import kotlin.math.roundToInt
 
 /**
@@ -40,7 +35,6 @@ object ThumbnailEngine {
     const val LIST_THUMB_DEFAULT_PX = 128
 
     private const val LIST_CACHE_MAX_BYTES = 24 * 1024 * 1024 // 24 MiB
-    private const val FALLBACK_GENERATE_TIMEOUT_MS = 30_000L
     private const val DRIVE_FILES_URL_PREFIX = "https://www.googleapis.com/drive/v3/files/"
 
     private val listThumbnailCache = object : LruCache<String, Bitmap>(LIST_CACHE_MAX_BYTES) {
@@ -50,7 +44,6 @@ object ThumbnailEngine {
 
     private val knownThumbnailUrls = ConcurrentHashMap<String, String>()
     private val latestModifiedByPath = ConcurrentHashMap<String, Long>()
-    private val fallbackExecutor = Executors.newCachedThreadPool()
 
     /**
      * Normalizes a media URI or file path to the canonical VFS/local path used for thumbnail caching.
@@ -286,10 +279,17 @@ object ThumbnailEngine {
         val raw = if (isDriveStream) {
             val token = cloudTokenProvider?.invoke()?.takeIf { it.isNotBlank() }
                 ?: return@withContext null
-            runRetrieverWithTimeout(FALLBACK_GENERATE_TIMEOUT_MS) { retriever ->
+            val retriever = MediaMetadataRetriever()
+            val extracted = try {
                 retriever.setDataSource(uriString, mapOf("Authorization" to "Bearer $token"))
                 extractRetrieverMediaArt(retriever, isVideo)
-            } ?: run {
+            } catch (t: Throwable) {
+                MonolithDiagnostics.logWarn("ThumbnailEngine", "Thumbnail load failed for $uriString: ${t.message}")
+                null
+            } finally {
+                runCatching { retriever.release() }
+            }
+            extracted ?: run {
                 val gdrivePath = resolveMediaPath(uriString)
                 val thumbUrl = knownThumbnailUrls[gdrivePath]
                     ?: fetchDriveThumbnailLink(gdrivePath)?.also { knownThumbnailUrls[gdrivePath] = it }
@@ -439,7 +439,7 @@ object ThumbnailEngine {
 
     /**
      * Fallback for Drive videos when Drive's thumbnailLink is missing or fails:
-     * checks embedded cover art first, then extracts a frame starting at 30s within [FALLBACK_GENERATE_TIMEOUT_MS].
+     * checks embedded cover art first, then extracts a frame at 30s.
      */
     private fun decodeDriveVideoFallback(
         gdrivePath: String,
@@ -451,35 +451,15 @@ object ThumbnailEngine {
 
         val encodedId = URLEncoder.encode(fileId, Charsets.UTF_8.name())
         val streamUrl = "$DRIVE_FILES_URL_PREFIX$encodedId?alt=media"
-        return runRetrieverWithTimeout(FALLBACK_GENERATE_TIMEOUT_MS) { retriever ->
+        val retriever = MediaMetadataRetriever()
+        return try {
             retriever.setDataSource(streamUrl, mapOf("Authorization" to "Bearer $token"))
             decodeEmbeddedPicture(retriever, targetPx) ?: extractNonBlackVideoFrame(retriever)
-        }
-    }
-
-    private fun runRetrieverWithTimeout(
-        timeoutMs: Long,
-        block: (MediaMetadataRetriever) -> Bitmap?,
-    ): Bitmap? {
-        val retriever = MediaMetadataRetriever()
-        val future = fallbackExecutor.submit(Callable {
-            try {
-                block(retriever)
-            } finally {
-                runCatching { retriever.release() }
-            }
-        })
-        return try {
-            future.get(timeoutMs, TimeUnit.MILLISECONDS)
-        } catch (_: TimeoutException) {
-            future.cancel(true)
-            runCatching { retriever.release() }
-            MonolithDiagnostics.logWarn("ThumbnailEngine", "Fallback thumbnail generation timed out after ${timeoutMs}ms")
-            null
         } catch (t: Throwable) {
-            val cause = (t as? ExecutionException)?.cause ?: t
-            MonolithDiagnostics.logWarn("ThumbnailEngine", "Fallback thumbnail generation failed: ${cause.message}")
+            MonolithDiagnostics.logWarn("ThumbnailEngine", "Drive video fallback failed for $gdrivePath: ${t.message}")
             null
+        } finally {
+            runCatching { retriever.release() }
         }
     }
 
@@ -496,7 +476,7 @@ object ThumbnailEngine {
     }
 
     private fun extractNonBlackVideoFrame(retriever: MediaMetadataRetriever): Bitmap? {
-        val candidateTimesUs = longArrayOf(30_000_000L, 10_000_000L, 5_000_000L, 1_000_000L)
+        val candidateTimesUs = longArrayOf(30_000_000L)
         var fallbackFrame: Bitmap? = null
 
         for (timeUs in candidateTimesUs) {
