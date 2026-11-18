@@ -798,7 +798,7 @@ private fun PlayerSettingsSheetContent(
             },
         )
         SettingsToggleRow(
-            title = "Doppeltippen (Zurück / Pause / Vor)",
+            title = "Gestensteuerung",
             checked = settings.useDoubleTapGesture,
             onCheckedChange = { checked ->
                 onUpdateSettings { it.copy(useDoubleTapGesture = checked) }

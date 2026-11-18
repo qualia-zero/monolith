@@ -347,6 +347,7 @@ fun SettingsScreen(
             HorizontalDivider(thickness = 0.5.dp)
 
             var cacheRefreshTick by remember { mutableIntStateOf(0) }
+            var showClearDownloadsConfirm by remember { mutableStateOf(false) }
             val cachedBytes = remember(cacheRefreshTick) {
                 val shareDir = File(context.cacheDir, "shared_drive")
                 val driveDir = File(context.cacheDir, "gdrive_dir_cache")
@@ -355,25 +356,42 @@ fun SettingsScreen(
 
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
-                    text = "Zwischengespeicherte Dateien",
+                    text = "Cloud-Downloads",
                     style = MaterialTheme.typography.titleMedium,
                 )
                 Text(
-                    text = "Heruntergeladene Cloud-Dateien und Cloud-Ordnerlisten im Cache (${formatCacheSize(cachedBytes)}).",
+                    text = "Heruntergeladene Cloud-Dateien und Cloud-Ordnerlisten (${formatCacheSize(cachedBytes)}).",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 OutlinedButton(
-                    onClick = {
-                        File(context.cacheDir, "shared_drive").deleteRecursively()
-                        File(context.cacheDir, "gdrive_dir_cache").deleteRecursively()
-                        cacheRefreshTick++
-                    },
+                    onClick = { showClearDownloadsConfirm = true },
                     enabled = cachedBytes > 0L,
                     shape = LocalMonolithButtonShape.current,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Text("Cache leeren")
+                    Text("Downloads löschen")
+                }
+            }
+
+            if (showClearDownloadsConfirm) {
+                MonolithDialog(
+                    onDismissRequest = { showClearDownloadsConfirm = false },
+                    title = "Downloads löschen",
+                    dismissLabel = "Abbrechen",
+                    onDismissClick = { showClearDownloadsConfirm = false },
+                    confirmLabel = "Löschen",
+                    onConfirmClick = {
+                        showClearDownloadsConfirm = false
+                        File(context.cacheDir, "shared_drive").deleteRecursively()
+                        File(context.cacheDir, "gdrive_dir_cache").deleteRecursively()
+                        cacheRefreshTick++
+                    },
+                ) {
+                    Text(
+                        "Alle lokal heruntergeladenen Cloud-Dateien und zwischengespeicherten Ordnerlisten (${formatCacheSize(cachedBytes)}) werden gelöscht. Dateien in Google Drive bleiben erhalten.",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
                 }
             }
 
