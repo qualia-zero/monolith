@@ -103,6 +103,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.DialogProperties
 import com.monolith.core.common.AppSettingsStore
 import com.monolith.core.model.ThemeMode
 import com.monolith.core.ui.components.MonolithStarMenuOverlay
@@ -790,15 +791,17 @@ fun AiChatScreen(
         val buildingBlocks = remember {
             listOf(
                 GeminiInteractionsClient.CURRENT_DIR_PLACEHOLDER to "Aktueller Explorer-Ordner",
-                "list_directory(path?, include_hidden?)" to "Ordnerinhalt auflisten",
-                "read_text_file(path, max_chars?)" to "UTF-8-Textdatei lesen",
-                "get_file_info(path)" to "Kompakte Datei-/Media-Metadaten",
-                "search_files(query, directory?)" to "Rekursive Dateisuche (Tiefe 4)",
+                """list_directory({"path": "{current_dir}/Download", "include_hidden": true})""" to "Ordnerinhalt auflisten (Beispiel)",
+                """read_text_file({"path": "{current_dir}/notes.txt", "max_chars": 12000})""" to "UTF-8-Textdatei lesen (Beispiel)",
+                """get_file_info({"path": "{current_dir}/song.mp3"})""" to "Datei-/Media-Metadaten (Beispiel)",
+                """search_files({"query": "rechnung", "directory": "{current_dir}"})""" to "Rekursive Dateisuche bis Tiefe 4 (Beispiel)",
             )
         }
 
         AlertDialog(
             onDismissRequest = { showSystemPromptDialog = false },
+            properties = DialogProperties(usePlatformDefaultWidth = false),
+            modifier = Modifier.fillMaxWidth(0.94f),
             title = { Text("Systemprompt") },
             text = {
                 Column(
@@ -1367,10 +1370,17 @@ private fun ChatBubble(
                 }
 
                 if (message.text.isNotEmpty()) {
-                    Text(
-                        text = message.text,
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
+                    if (isUser || isError) {
+                        Text(
+                            text = message.text,
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    } else {
+                        MarkdownText(
+                            text = message.text,
+                            color = contentColor,
+                        )
+                    }
                 } else if (isStreamingThis && message.toolStatus.isNullOrBlank()) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
