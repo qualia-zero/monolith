@@ -45,15 +45,11 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import com.monolith.core.ui.haptics.MonolithHaptics
-import com.monolith.core.ui.theme.LocalMonolithButtonShape
 import kotlin.math.roundToInt
 
 data class StarMenuItem(
@@ -91,12 +87,9 @@ fun MonolithStarMenuOverlay(
     if (!expanded && expandProgress <= 0.01f) return
     if (anchorCenter == Offset.Unspecified || items.isEmpty()) return
 
-    val context = LocalContext.current
-    val view = LocalView.current
     val density = LocalDensity.current
     val primaryColor = MaterialTheme.colorScheme.primary
     val scrimColor = MaterialTheme.colorScheme.background
-    val buttonShape = LocalMonolithButtonShape.current
 
     val ringRadiusPx = with(density) { 22.dp.toPx() }
     val menuOffsetX = with(density) { 10.dp.toPx() }
@@ -181,7 +174,6 @@ fun MonolithStarMenuOverlay(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
                     ) {
-                        MonolithHaptics.navClick(context, view)
                         if (onAnchorClick != null) {
                             onAnchorClick()
                         } else {
@@ -251,7 +243,6 @@ fun MonolithStarMenuOverlay(
                         color = rowContainerColor,
                         contentColor = rowContentColor,
                         onClick = {
-                            MonolithHaptics.navClick(context, view)
                             onDismiss()
                             item.onClick()
                         },
@@ -317,13 +308,10 @@ fun MonolithCornerMenuOverlay(
     if (!expanded && expandProgress <= 0.01f) return
     if (anchorCenter == Offset.Unspecified || items.isEmpty()) return
 
-    val context = LocalContext.current
-    val view = LocalView.current
     val density = LocalDensity.current
     val screenWidthPx = with(density) { LocalConfiguration.current.screenWidthDp.dp.toPx() }
     val primaryColor = MaterialTheme.colorScheme.primary
     val scrimColor = MaterialTheme.colorScheme.background
-    val buttonShape = LocalMonolithButtonShape.current
 
     val menuWidth = 224.dp
     val menuWidthPx = with(density) { menuWidth.toPx() }
@@ -362,7 +350,6 @@ fun MonolithCornerMenuOverlay(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
                 ) {
-                    MonolithHaptics.navClick(context, view)
                     onDismiss()
                 },
             contentAlignment = Alignment.Center,
@@ -410,7 +397,6 @@ fun MonolithCornerMenuOverlay(
                         color = Color.Transparent,
                         contentColor = MaterialTheme.colorScheme.onSurface,
                         onClick = {
-                            MonolithHaptics.navClick(context, view)
                             onDismiss()
                             item.onClick()
                         },

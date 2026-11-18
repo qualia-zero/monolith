@@ -124,6 +124,8 @@ import com.monolith.core.model.ThemeMode
 import com.monolith.core.model.VfsNode
 import com.monolith.core.ui.components.CornerMenuItem
 import com.monolith.core.ui.components.MonolithCornerMenuOverlay
+import com.monolith.core.ui.components.MonolithDialog
+import com.monolith.core.ui.components.MonolithDialogOption
 import com.monolith.core.ui.components.MonolithLoadingSpinner
 import com.monolith.core.ui.components.MonolithRefreshIndicator
 import com.monolith.core.ui.components.MonolithStarMenuOverlay
@@ -253,8 +255,6 @@ fun ExplorerScreen(
             refreshTrigger++
             if (event.errorMessage != null) {
                 snackbarHostState.showSnackbar(event.errorMessage ?: "Übertragung fehlgeschlagen")
-            } else {
-                MonolithHaptics.successPulse(context)
             }
         }
     }
@@ -284,7 +284,7 @@ fun ExplorerScreen(
     }
 
     fun navigateUp() {
-        MonolithHaptics.navClick(context, view)
+        MonolithHaptics.backNav(context, view)
         if (activeLocation == LocationType.GOOGLE_DRIVE) {
             if (driveStack.size > 1) {
                 driveStack = driveStack.dropLast(1)
@@ -517,7 +517,7 @@ fun ExplorerScreen(
                         } else {
                             IconButton(
                                 onClick = {
-                                    MonolithHaptics.navClick(context, view)
+                                    MonolithHaptics.monolithMenuOpen(context, view)
                                     starMenuExpanded = !starMenuExpanded
                                 },
                                 modifier = Modifier.onGloballyPositioned { coords ->
@@ -541,7 +541,7 @@ fun ExplorerScreen(
                     actions = {
                         IconButton(
                             onClick = {
-                                MonolithHaptics.navClick(context, view)
+                                MonolithHaptics.cornerMenuOpen(context, view)
                                 menuExpanded = !menuExpanded
                             },
                             modifier = Modifier.onGloballyPositioned { coords ->
@@ -618,7 +618,6 @@ fun ExplorerScreen(
                     selected = activeLocation == LocationType.LOCAL && activeLocalRootPath == rootPath,
                     shape = LocalMonolithButtonShape.current,
                     onClick = {
-                        MonolithHaptics.navClick(context, view)
                         activeLocation = LocationType.LOCAL
                         activeLocalRootPath = rootPath
                         localPath = rootPath
@@ -631,7 +630,6 @@ fun ExplorerScreen(
                         selected = activeLocation == LocationType.LOCAL && activeLocalRootPath == volume.rootPath,
                         shape = LocalMonolithButtonShape.current,
                         onClick = {
-                            MonolithHaptics.navClick(context, view)
                             activeLocation = LocationType.LOCAL
                             activeLocalRootPath = volume.rootPath
                             localPath = volume.rootPath
@@ -696,7 +694,6 @@ fun ExplorerScreen(
                                                         }
                                                         signedInAccounts = updated
                                                         dragOffsetX -= (nextX - myX)
-                                                        MonolithHaptics.tick(context, view)
                                                         swapped = true
                                                     }
                                                 }
@@ -710,7 +707,6 @@ fun ExplorerScreen(
                                                         }
                                                         signedInAccounts = updated
                                                         dragOffsetX += (myX - prevX)
-                                                        MonolithHaptics.tick(context, view)
                                                     }
                                                 }
                                             }
@@ -731,7 +727,6 @@ fun ExplorerScreen(
                                 selected = activeLocation == LocationType.GOOGLE_DRIVE && signedInEmail == email,
                                 shape = LocalMonolithButtonShape.current,
                                 onClick = {
-                                    MonolithHaptics.navClick(context, view)
                                     if (signedInEmail != email) {
                                         GoogleDriveAuthManager.setActiveEmail(context, email)
                                         signedInEmail = email
@@ -760,7 +755,6 @@ fun ExplorerScreen(
                     selected = false,
                     shape = LocalMonolithButtonShape.current,
                     onClick = {
-                        MonolithHaptics.navClick(context, view)
                         scope.launch {
                             signInLauncher.launch(GoogleDriveAuthManager.getAddAccountIntent(context))
                         }
@@ -900,7 +894,7 @@ fun ExplorerScreen(
                                 } else {
                                     when {
                                         node.isDirectory -> {
-                                            MonolithHaptics.navClick(context, view)
+                                            MonolithHaptics.folderOpen(context, view)
                                             if (activeLocation == LocationType.GOOGLE_DRIVE) {
                                                 driveStack = driveStack + (node.path to node.name)
                                             } else {
@@ -1045,236 +1039,183 @@ fun ExplorerScreen(
     }
 
     shareCloudTarget?.let { target ->
-        AlertDialog(
+        MonolithDialog(
             onDismissRequest = {
                 if (!isDownloadingForShare) {
                     shareCloudTarget = null
                 }
             },
-            title = { Text("Cloud-Datei teilen") },
-            text = {
-                if (isDownloadingForShare) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                        Text("„${target.name}“ wird zwischengeladen…")
-                    }
-                } else {
-                    Text("„${target.name}“ liegt auf Google Drive. Zum Teilen kurz zwischenladen?")
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    enabled = !isDownloadingForShare,
-                    shape = LocalMonolithButtonShape.current,
-                    onClick = { shareCloudTarget = null },
-                ) {
-                    Text("Abbrechen")
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    enabled = !isDownloadingForShare,
-                    shape = LocalMonolithButtonShape.current,
-                    onClick = {
-                        isDownloadingForShare = true
-                        scope.launch {
-                            val result = runCatching {
-                                withContext(Dispatchers.IO) {
-                                    val cacheFolder = File(context.cacheDir, "shared_drive").apply { mkdirs() }
-                                    val safeName = target.name.replace('/', '_')
-                                    val outFile = File(cacheFolder, safeName)
-                                    driveProvider.openInputStream(target.path).use { input ->
-                                        outFile.outputStream().use { output ->
-                                            input.copyTo(output)
-                                        }
+            title = "Cloud-Datei teilen",
+            dismissLabel = "Abbrechen",
+            dismissEnabled = !isDownloadingForShare,
+            onDismissClick = { shareCloudTarget = null },
+            confirmLabel = "Zwischenspeichern & Teilen",
+            confirmEnabled = !isDownloadingForShare,
+            onConfirmClick = {
+                isDownloadingForShare = true
+                scope.launch {
+                    val result = runCatching {
+                        withContext(Dispatchers.IO) {
+                            val cacheFolder = File(context.cacheDir, "shared_drive").apply { mkdirs() }
+                            val safeName = target.name.replace('/', '_')
+                            val outFile = File(cacheFolder, "${target.id}_$safeName")
+                            val alreadyCached = outFile.isFile &&
+                                target.sizeBytes > 0L &&
+                                outFile.length() == target.sizeBytes
+                            if (!alreadyCached) {
+                                driveProvider.openInputStream(target.path).use { input ->
+                                    outFile.outputStream().use { output ->
+                                        input.copyTo(output)
                                     }
-                                    outFile
                                 }
                             }
-                            isDownloadingForShare = false
-                            shareCloudTarget = null
-                            result.onSuccess { cachedFile ->
-                                runCatching {
-                                    shareLocalFile(
-                                        context = context,
-                                        file = cachedFile,
-                                        mimeType = target.mimeType,
-                                        title = target.name,
-                                    )
-                                }.onFailure { err ->
-                                    snackbarHostState.showSnackbar(err.message ?: "Teilen fehlgeschlagen")
-                                }
-                            }.onFailure { err ->
-                                snackbarHostState.showSnackbar(err.message ?: "Zwischenladen fehlgeschlagen")
-                            }
+                            outFile
                         }
-                    },
-                ) {
-                    Text("Zwischenladen & Teilen")
+                    }
+                    isDownloadingForShare = false
+                    shareCloudTarget = null
+                    result.onSuccess { cachedFile ->
+                        runCatching {
+                            shareLocalFile(
+                                context = context,
+                                file = cachedFile,
+                                mimeType = target.mimeType,
+                                title = target.name,
+                            )
+                        }.onFailure { err ->
+                            snackbarHostState.showSnackbar(err.message ?: "Teilen fehlgeschlagen")
+                        }
+                    }.onFailure { err ->
+                        snackbarHostState.showSnackbar(err.message ?: "Zwischenspeichern fehlgeschlagen")
+                    }
                 }
             },
-        )
+        ) {
+            if (isDownloadingForShare) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                    Text("„${target.name}“ wird zwischengespeichert…")
+                }
+            } else {
+                Text("„${target.name}“ liegt auf Google Drive. Zum Teilen kurz zwischenspeichern?")
+            }
+        }
     }
 
     if (showSortDialog) {
-        AlertDialog(
+        MonolithDialog(
             onDismissRequest = { showSortDialog = false },
-            title = { Text("Sortieren nach") },
-            text = {
-                Column {
-                    val options = listOf(
-                        SortBy.NAME to "Name",
-                        SortBy.SIZE to "Größe",
-                        SortBy.DATE_MODIFIED to "Datum",
-                        SortBy.TYPE to "Typ",
-                    )
-                    options.forEach { (option, label) ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    sortBy = option
-                                    showSortDialog = false
-                                }
-                                .padding(vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            RadioButton(
-                                selected = sortBy == option,
-                                onClick = {
-                                    sortBy = option
-                                    showSortDialog = false
-                                },
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(text = label, style = MaterialTheme.typography.bodyLarge)
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { showSortDialog = false }) {
-                    Text("Schließen")
-                }
-            },
-        )
+            title = "Sortieren nach",
+            confirmLabel = "Schließen",
+            onConfirmClick = { showSortDialog = false },
+        ) {
+            val options = listOf(
+                SortBy.NAME to "Name",
+                SortBy.SIZE to "Größe",
+                SortBy.DATE_MODIFIED to "Datum",
+                SortBy.TYPE to "Typ",
+            )
+            options.forEach { (option, label) ->
+                MonolithDialogOption(
+                    label = label,
+                    selected = sortBy == option,
+                    onClick = {
+                        sortBy = option
+                        showSortDialog = false
+                    },
+                )
+            }
+        }
     }
 
     if (showCreateFolderDialog) {
         var folderName by remember { mutableStateOf("") }
-        AlertDialog(
+        MonolithDialog(
             onDismissRequest = { showCreateFolderDialog = false },
-            title = { Text("Neuer Ordner") },
-            text = {
-                OutlinedTextField(
-                    value = folderName,
-                    onValueChange = { folderName = it },
-                    label = { Text("Ordnername") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    enabled = folderName.isNotBlank(),
-                    onClick = {
-                        val name = folderName
-                        showCreateFolderDialog = false
-                        runFileOperation {
-                            activeProvider.createDirectory(currentPath, name)
-                        }
-                    },
-                ) {
-                    Text("Erstellen")
+            title = "Neuer Ordner",
+            dismissLabel = "Abbrechen",
+            onDismissClick = { showCreateFolderDialog = false },
+            confirmLabel = "Erstellen",
+            confirmEnabled = folderName.isNotBlank(),
+            onConfirmClick = {
+                val name = folderName
+                showCreateFolderDialog = false
+                runFileOperation {
+                    activeProvider.createDirectory(currentPath, name)
                 }
             },
-            dismissButton = {
-                TextButton(onClick = { showCreateFolderDialog = false }) {
-                    Text("Abbrechen")
-                }
-            },
-        )
+        ) {
+            OutlinedTextField(
+                value = folderName,
+                onValueChange = { folderName = it },
+                label = { Text("Ordnername") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
     }
 
     renameTargetNode?.let { target ->
         var newName by remember(target.path) { mutableStateOf(target.name) }
-        AlertDialog(
+        MonolithDialog(
             onDismissRequest = { renameTargetNode = null },
-            title = { Text("Umbenennen") },
-            text = {
-                OutlinedTextField(
-                    value = newName,
-                    onValueChange = { updated ->
-                        newName = updated.replace('\n', ' ').replace('\r', ' ')
-                    },
-                    label = { Text("Neuer Name") },
-                    singleLine = false,
-                    maxLines = 4,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    enabled = newName.isNotBlank() && newName.trim() != target.name,
-                    onClick = {
-                        val updatedName = newName
-                        renameTargetNode = null
-                        runFileOperation(
-                            onSuccess = { selectedPaths = emptySet() },
-                        ) {
-                            activeProvider.rename(target.path, updatedName)
-                        }
-                    },
+            title = "Umbenennen",
+            dismissLabel = "Abbrechen",
+            onDismissClick = { renameTargetNode = null },
+            confirmLabel = "Umbenennen",
+            confirmEnabled = newName.isNotBlank() && newName.trim() != target.name,
+            onConfirmClick = {
+                val updatedName = newName
+                renameTargetNode = null
+                runFileOperation(
+                    onSuccess = { selectedPaths = emptySet() },
                 ) {
-                    Text("Umbenennen")
+                    activeProvider.rename(target.path, updatedName)
                 }
             },
-            dismissButton = {
-                TextButton(onClick = { renameTargetNode = null }) {
-                    Text("Abbrechen")
-                }
-            },
-        )
+        ) {
+            OutlinedTextField(
+                value = newName,
+                onValueChange = { updated ->
+                    newName = updated.replace('\n', ' ').replace('\r', ' ')
+                },
+                label = { Text("Neuer Name") },
+                singleLine = false,
+                maxLines = 4,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
     }
 
     if (showDeleteDialog) {
         val count = selectedPaths.size
-        AlertDialog(
+        MonolithDialog(
             onDismissRequest = { showDeleteDialog = false },
-            title = { Text("Löschen") },
-            text = {
-                val message = if (count == 1) {
-                    val name = selectedNodes.firstOrNull()?.name ?: "Element"
-                    "„$name“ wirklich löschen?"
-                } else {
-                    "$count Elemente wirklich löschen?"
-                }
-                Text(message)
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        val pathsToDelete = selectedPaths.toList()
-                        showDeleteDialog = false
-                        runFileOperation(
-                            onSuccess = { selectedPaths = emptySet() },
-                        ) {
-                            activeProvider.delete(pathsToDelete)
-                        }
-                    },
+            title = "Löschen",
+            dismissLabel = "Abbrechen",
+            onDismissClick = { showDeleteDialog = false },
+            confirmLabel = "Löschen",
+            onConfirmClick = {
+                val pathsToDelete = selectedPaths.toList()
+                showDeleteDialog = false
+                runFileOperation(
+                    onSuccess = { selectedPaths = emptySet() },
                 ) {
-                    Text("Löschen")
+                    activeProvider.delete(pathsToDelete)
                 }
             },
-            dismissButton = {
-                TextButton(onClick = { showDeleteDialog = false }) {
-                    Text("Abbrechen")
-                }
-            },
-        )
+        ) {
+            val message = if (count == 1) {
+                val name = selectedNodes.firstOrNull()?.name ?: "Element"
+                "„$name“ wirklich löschen?"
+            } else {
+                "$count Elemente wirklich löschen?"
+            }
+            Text(message)
+        }
     }
 }
 

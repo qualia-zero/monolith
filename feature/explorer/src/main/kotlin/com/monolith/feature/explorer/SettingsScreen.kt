@@ -1,6 +1,7 @@
 package com.monolith.feature.explorer
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -13,6 +14,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
@@ -34,9 +36,11 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import java.io.File
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -52,6 +56,7 @@ import com.monolith.core.model.AppSettings
 import com.monolith.core.model.PlayerSettings
 import com.monolith.core.model.ResumeMode
 import com.monolith.core.model.ThemeMode
+import com.monolith.core.ui.components.MonolithDialog
 import com.monolith.core.ui.components.MonolithSwitch
 import com.monolith.core.ui.haptics.MonolithHaptics
 import com.monolith.core.ui.theme.LocalMonolithButtonShape
@@ -70,7 +75,29 @@ fun SettingsScreen(
     val appSettings by AppSettingsStore.settings.collectAsState()
     val settings by PlayerSettingsStore.settings.collectAsState()
 
-    BackHandler(onBack = onBack)
+    var showHapticsSubmenu by remember { mutableStateOf(false) }
+
+    BackHandler(enabled = showHapticsSubmenu) {
+        MonolithHaptics.backNav(context, view)
+        showHapticsSubmenu = false
+    }
+
+    BackHandler(enabled = !showHapticsSubmenu) {
+        MonolithHaptics.backNav(context, view)
+        onBack()
+    }
+
+    if (showHapticsSubmenu) {
+        HapticsSubmenuScreen(
+            appSettings = appSettings,
+            onBack = {
+                MonolithHaptics.backNav(context, view)
+                showHapticsSubmenu = false
+            },
+            modifier = modifier,
+        )
+        return
+    }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -84,7 +111,10 @@ fun SettingsScreen(
             TopAppBar(
                 title = { Text("Einstellungen") },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(onClick = {
+                        MonolithHaptics.backNav(context, view)
+                        onBack()
+                    }) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Zurück",
@@ -114,7 +144,6 @@ fun SettingsScreen(
                         selected = appSettings.themeMode == mode,
                         shape = LocalMonolithButtonShape.current,
                         onClick = {
-                            MonolithHaptics.navClick(context, view)
                             AppSettingsStore.update { it.copy(themeMode = mode) }
                         },
                         label = {
@@ -144,55 +173,43 @@ fun SettingsScreen(
                     checked = appSettings.hapticsEnabled,
                     onCheckedChange = { enabled ->
                         AppSettingsStore.update { it.copy(hapticsEnabled = enabled) }
-                        if (enabled) MonolithHaptics.navClick(context, view)
                     },
                 )
                 if (appSettings.hapticsEnabled) {
-                    HapticToggleRow(
-                        title = "Einklicken & Navigation",
-                        subtitle = "Präzises Einklicken bei Intern/USB/GD, Ordnern, Zurück & Buttons",
-                        checked = appSettings.hapticNavClick,
-                        onCheckedChange = { enabled ->
-                            AppSettingsStore.update { it.copy(hapticNavClick = enabled) }
-                            if (enabled) MonolithHaptics.navClick(context, view)
-                        },
-                    )
-                    HapticToggleRow(
-                        title = "Anheben & Verschieben",
-                        subtitle = "Spürbares Einrasten beim Gedrückthalten",
-                        checked = appSettings.hapticDragLift,
-                        onCheckedChange = { enabled ->
-                            AppSettingsStore.update { it.copy(hapticDragLift = enabled) }
-                            if (enabled) MonolithHaptics.dragLift(view)
-                        },
-                    )
-                    HapticToggleRow(
-                        title = "Datei- & Media-Start",
-                        subtitle = "Ansteigender Doppel-Impuls beim Starten einer Datei",
-                        checked = appSettings.hapticLaunchItem,
-                        onCheckedChange = { enabled ->
-                            AppSettingsStore.update { it.copy(hapticLaunchItem = enabled) }
-                            if (enabled) MonolithHaptics.launchItem(context)
-                        },
-                    )
-                    HapticToggleRow(
-                        title = "Bestätigungs-Impuls",
-                        subtitle = "Doppel-Impuls bei abgeschlossenen Transfers",
-                        checked = appSettings.hapticPulseFeedback,
-                        onCheckedChange = { enabled ->
-                            AppSettingsStore.update { it.copy(hapticPulseFeedback = enabled) }
-                            if (enabled) MonolithHaptics.successPulse(context)
-                        },
-                    )
-                    HapticToggleRow(
-                        title = "Aktualisieren",
-                        subtitle = "Einrasten und Abschluss beim Herunterziehen",
-                        checked = appSettings.hapticPullRefresh,
-                        onCheckedChange = { enabled ->
-                            AppSettingsStore.update { it.copy(hapticPullRefresh = enabled) }
-                            if (enabled) MonolithHaptics.refreshDetent(context, view)
-                        },
-                    )
+                    Surface(
+                        shape = MaterialTheme.shapes.medium,
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                showHapticsSubmenu = true
+                            },
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Haptik-Details",
+                                    style = MaterialTheme.typography.bodyLarge,
+                                )
+                                Text(
+                                    text = "Einzelne Aktionen fein einstellen",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            Icon(
+                                imageVector = Icons.Outlined.ChevronRight,
+                                contentDescription = "Öffnen",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
                 }
             }
 
@@ -223,7 +240,6 @@ fun SettingsScreen(
                 MonolithSwitch(
                     checked = settings.subtitlesEnabled,
                     onCheckedChange = { enabled ->
-                        MonolithHaptics.navClick(context, view)
                         MpvEngine.setSubtitlesEnabled(enabled)
                     },
                 )
@@ -330,6 +346,39 @@ fun SettingsScreen(
 
             HorizontalDivider(thickness = 0.5.dp)
 
+            var cacheRefreshTick by remember { mutableIntStateOf(0) }
+            val cachedBytes = remember(cacheRefreshTick) {
+                val shareDir = File(context.cacheDir, "shared_drive")
+                val driveDir = File(context.cacheDir, "gdrive_dir_cache")
+                folderSizeBytes(shareDir) + folderSizeBytes(driveDir)
+            }
+
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = "Zwischengespeicherte Dateien",
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                Text(
+                    text = "Geteilte Cloud-Dateien und Cloud-Ordnerlisten im Cache (${formatCacheSize(cachedBytes)}).",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                OutlinedButton(
+                    onClick = {
+                        File(context.cacheDir, "shared_drive").deleteRecursively()
+                        File(context.cacheDir, "gdrive_dir_cache").deleteRecursively()
+                        cacheRefreshTick++
+                    },
+                    enabled = cachedBytes > 0L,
+                    shape = LocalMonolithButtonShape.current,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("Cache leeren")
+                }
+            }
+
+            HorizontalDivider(thickness = 0.5.dp)
+
             var showResetConfirm by remember { mutableStateOf(false) }
 
             OutlinedButton(
@@ -341,38 +390,25 @@ fun SettingsScreen(
             }
 
             if (showResetConfirm) {
-                AlertDialog(
+                MonolithDialog(
                     onDismissRequest = { showResetConfirm = false },
-                    title = { Text("App-Einstellungen zurücksetzen") },
-                    text = {
-                        Text(
-                            "Design, Wiedergabe-Einstellungen sowie alle gespeicherten Standard-Apps (inkl. der integrierten Apps) werden auf die Standardwerte zurückgesetzt.",
-                        )
+                    title = "App-Einstellungen zurücksetzen",
+                    dismissLabel = "Abbrechen",
+                    onDismissClick = { showResetConfirm = false },
+                    confirmLabel = "Zurücksetzen",
+                    onConfirmClick = {
+                        showResetConfirm = false
+                        AppSettingsStore.update { AppSettings() }
+                        val defaultPlayer = PlayerSettings()
+                        PlayerSettingsStore.update { defaultPlayer }
+                        MpvEngine.setSubtitleSize(defaultPlayer.subtitleSize)
                     },
-                    dismissButton = {
-                        TextButton(
-                            shape = LocalMonolithButtonShape.current,
-                            onClick = { showResetConfirm = false },
-                        ) {
-                            Text("Abbrechen")
-                        }
-                    },
-                    confirmButton = {
-                        TextButton(
-                            shape = LocalMonolithButtonShape.current,
-                            onClick = {
-                                showResetConfirm = false
-                                AppSettingsStore.update { AppSettings() }
-                                val defaultPlayer = PlayerSettings()
-                                PlayerSettingsStore.update { defaultPlayer }
-                                MpvEngine.setSubtitleSize(defaultPlayer.subtitleSize)
-                                DefaultAppsStore.clearAll()
-                            },
-                        ) {
-                            Text("Zurücksetzen")
-                        }
-                    },
-                )
+                ) {
+                    Text(
+                        "Alle App-Einstellungen werden auf ihre Standardwerte zurückgesetzt. Gespeicherte Standard-Apps bleiben erhalten.",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
             }
 
             HorizontalDivider(thickness = 0.5.dp)
@@ -484,12 +520,126 @@ fun SettingsScreen(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun HapticsSubmenuScreen(
+    appSettings: AppSettings,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    val view = LocalView.current
+
+    Scaffold(
+        modifier = modifier.fillMaxSize(),
+        containerColor = if (com.monolith.core.ui.theme.LocalMonolithThemeMode.current == ThemeMode.OBSIDIAN) {
+            androidx.compose.ui.graphics.Color.Transparent
+        } else {
+            MaterialTheme.colorScheme.background
+        },
+        topBar = {
+            TopAppBar(
+                title = { Text("Haptik-Details") },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Zurück",
+                        )
+                    }
+                },
+            )
+        },
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            HapticToggleRow(
+                title = "Ordner öffnen",
+                checked = appSettings.hapticFolderOpen,
+                onCheckedChange = { enabled ->
+                    AppSettingsStore.update { it.copy(hapticFolderOpen = enabled) }
+                    if (enabled) MonolithHaptics.folderOpen(context, view)
+                },
+            )
+            HapticToggleRow(
+                title = "Zurückgehen",
+                checked = appSettings.hapticBackNav,
+                onCheckedChange = { enabled ->
+                    AppSettingsStore.update { it.copy(hapticBackNav = enabled) }
+                    if (enabled) MonolithHaptics.backNav(context, view)
+                },
+            )
+            HapticToggleRow(
+                title = "Monolith-Menü öffnen",
+                checked = appSettings.hapticMonolithMenuOpen,
+                onCheckedChange = { enabled ->
+                    AppSettingsStore.update { it.copy(hapticMonolithMenuOpen = enabled) }
+                    if (enabled) MonolithHaptics.monolithMenuOpen(context, view)
+                },
+            )
+            HapticToggleRow(
+                title = "3-Punkte-Menü öffnen",
+                checked = appSettings.hapticCornerMenuOpen,
+                onCheckedChange = { enabled ->
+                    AppSettingsStore.update { it.copy(hapticCornerMenuOpen = enabled) }
+                    if (enabled) MonolithHaptics.cornerMenuOpen(context, view)
+                },
+            )
+            HapticToggleRow(
+                title = "Gedrückthalten",
+                checked = appSettings.hapticDragLift,
+                onCheckedChange = { enabled ->
+                    AppSettingsStore.update { it.copy(hapticDragLift = enabled) }
+                    if (enabled) MonolithHaptics.dragLift(view)
+                },
+            )
+            HapticToggleRow(
+                title = "Datei öffnen",
+                checked = appSettings.hapticLaunchItem,
+                onCheckedChange = { enabled ->
+                    AppSettingsStore.update { it.copy(hapticLaunchItem = enabled) }
+                    if (enabled) MonolithHaptics.launchItem(context)
+                },
+            )
+            HapticToggleRow(
+                title = "Aktualisieren",
+                checked = appSettings.hapticPullRefresh,
+                onCheckedChange = { enabled ->
+                    AppSettingsStore.update { it.copy(hapticPullRefresh = enabled) }
+                    if (enabled) MonolithHaptics.refreshDetent(context, view)
+                },
+            )
+        }
+    }
+}
+
+private fun folderSizeBytes(dir: File): Long {
+    if (!dir.exists()) return 0L
+    if (dir.isFile) return dir.length()
+    return dir.listFiles()?.sumOf { folderSizeBytes(it) } ?: 0L
+}
+
+private fun formatCacheSize(bytes: Long): String {
+    return when {
+        bytes <= 0L -> "0 KB"
+        bytes < 1024L -> "$bytes B"
+        bytes < 1024L * 1024L -> "${bytes / 1024L} KB"
+        else -> String.format(java.util.Locale.US, "%.1f MB", bytes / (1024.0 * 1024.0))
+    }
+}
+
 @Composable
 private fun HapticToggleRow(
     title: String,
-    subtitle: String,
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
+    subtitle: String? = null,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -501,11 +651,13 @@ private fun HapticToggleRow(
                 text = title,
                 style = MaterialTheme.typography.bodyLarge,
             )
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            if (!subtitle.isNullOrBlank()) {
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
         MonolithSwitch(
             checked = checked,

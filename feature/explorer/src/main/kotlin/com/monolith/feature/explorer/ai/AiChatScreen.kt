@@ -107,6 +107,8 @@ import com.monolith.core.common.AppSettingsStore
 import com.monolith.core.model.ThemeMode
 import com.monolith.core.ui.components.CornerMenuItem
 import com.monolith.core.ui.components.MonolithCornerMenuOverlay
+import com.monolith.core.ui.components.MonolithDialog
+import com.monolith.core.ui.components.MonolithDialogOption
 import com.monolith.core.ui.components.MonolithStarMenuOverlay
 import com.monolith.core.ui.components.StarMenuItem
 import com.monolith.core.ui.haptics.MonolithHaptics
@@ -168,11 +170,6 @@ private val GEMINI_MODELS = listOf(
         supportedThinkingLevels = listOf(THINKING_LOW, THINKING_MEDIUM, THINKING_HIGH),
     ),
     GeminiModelOption(
-        id = "gemini-3.6-flash",
-        label = "Gemini 3.6 Flash",
-        supportedThinkingLevels = listOf(THINKING_MINIMAL, THINKING_LOW, THINKING_MEDIUM, THINKING_HIGH),
-    ),
-    GeminiModelOption(
         id = "gemini-3.5-flash-lite",
         label = "Gemini 3.5 Flash-Lite",
         supportedThinkingLevels = listOf(THINKING_MINIMAL, THINKING_LOW, THINKING_MEDIUM, THINKING_HIGH),
@@ -231,6 +228,7 @@ fun AiChatScreen(
     }
 
     BackHandler(enabled = !starMenuExpanded && !menuExpanded) {
+        MonolithHaptics.backNav(context, view)
         activeJob?.cancel()
         onBack()
     }
@@ -260,7 +258,6 @@ fun AiChatScreen(
         val usedModel = currentModelOption
         val usedThinking = currentThinkingOption
 
-        MonolithHaptics.navClick(context, view)
         inputText = ""
 
         val userMsg = AiChatMessage(
@@ -412,7 +409,7 @@ fun AiChatScreen(
                     navigationIcon = {
                         IconButton(
                             onClick = {
-                                MonolithHaptics.navClick(context, view)
+                                MonolithHaptics.monolithMenuOpen(context, view)
                                 starMenuExpanded = !starMenuExpanded
                             },
                             modifier = Modifier.onGloballyPositioned { coords ->
@@ -430,7 +427,7 @@ fun AiChatScreen(
                     actions = {
                         IconButton(
                             onClick = {
-                                MonolithHaptics.navClick(context, view)
+                                MonolithHaptics.cornerMenuOpen(context, view)
                                 menuExpanded = !menuExpanded
                             },
                             modifier = Modifier.onGloballyPositioned { coords ->
@@ -640,144 +637,87 @@ fun AiChatScreen(
     }
 
     if (showMissingKeyPopup) {
-        AlertDialog(
+        MonolithDialog(
             onDismissRequest = { showMissingKeyPopup = false },
-            title = { Text("Gemini-API-Key fehlt") },
-            text = {
-                Text(
-                    "Für das AI-Chatfenster wird ein Gemini-API-Key benötigt. Möchtest du jetzt die API-Verwaltung öffnen?",
-                )
+            title = "Gemini-API-Key fehlt",
+            dismissLabel = "Abbrechen",
+            onDismissClick = { showMissingKeyPopup = false },
+            confirmLabel = "API-Verwaltung öffnen",
+            onConfirmClick = {
+                showMissingKeyPopup = false
+                showApiKeyDialog = true
             },
-            dismissButton = {
-                TextButton(onClick = { showMissingKeyPopup = false }) {
-                    Text("Abbrechen")
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        showMissingKeyPopup = false
-                        showApiKeyDialog = true
-                    },
-                ) {
-                    Text("API-Verwaltung öffnen")
-                }
-            },
-        )
+        ) {
+            Text(
+                "Für das AI-Chatfenster wird ein Gemini-API-Key benötigt. Möchtest du jetzt die API-Verwaltung öffnen?",
+            )
+        }
     }
 
     if (showNewChatConfirm) {
-        AlertDialog(
+        MonolithDialog(
             onDismissRequest = { showNewChatConfirm = false },
-            title = { Text("Neuer Chat") },
-            text = {
-                Text(
-                    "Der aktuelle Chatverlauf geht dabei verloren. Möchtest du wirklich einen neuen Chat starten?",
-                )
+            title = "Neuer Chat",
+            dismissLabel = "Abbrechen",
+            onDismissClick = { showNewChatConfirm = false },
+            confirmLabel = "Neu starten",
+            onConfirmClick = {
+                showNewChatConfirm = false
+                startNewChat()
             },
-            dismissButton = {
-                TextButton(onClick = { showNewChatConfirm = false }) {
-                    Text("Abbrechen")
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        showNewChatConfirm = false
-                        MonolithHaptics.navClick(context, view)
-                        startNewChat()
-                    },
-                ) {
-                    Text("Neu starten")
-                }
-            },
-        )
+        ) {
+            Text(
+                "Der aktuelle Chatverlauf geht dabei verloren. Möchtest du wirklich einen neuen Chat starten?",
+            )
+        }
     }
 
     if (showModelDialog) {
-        AlertDialog(
+        MonolithDialog(
             onDismissRequest = { showModelDialog = false },
-            title = { Text("Modell wählen") },
-            text = {
-                Column {
-                    GEMINI_MODELS.forEach { option ->
-                        fun selectModel() {
-                            val preselectedLevel = option.defaultThinkingLevel
-                            AppSettingsStore.update {
-                                it.copy(
-                                    aiModelId = option.id,
-                                    aiThinkingLevel = preselectedLevel,
-                                )
-                            }
-                            showModelDialog = false
-                            showThinkingDialog = true
-                        }
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { selectModel() }
-                                .padding(vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            RadioButton(
-                                selected = currentModelOption.id == option.id,
-                                onClick = { selectModel() },
-                            )
-                            Text(
-                                text = option.label,
-                                style = MaterialTheme.typography.bodyLarge,
-                                modifier = Modifier.padding(start = 8.dp),
+            title = "Modell wählen",
+            confirmLabel = "Schließen",
+            onConfirmClick = { showModelDialog = false },
+        ) {
+            GEMINI_MODELS.forEach { option ->
+                MonolithDialogOption(
+                    label = option.label,
+                    selected = currentModelOption.id == option.id,
+                    onClick = {
+                        val preselectedLevel = option.defaultThinkingLevel
+                        AppSettingsStore.update {
+                            it.copy(
+                                aiModelId = option.id,
+                                aiThinkingLevel = preselectedLevel,
                             )
                         }
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { showModelDialog = false }) {
-                    Text("Schließen")
-                }
-            },
-        )
+                        showModelDialog = false
+                        showThinkingDialog = true
+                    },
+                )
+            }
+        }
     }
 
     if (showThinkingDialog) {
         val supportedLevels = currentModelOption.supportedThinkingLevels
-        AlertDialog(
+        MonolithDialog(
             onDismissRequest = { showThinkingDialog = false },
-            title = { Text("Denkaufwand") },
-            text = {
-                Column {
-                    supportedLevels.forEach { option ->
-                        fun selectLevel() {
-                            AppSettingsStore.update { it.copy(aiThinkingLevel = option.id) }
-                            showThinkingDialog = false
-                        }
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { selectLevel() }
-                                .padding(vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            RadioButton(
-                                selected = currentThinkingOption.id == option.id,
-                                onClick = { selectLevel() },
-                            )
-                            Text(
-                                text = option.label,
-                                style = MaterialTheme.typography.bodyLarge,
-                                modifier = Modifier.padding(start = 8.dp),
-                            )
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { showThinkingDialog = false }) {
-                    Text("Fertig")
-                }
-            },
-        )
+            title = "Denkaufwand",
+            confirmLabel = "Fertig",
+            onConfirmClick = { showThinkingDialog = false },
+        ) {
+            supportedLevels.forEach { option ->
+                MonolithDialogOption(
+                    label = option.label,
+                    selected = currentThinkingOption.id == option.id,
+                    onClick = {
+                        AppSettingsStore.update { it.copy(aiThinkingLevel = option.id) }
+                        showThinkingDialog = false
+                    },
+                )
+            }
+        }
     }
 
     if (showSystemPromptDialog) {
@@ -796,121 +736,102 @@ fun AiChatScreen(
             )
         }
 
-        AlertDialog(
+        MonolithDialog(
             onDismissRequest = { showSystemPromptDialog = false },
-            properties = DialogProperties(usePlatformDefaultWidth = false),
-            modifier = Modifier.fillMaxWidth(0.94f),
-            title = { Text("Systemprompt") },
-            text = {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
+            title = "Systemprompt",
+            wide = true,
+            dismissLabel = "Abbrechen",
+            onDismissClick = { showSystemPromptDialog = false },
+            confirmLabel = "Speichern",
+            onConfirmClick = {
+                val cleaned = promptDraft.trim()
+                val toStore = if (cleaned == GeminiInteractionsClient.DEFAULT_SYSTEM_PROMPT) "" else cleaned
+                AppSettingsStore.update { it.copy(aiSystemPrompt = toStore) }
+                showSystemPromptDialog = false
+            },
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                OutlinedTextField(
+                    value = promptDraft,
+                    onValueChange = { promptDraft = it },
+                    label = { Text("Prompt-Vorlage") },
+                    minLines = 4,
+                    maxLines = 9,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+
+                OutlinedButton(
+                    onClick = { showResetPromptConfirm = true },
+                    shape = LocalMonolithButtonShape.current,
+                    modifier = Modifier.fillMaxWidth(),
                 ) {
-                    OutlinedTextField(
-                        value = promptDraft,
-                        onValueChange = { promptDraft = it },
-                        label = { Text("Prompt-Vorlage") },
-                        minLines = 4,
-                        maxLines = 9,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
+                    Text("Auf Standard zurücksetzen")
+                }
 
-                    OutlinedButton(
-                        onClick = { showResetPromptConfirm = true },
-                        shape = LocalMonolithButtonShape.current,
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Text("Auf Standard zurücksetzen")
-                    }
+                Text(
+                    text = copiedTokenHint?.let { "Kopiert: $it" }
+                        ?: "Bausteine (antippen zum Kopieren):",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = if (copiedTokenHint != null) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurface
+                    },
+                )
 
-                    Text(
-                        text = copiedTokenHint?.let { "Kopiert: $it" }
-                            ?: "Bausteine (antippen zum Kopieren):",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = if (copiedTokenHint != null) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            MaterialTheme.colorScheme.onSurface
-                        },
-                    )
-
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        buildingBlocks.forEach { (token, desc) ->
-                            Surface(
-                                shape = MaterialTheme.shapes.small,
-                                color = MaterialTheme.colorScheme.surfaceVariant,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        MonolithHaptics.navClick(context, view)
-                                        clipboardManager.setText(AnnotatedString(token))
-                                        copiedTokenHint = token
-                                    },
-                            ) {
-                                Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)) {
-                                    Text(
-                                        text = token,
-                                        style = MaterialTheme.typography.labelSmall.copy(
-                                            fontFamily = FontFamily.Monospace,
-                                        ),
-                                        color = MaterialTheme.colorScheme.primary,
-                                    )
-                                    Text(
-                                        text = desc,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                }
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    buildingBlocks.forEach { (token, desc) ->
+                        Surface(
+                            shape = MaterialTheme.shapes.small,
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    clipboardManager.setText(AnnotatedString(token))
+                                    copiedTokenHint = token
+                                },
+                        ) {
+                            Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)) {
+                                Text(
+                                    text = token,
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontFamily = FontFamily.Monospace,
+                                    ),
+                                    color = MaterialTheme.colorScheme.primary,
+                                )
+                                Text(
+                                    text = desc,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
                             }
                         }
                     }
                 }
-            },
-            dismissButton = {
-                TextButton(onClick = { showSystemPromptDialog = false }) {
-                    Text("Abbrechen")
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        val cleaned = promptDraft.trim()
-                        val toStore = if (cleaned == GeminiInteractionsClient.DEFAULT_SYSTEM_PROMPT) "" else cleaned
-                        AppSettingsStore.update { it.copy(aiSystemPrompt = toStore) }
-                        showSystemPromptDialog = false
-                    },
-                ) {
-                    Text("Speichern")
-                }
-            },
-        )
+            }
+        }
 
         if (showResetPromptConfirm) {
-            AlertDialog(
+            MonolithDialog(
                 onDismissRequest = { showResetPromptConfirm = false },
-                title = { Text("Systemprompt zurücksetzen") },
-                text = {
-                    Text("Möchtest du den Systemprompt wirklich auf den Standard zurücksetzen?")
+                title = "Systemprompt zurücksetzen",
+                dismissLabel = "Abbrechen",
+                onDismissClick = { showResetPromptConfirm = false },
+                confirmLabel = "Zurücksetzen",
+                onConfirmClick = {
+                    showResetPromptConfirm = false
+                    promptDraft = GeminiInteractionsClient.DEFAULT_SYSTEM_PROMPT
+                    AppSettingsStore.update { it.copy(aiSystemPrompt = "") }
                 },
-                dismissButton = {
-                    TextButton(onClick = { showResetPromptConfirm = false }) {
-                        Text("Abbrechen")
-                    }
-                },
-                confirmButton = {
-                    TextButton(
-                        onClick = {
-                            showResetPromptConfirm = false
-                            promptDraft = GeminiInteractionsClient.DEFAULT_SYSTEM_PROMPT
-                            AppSettingsStore.update { it.copy(aiSystemPrompt = "") }
-                        },
-                    ) {
-                        Text("Zurücksetzen")
-                    }
-                },
-            )
+            ) {
+                Text("Möchtest du den Systemprompt wirklich auf den Standard zurücksetzen?")
+            }
         }
     }
 
@@ -919,56 +840,33 @@ fun AiChatScreen(
         var newKey by remember { mutableStateOf("") }
         var showNewKey by remember { mutableStateOf(false) }
 
-        AlertDialog(
+        MonolithDialog(
             onDismissRequest = { showApiKeyDialog = false },
-            title = { Text("API-Verwaltung") },
-            text = {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    if (appSettings.geminiApiKeys.isEmpty()) {
-                        Text(
-                            text = "Noch keine API-Keys gespeichert.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    } else {
-                        appSettings.geminiApiKeys.forEach { entry ->
-                            val isSelected = entry.id == appSettings.activeGeminiApiKeyId
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        AppSettingsStore.selectGeminiApiKey(entry.id)
-                                    }
-                                    .padding(vertical = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                RadioButton(
-                                    selected = isSelected,
-                                    onClick = { AppSettingsStore.selectGeminiApiKey(entry.id) },
-                                )
-                                Column(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .padding(horizontal = 6.dp),
-                                ) {
-                                    Text(
-                                        text = entry.label,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
-                                    Text(
-                                        text = maskApiKey(entry.key),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        maxLines = 1,
-                                    )
-                                }
+            title = "API-Verwaltung",
+            confirmLabel = "Schließen",
+            onConfirmClick = { showApiKeyDialog = false },
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                if (appSettings.geminiApiKeys.isEmpty()) {
+                    Text(
+                        text = "Noch keine API-Keys gespeichert.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                } else {
+                    appSettings.geminiApiKeys.forEach { entry ->
+                        val isSelected = entry.id == appSettings.activeGeminiApiKeyId
+                        MonolithDialogOption(
+                            label = entry.label,
+                            subtitle = maskApiKey(entry.key),
+                            selected = isSelected,
+                            onClick = { AppSettingsStore.selectGeminiApiKey(entry.id) },
+                            trailing = {
                                 IconButton(
                                     onClick = { AppSettingsStore.removeGeminiApiKey(entry.id) },
                                 ) {
@@ -977,72 +875,67 @@ fun AiChatScreen(
                                         contentDescription = "Key entfernen",
                                     )
                                 }
-                            }
+                            },
+                        )
+                    }
+                }
+
+                HorizontalDivider(thickness = 0.5.dp)
+
+                Text(
+                    text = "Neuen Key hinzufügen",
+                    style = MaterialTheme.typography.labelLarge,
+                )
+
+                OutlinedTextField(
+                    value = newLabel,
+                    onValueChange = { newLabel = it },
+                    label = { Text("Bezeichnung (optional)") },
+                    placeholder = { Text("z. B. Privat, Arbeit") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+
+                OutlinedTextField(
+                    value = newKey,
+                    onValueChange = { newKey = it },
+                    label = { Text("Gemini-API-Key") },
+                    placeholder = { Text("AIza…") },
+                    singleLine = true,
+                    visualTransformation = if (showNewKey) {
+                        VisualTransformation.None
+                    } else {
+                        PasswordVisualTransformation()
+                    },
+                    trailingIcon = {
+                        IconButton(onClick = { showNewKey = !showNewKey }) {
+                            Icon(
+                                imageVector = if (showNewKey) {
+                                    Icons.Outlined.VisibilityOff
+                                } else {
+                                    Icons.Outlined.Visibility
+                                },
+                                contentDescription = if (showNewKey) "Verbergen" else "Anzeigen",
+                            )
                         }
-                    }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                )
 
-                    HorizontalDivider(thickness = 0.5.dp)
-
-                    Text(
-                        text = "Neuen Key hinzufügen",
-                        style = MaterialTheme.typography.labelLarge,
-                    )
-
-                    OutlinedTextField(
-                        value = newLabel,
-                        onValueChange = { newLabel = it },
-                        label = { Text("Bezeichnung (optional)") },
-                        placeholder = { Text("z. B. Privat, Arbeit") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-
-                    OutlinedTextField(
-                        value = newKey,
-                        onValueChange = { newKey = it },
-                        label = { Text("Gemini-API-Key") },
-                        placeholder = { Text("AIza…") },
-                        singleLine = true,
-                        visualTransformation = if (showNewKey) {
-                            VisualTransformation.None
-                        } else {
-                            PasswordVisualTransformation()
-                        },
-                        trailingIcon = {
-                            IconButton(onClick = { showNewKey = !showNewKey }) {
-                                Icon(
-                                    imageVector = if (showNewKey) {
-                                        Icons.Outlined.VisibilityOff
-                                    } else {
-                                        Icons.Outlined.Visibility
-                                    },
-                                    contentDescription = if (showNewKey) "Verbergen" else "Anzeigen",
-                                )
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-
-                    Button(
-                        onClick = {
-                            AppSettingsStore.addGeminiApiKey(newLabel, newKey)
-                            newLabel = ""
-                            newKey = ""
-                        },
-                        enabled = newKey.isNotBlank(),
-                        shape = LocalMonolithButtonShape.current,
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Text("Hinzufügen & aktivieren")
-                    }
+                Button(
+                    onClick = {
+                        AppSettingsStore.addGeminiApiKey(newLabel, newKey)
+                        newLabel = ""
+                        newKey = ""
+                    },
+                    enabled = newKey.isNotBlank(),
+                    shape = LocalMonolithButtonShape.current,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("Hinzufügen & aktivieren")
                 }
-            },
-            confirmButton = {
-                TextButton(onClick = { showApiKeyDialog = false }) {
-                    Text("Schließen")
-                }
-            },
-        )
+            }
+        }
     }
 }
 

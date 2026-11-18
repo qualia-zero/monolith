@@ -11,30 +11,28 @@ import com.monolith.core.common.AppSettingsStore
 
 object MonolithHaptics {
 
-    /**
-     * Crisp, non-buzzy mechanical click for chips, folders, back navigation, and buttons.
-     */
-    fun navClick(context: Context, view: View) {
+    fun folderOpen(context: Context, view: View) {
         val settings = AppSettingsStore.settings.value
-        if (!settings.hapticsEnabled || !settings.hapticNavClick) return
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            val clicked = vibratePredefined(context, VibrationEffect.EFFECT_CLICK)
-            if (clicked) return
-        }
-        view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
+        if (!settings.hapticsEnabled || !settings.hapticFolderOpen) return
+        triggerClick(context, view)
     }
 
-    /**
-     * Subtle detent tick for reordering and precision steps.
-     */
-    fun tick(context: Context, view: View) {
+    fun backNav(context: Context, view: View) {
         val settings = AppSettingsStore.settings.value
-        if (!settings.hapticsEnabled || !settings.hapticNavClick) return
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            val ticked = vibratePredefined(context, VibrationEffect.EFFECT_TICK)
-            if (ticked) return
-        }
-        view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+        if (!settings.hapticsEnabled || !settings.hapticBackNav) return
+        triggerClick(context, view)
+    }
+
+    fun monolithMenuOpen(context: Context, view: View) {
+        val settings = AppSettingsStore.settings.value
+        if (!settings.hapticsEnabled || !settings.hapticMonolithMenuOpen) return
+        triggerClick(context, view)
+    }
+
+    fun cornerMenuOpen(context: Context, view: View) {
+        val settings = AppSettingsStore.settings.value
+        if (!settings.hapticsEnabled || !settings.hapticCornerMenuOpen) return
+        triggerClick(context, view)
     }
 
     fun dragLift(view: View) {
@@ -43,9 +41,6 @@ object MonolithHaptics {
         view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
     }
 
-    /**
-     * Distinct ascending ramp + crisp kick when launching a media file or viewer.
-     */
     fun launchItem(context: Context) {
         val settings = AppSettingsStore.settings.value
         if (!settings.hapticsEnabled || !settings.hapticLaunchItem) return
@@ -53,16 +48,6 @@ object MonolithHaptics {
             context = context,
             timings = longArrayOf(0L, 14L, 28L, 22L, 32L, 30L),
             amplitudes = intArrayOf(0, 90, 0, 165, 0, 255),
-        )
-    }
-
-    fun successPulse(context: Context) {
-        val settings = AppSettingsStore.settings.value
-        if (!settings.hapticsEnabled || !settings.hapticPulseFeedback) return
-        vibrateWaveform(
-            context = context,
-            timings = longArrayOf(0L, 18L, 45L, 28L),
-            amplitudes = intArrayOf(0, 140, 0, 220),
         )
     }
 
@@ -79,6 +64,10 @@ object MonolithHaptics {
     fun refreshComplete(context: Context, view: View) {
         val settings = AppSettingsStore.settings.value
         if (!settings.hapticsEnabled || !settings.hapticPullRefresh) return
+        triggerClick(context, view)
+    }
+
+    private fun triggerClick(context: Context, view: View) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val clicked = vibratePredefined(context, VibrationEffect.EFFECT_CLICK)
             if (clicked) return

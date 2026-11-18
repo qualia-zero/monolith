@@ -16,10 +16,12 @@ object AppSettingsStore {
     private const val PREFS_NAME = "monolith_app_settings"
     private const val KEY_THEME_MODE = "theme_mode"
     private const val KEY_HAPTICS_ENABLED = "haptics_enabled"
-    private const val KEY_HAPTIC_NAV_CLICK = "haptic_nav_click"
+    private const val KEY_HAPTIC_FOLDER_OPEN = "haptic_folder_open"
+    private const val KEY_HAPTIC_BACK_NAV = "haptic_back_nav"
+    private const val KEY_HAPTIC_MONOLITH_MENU = "haptic_monolith_menu_open"
+    private const val KEY_HAPTIC_CORNER_MENU = "haptic_corner_menu_open"
     private const val KEY_HAPTIC_DRAG = "haptic_drag_lift"
     private const val KEY_HAPTIC_LAUNCH = "haptic_launch_item"
-    private const val KEY_HAPTIC_PULSE = "haptic_pulse_feedback"
     private const val KEY_HAPTIC_PULL_REFRESH = "haptic_pull_refresh"
     private const val KEY_GEMINI_API_KEY = "gemini_api_key"
     private const val KEY_GEMINI_API_KEYS = "gemini_api_keys"
@@ -151,10 +153,12 @@ object AppSettingsStore {
         return AppSettings(
             themeMode = themeMode,
             hapticsEnabled = sp.getBoolean(KEY_HAPTICS_ENABLED, defaults.hapticsEnabled),
-            hapticNavClick = sp.getBoolean(KEY_HAPTIC_NAV_CLICK, defaults.hapticNavClick),
+            hapticFolderOpen = sp.getBoolean(KEY_HAPTIC_FOLDER_OPEN, defaults.hapticFolderOpen),
+            hapticBackNav = sp.getBoolean(KEY_HAPTIC_BACK_NAV, defaults.hapticBackNav),
+            hapticMonolithMenuOpen = sp.getBoolean(KEY_HAPTIC_MONOLITH_MENU, defaults.hapticMonolithMenuOpen),
+            hapticCornerMenuOpen = sp.getBoolean(KEY_HAPTIC_CORNER_MENU, defaults.hapticCornerMenuOpen),
             hapticDragLift = sp.getBoolean(KEY_HAPTIC_DRAG, defaults.hapticDragLift),
             hapticLaunchItem = sp.getBoolean(KEY_HAPTIC_LAUNCH, defaults.hapticLaunchItem),
-            hapticPulseFeedback = sp.getBoolean(KEY_HAPTIC_PULSE, defaults.hapticPulseFeedback),
             hapticPullRefresh = sp.getBoolean(KEY_HAPTIC_PULL_REFRESH, defaults.hapticPullRefresh),
             geminiApiKey = finalKeys.firstOrNull { it.id == activeId }?.key ?: legacyKey,
             geminiApiKeys = finalKeys,
@@ -182,10 +186,12 @@ object AppSettingsStore {
         prefs?.edit()
             ?.putString(KEY_THEME_MODE, value.themeMode.name)
             ?.putBoolean(KEY_HAPTICS_ENABLED, value.hapticsEnabled)
-            ?.putBoolean(KEY_HAPTIC_NAV_CLICK, value.hapticNavClick)
+            ?.putBoolean(KEY_HAPTIC_FOLDER_OPEN, value.hapticFolderOpen)
+            ?.putBoolean(KEY_HAPTIC_BACK_NAV, value.hapticBackNav)
+            ?.putBoolean(KEY_HAPTIC_MONOLITH_MENU, value.hapticMonolithMenuOpen)
+            ?.putBoolean(KEY_HAPTIC_CORNER_MENU, value.hapticCornerMenuOpen)
             ?.putBoolean(KEY_HAPTIC_DRAG, value.hapticDragLift)
             ?.putBoolean(KEY_HAPTIC_LAUNCH, value.hapticLaunchItem)
-            ?.putBoolean(KEY_HAPTIC_PULSE, value.hapticPulseFeedback)
             ?.putBoolean(KEY_HAPTIC_PULL_REFRESH, value.hapticPullRefresh)
             ?.putString(KEY_GEMINI_API_KEY, value.activeGeminiApiKey)
             ?.putString(KEY_GEMINI_API_KEYS, keysArray.toString())
