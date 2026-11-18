@@ -283,7 +283,7 @@ object MpvEngine : MPVLib.EventObserver, MPVLib.LogObserver {
     fun seekBy(deltaMs: Long) {
         if (!initialized) return
         val sec = deltaMs / 1000.0
-        MPVLib.command(arrayOf("seek", String.format(Locale.US, "%.3f", sec), "relative"))
+        MPVLib.command(arrayOf("seek", String.format(Locale.US, "%.3f", sec), "relative+exact"))
     }
 
     fun setSpeed(speed: Float) {

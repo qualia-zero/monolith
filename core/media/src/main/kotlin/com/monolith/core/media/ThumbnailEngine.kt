@@ -22,6 +22,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLDecoder
 import java.net.URLEncoder
+import java.security.MessageDigest
 import java.util.concurrent.Callable
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ExecutionException
@@ -95,7 +96,7 @@ object ThumbnailEngine {
         return null
     }
 
-    private val remoteExtractSemaphore = Semaphore(2)
+    private val remoteExtractSemaphore = Semaphore(4)
 
     @Volatile
     var cloudTokenProvider: (() -> String?)? = null
@@ -120,6 +121,11 @@ object ThumbnailEngine {
         val cacheKey = listCacheKey(normalizedPath, lastModifiedMs, targetPx)
         getCachedListThumbnail(normalizedPath, lastModifiedMs, targetPx)?.let {
             return@withContext it
+        }
+        readDiskThumbnail(context, cacheKey)?.let { diskBmp ->
+            listThumbnailCache.put(cacheKey, diskBmp)
+            latestModifiedByPath[normalizedPath] = lastModifiedMs
+            return@withContext diskBmp
         }
 
         val isDriveFile = normalizedPath.startsWith("gdrive://")
@@ -188,7 +194,40 @@ object ThumbnailEngine {
         }
         listThumbnailCache.put(cacheKey, prepared)
         latestModifiedByPath[normalizedPath] = lastModifiedMs
+        writeDiskThumbnail(context, cacheKey, prepared)
         prepared
+    }
+
+    private fun diskCacheFile(context: Context, cacheKey: String): File {
+        val dir = File(context.applicationContext.cacheDir, "thumb_cache").apply { mkdirs() }
+        val digest = MessageDigest.getInstance("SHA-256")
+            .digest(cacheKey.toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it) }
+        return File(dir, "$digest.png")
+    }
+
+    private fun readDiskThumbnail(context: Context, cacheKey: String): Bitmap? {
+        return runCatching {
+            val file = diskCacheFile(context, cacheKey)
+            if (!file.isFile) return null
+            val opts = BitmapFactory.Options().apply {
+                inPreferredConfig = Bitmap.Config.ARGB_8888
+            }
+            BitmapFactory.decodeFile(file.absolutePath, opts)
+        }.getOrNull()
+    }
+
+    private fun writeDiskThumbnail(context: Context, cacheKey: String, bitmap: Bitmap) {
+        runCatching {
+            val target = diskCacheFile(context, cacheKey)
+            val tmp = File(target.parentFile, "${target.name}.tmp")
+            tmp.outputStream().use { out ->
+                bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+            }
+            if (!tmp.renameTo(target)) {
+                tmp.delete()
+            }
+        }
     }
 
     private fun fetchDriveThumbnailLink(gdrivePath: String): String? {
@@ -449,7 +488,7 @@ object ThumbnailEngine {
         val retriever = MediaMetadataRetriever()
         val extracted = try {
             setDataSource(context, retriever, path)
-            decodeEmbeddedPicture(retriever, targetPx) ?: extractNonBlackVideoFrame(retriever)
+            decodeEmbeddedPicture(retriever, targetPx) ?: extractNonBlackVideoFrame(retriever, targetPx)
         } catch (t: Throwable) {
             MonolithDiagnostics.logWarn("ThumbnailEngine", "Local video thumbnail extraction failed for $path: ${t.message}")
             null
@@ -502,7 +541,7 @@ object ThumbnailEngine {
         val streamUrl = "$DRIVE_FILES_URL_PREFIX$encodedId?alt=media"
         return runRetrieverWithTimeout(FALLBACK_GENERATE_TIMEOUT_MS) { retriever ->
             retriever.setDataSource(streamUrl, mapOf("Authorization" to "Bearer $token"))
-            decodeEmbeddedPicture(retriever, targetPx) ?: extractNonBlackVideoFrame(retriever)
+            decodeEmbeddedPicture(retriever, targetPx) ?: extractNonBlackVideoFrame(retriever, targetPx)
         }
     }
 
@@ -544,12 +583,25 @@ object ThumbnailEngine {
         return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, decodeOpts)
     }
 
-    private fun extractNonBlackVideoFrame(retriever: MediaMetadataRetriever): Bitmap? {
+    private fun extractNonBlackVideoFrame(
+        retriever: MediaMetadataRetriever,
+        targetPx: Int? = null,
+    ): Bitmap? {
         val candidateTimesUs = longArrayOf(30_000_000L)
         var fallbackFrame: Bitmap? = null
+        val scaledBound = targetPx?.let { (it * 2).coerceAtLeast(256) }
 
         for (timeUs in candidateTimesUs) {
-            val frame = retriever.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+            val frame = if (scaledBound != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+                retriever.getScaledFrameAtTime(
+                    timeUs,
+                    MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
+                    scaledBound,
+                    scaledBound,
+                )
+            } else {
+                retriever.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+            }
             if (frame != null) {
                 if (isNonBlackBitmap(frame)) {
                     fallbackFrame?.recycle()
