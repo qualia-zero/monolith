@@ -359,7 +359,7 @@ fun SettingsScreen(
                     style = MaterialTheme.typography.titleMedium,
                 )
                 Text(
-                    text = "Geteilte Cloud-Dateien und Cloud-Ordnerlisten im Cache (${formatCacheSize(cachedBytes)}).",
+                    text = "Heruntergeladene Cloud-Dateien und Cloud-Ordnerlisten im Cache (${formatCacheSize(cachedBytes)}).",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

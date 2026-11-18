@@ -9,8 +9,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -69,6 +68,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -76,6 +76,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -116,6 +117,7 @@ fun PlayerScreen(
     if (state.isVideo) {
         VideoPlayerContent(
             state = state,
+            useDoubleTapGesture = settings.useDoubleTapGesture,
             isInPip = isInPip,
             controlsVisible = controlsVisible,
             onControlsVisibleChange = onControlsVisibleChange,
@@ -169,6 +171,7 @@ fun PlayerScreen(
 @Composable
 private fun VideoPlayerContent(
     state: PlaybackUiState,
+    useDoubleTapGesture: Boolean,
     isInPip: Boolean,
     controlsVisible: Boolean,
     onControlsVisibleChange: (Boolean) -> Unit,
@@ -176,6 +179,9 @@ private fun VideoPlayerContent(
     onEnterPip: () -> Unit,
     onOpenSettings: () -> Unit,
 ) {
+    val currentControlsVisible by rememberUpdatedState(controlsVisible)
+    val currentOnControlsVisibleChange by rememberUpdatedState(onControlsVisibleChange)
+
     LaunchedEffect(controlsVisible, state.isPlaying, isInPip) {
         if (controlsVisible && state.isPlaying && !isInPip) {
             delay(3500L)
@@ -187,13 +193,25 @@ private fun VideoPlayerContent(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black)
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-            ) {
-                if (!isInPip) {
-                    onControlsVisibleChange(!controlsVisible)
-                }
+            .pointerInput(isInPip, useDoubleTapGesture) {
+                detectTapGestures(
+                    onTap = {
+                        if (!isInPip) {
+                            currentOnControlsVisibleChange(!currentControlsVisible)
+                        }
+                    },
+                    onDoubleTap = if (useDoubleTapGesture && !isInPip) {
+                        { offset ->
+                            when {
+                                offset.x < size.width / 3f -> MpvEngine.seekBy(-10_000L)
+                                offset.x > size.width * 2f / 3f -> MpvEngine.seekBy(10_000L)
+                                else -> MpvEngine.togglePlayPause()
+                            }
+                        }
+                    } else {
+                        null
+                    },
+                )
             },
     ) {
         AndroidView(
@@ -777,6 +795,13 @@ private fun PlayerSettingsSheetContent(
             checked = settings.usePipMode,
             onCheckedChange = { checked ->
                 onUpdateSettings { it.copy(usePipMode = checked) }
+            },
+        )
+        SettingsToggleRow(
+            title = "Doppeltippen (Zurück / Pause / Vor)",
+            checked = settings.useDoubleTapGesture,
+            onCheckedChange = { checked ->
+                onUpdateSettings { it.copy(useDoubleTapGesture = checked) }
             },
         )
     }

@@ -45,6 +45,7 @@ import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.ContentCut
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Explore
 import androidx.compose.material.icons.outlined.Folder
@@ -244,6 +245,8 @@ fun ExplorerScreen(
     var showDeleteDialog by remember { mutableStateOf(false) }
     var shareCloudTarget by remember { mutableStateOf<VfsNode?>(null) }
     var isDownloadingForShare by remember { mutableStateOf(false) }
+    var cacheVersionTick by remember { mutableIntStateOf(0) }
+    var isCloudCaching by remember { mutableStateOf(false) }
     var refreshTrigger by remember { mutableIntStateOf(0) }
     var forceRefreshNextLoad by remember { mutableStateOf(false) }
     var loadRequestSeq by remember { mutableIntStateOf(0) }
@@ -456,6 +459,61 @@ fun ExplorerScreen(
                         }) {
                             Icon(Icons.Outlined.ContentCut, contentDescription = "Ausschneiden")
                         }
+                        if (activeLocation == LocationType.GOOGLE_DRIVE) {
+                            val allSelectedCached = remember(selectedNodes, cacheVersionTick) {
+                                selectedNodes.isNotEmpty() && selectedNodes.all {
+                                    CloudCacheManager.isNodeCached(context, it)
+                                }
+                            }
+                            IconButton(
+                                enabled = !isCloudCaching,
+                                onClick = {
+                                    val nodesToProcess = selectedNodes
+                                    if (allSelectedCached) {
+                                        scope.launch {
+                                            withContext(Dispatchers.IO) {
+                                                CloudCacheManager.removeCachedNodes(context, nodesToProcess)
+                                            }
+                                            cacheVersionTick++
+                                            selectedPaths = emptySet()
+                                            snackbarHostState.showSnackbar("Aus Zwischenspeicher gelöscht")
+                                        }
+                                    } else {
+                                        isCloudCaching = true
+                                        scope.launch {
+                                            val result = runCatching {
+                                                CloudCacheManager.cacheNodes(context, nodesToProcess, driveProvider)
+                                            }
+                                            cacheVersionTick++
+                                            selectedPaths = emptySet()
+                                            isCloudCaching = false
+                                            result.onSuccess { count ->
+                                                snackbarHostState.showSnackbar("$count Datei(en) heruntergeladen")
+                                            }.onFailure { err ->
+                                                snackbarHostState.showSnackbar(err.message ?: "Download fehlgeschlagen")
+                                            }
+                                        }
+                                    }
+                                },
+                            ) {
+                                if (isCloudCaching) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(20.dp),
+                                        strokeWidth = 2.dp,
+                                    )
+                                } else if (allSelectedCached) {
+                                    Icon(
+                                        Icons.Default.Close,
+                                        contentDescription = "Zwischengespeicherte Dateien löschen",
+                                    )
+                                } else {
+                                    Icon(
+                                        Icons.Outlined.Download,
+                                        contentDescription = "Offline speichern",
+                                    )
+                                }
+                            }
+                        }
                         if (selectedPaths.size == 1) {
                             val singleNode = selectedNodes.firstOrNull()
                             if (singleNode != null) {
@@ -466,7 +524,22 @@ fun ExplorerScreen(
                                     IconButton(onClick = {
                                         selectedPaths = emptySet()
                                         if (singleNode.locationType == LocationType.GOOGLE_DRIVE) {
-                                            shareCloudTarget = singleNode
+                                            if (CloudCacheManager.isNodeCached(context, singleNode)) {
+                                                runCatching {
+                                                    shareLocalFile(
+                                                        context = context,
+                                                        file = CloudCacheManager.cachedFileFor(context, singleNode),
+                                                        mimeType = singleNode.mimeType,
+                                                        title = singleNode.name,
+                                                    )
+                                                }.onFailure { err ->
+                                                    scope.launch {
+                                                        snackbarHostState.showSnackbar(err.message ?: "Teilen fehlgeschlagen")
+                                                    }
+                                                }
+                                            } else {
+                                                shareCloudTarget = singleNode
+                                            }
                                         } else {
                                             runCatching {
                                                 shareLocalFile(
@@ -1075,6 +1148,7 @@ fun ExplorerScreen(
                     isDownloadingForShare = false
                     shareCloudTarget = null
                     result.onSuccess { cachedFile ->
+                        cacheVersionTick++
                         runCatching {
                             shareLocalFile(
                                 context = context,

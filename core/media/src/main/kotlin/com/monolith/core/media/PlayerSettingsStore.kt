@@ -24,6 +24,7 @@ object PlayerSettingsStore {
     private const val KEY_SEEK_GESTURE = "use_seek_gesture"
     private const val KEY_VOLUME_GESTURE = "use_volume_gesture"
     private const val KEY_BRIGHTNESS_GESTURE = "use_brightness_gesture"
+    private const val KEY_DOUBLE_TAP_GESTURE = "use_double_tap_gesture"
 
     @Volatile
     private var prefs: SharedPreferences? = null
@@ -67,6 +68,7 @@ object PlayerSettingsStore {
             useSeekGesture = sp.getBoolean(KEY_SEEK_GESTURE, defaults.useSeekGesture),
             useVolumeGesture = sp.getBoolean(KEY_VOLUME_GESTURE, defaults.useVolumeGesture),
             useBrightnessGesture = sp.getBoolean(KEY_BRIGHTNESS_GESTURE, defaults.useBrightnessGesture),
+            useDoubleTapGesture = sp.getBoolean(KEY_DOUBLE_TAP_GESTURE, defaults.useDoubleTapGesture),
         )
     }
 
@@ -81,6 +83,7 @@ object PlayerSettingsStore {
             ?.putBoolean(KEY_SEEK_GESTURE, value.useSeekGesture)
             ?.putBoolean(KEY_VOLUME_GESTURE, value.useVolumeGesture)
             ?.putBoolean(KEY_BRIGHTNESS_GESTURE, value.useBrightnessGesture)
+            ?.putBoolean(KEY_DOUBLE_TAP_GESTURE, value.useDoubleTapGesture)
             ?.apply()
     }
 }

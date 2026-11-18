@@ -30,6 +30,7 @@ data class PlayerSettings(
     val useSeekGesture: Boolean = false,
     val useVolumeGesture: Boolean = false,
     val useBrightnessGesture: Boolean = false,
+    val useDoubleTapGesture: Boolean = false,
 )
 
 data class MediaMetadataInfo(
