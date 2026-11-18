@@ -81,7 +81,7 @@ class FileTransferService : Service() {
                 taskJobs[cancelTaskId]?.cancel()
                 val existing = _tasks.value[cancelTaskId] ?: _progress.value?.takeIf { it.taskId == cancelTaskId }
                 existing?.let {
-                    updateTaskProgress(it.copy(isFinished = true, errorMessage = "Abgebrochen"))
+                    updateTaskProgress(it.copy(isFinished = true, errorMessage = "Abgebrochen."))
                 }
                 onTaskEnded(cancelTaskId)
             } else {
@@ -89,7 +89,7 @@ class FileTransferService : Service() {
                 for (id in allIds) {
                     taskJobs[id]?.cancel()
                     _tasks.value[id]?.let {
-                        updateTaskProgress(it.copy(isFinished = true, errorMessage = "Abgebrochen"))
+                        updateTaskProgress(it.copy(isFinished = true, errorMessage = "Abgebrochen."))
                     }
                     onTaskEnded(id)
                 }
@@ -112,6 +112,7 @@ class FileTransferService : Service() {
         }
 
         val taskId = nextTaskId.getAndIncrement()
+        _latestCreatedTaskId.value = taskId
         val operation = when {
             isCloudDownload -> TransferOperation.DOWNLOAD
             isMove -> TransferOperation.MOVE
@@ -406,7 +407,7 @@ class FileTransferService : Service() {
                     totalBytes = totalBytes,
                     bytesPerSecond = bytesPerSecond,
                     isFinished = true,
-                    errorMessage = "Abgebrochen",
+                    errorMessage = "Abgebrochen.",
                 ),
             )
             throw error
@@ -429,15 +430,15 @@ class FileTransferService : Service() {
 
         val resultTitle = when {
             error != null -> when {
-                job.isCloudDownload -> "Download fehlgeschlagen"
-                job.isMove -> "Verschieben fehlgeschlagen"
-                else -> "Kopieren fehlgeschlagen"
+                job.isCloudDownload -> "Download fehlgeschlagen."
+                job.isMove -> "Verschieben fehlgeschlagen."
+                else -> "Kopieren fehlgeschlagen."
             }
             job.isCloudDownload -> "Download abgeschlossen."
             job.isMove -> "Verschieben abgeschlossen."
             else -> "Kopieren abgeschlossen."
         }
-        val resultText = error?.message ?: "${job.sources.size} Element(e) verarbeitet"
+        val resultText = error?.message ?: "${job.sources.size} Element(e) verarbeitet."
         notificationManager.notify(
             resultNotificationId(job.taskId),
             buildResultNotification(job.taskId, resultTitle, resultText),
@@ -713,6 +714,9 @@ class FileTransferService : Service() {
 
         private val _tasks = MutableStateFlow<Map<Long, TransferProgress>>(emptyMap())
         val tasks: StateFlow<Map<Long, TransferProgress>> = _tasks.asStateFlow()
+
+        private val _latestCreatedTaskId = MutableStateFlow(0L)
+        val latestCreatedTaskId: StateFlow<Long> = _latestCreatedTaskId.asStateFlow()
 
         private fun updateTaskProgress(tp: TransferProgress) {
             _tasks.update { it + (tp.taskId to tp) }

@@ -334,7 +334,7 @@ fun AiChatScreen(
                         messages[idx] = AiChatMessage(
                             id = assistantId,
                             role = ChatRole.ERROR,
-                            text = err.message ?: "Anfrage an Gemini fehlgeschlagen",
+                            text = err.message ?: "Anfrage an Gemini fehlgeschlagen.",
                         )
                     } else {
                         messages[idx] = messages[idx].copy(

@@ -225,7 +225,7 @@ fun ExplorerScreen(
                 }
                 .onFailure { err ->
                     scope.launch {
-                        snackbarHostState.showSnackbar(err.message ?: "Google-Anmeldung fehlgeschlagen")
+                        snackbarHostState.showSnackbar(err.message ?: "Google-Anmeldung fehlgeschlagen.")
                     }
                 }
         }
@@ -256,7 +256,7 @@ fun ExplorerScreen(
             refreshTrigger++
             cacheVersionTick++
             if (event.errorMessage != null) {
-                snackbarHostState.showSnackbar(event.errorMessage ?: "Übertragung fehlgeschlagen")
+                snackbarHostState.showSnackbar(event.errorMessage ?: "Übertragung fehlgeschlagen.")
             }
         }
     }
@@ -273,7 +273,7 @@ fun ExplorerScreen(
                 }
                 .onFailure { error ->
                     snackbarHostState.showSnackbar(
-                        error.message ?: "Vorgang fehlgeschlagen"
+                        error.message ?: "Vorgang fehlgeschlagen."
                     )
                 }
         }
@@ -367,7 +367,7 @@ fun ExplorerScreen(
             if (requestId != loadRequestSeq) return@LaunchedEffect
             nodes = emptyList()
             isLoading = false
-            snackbarHostState.showSnackbar(err.message ?: "Ordner konnte nicht geladen werden")
+            snackbarHostState.showSnackbar(err.message ?: "Ordner konnte nicht geladen werden.")
         }
     }
 
@@ -482,7 +482,7 @@ fun ExplorerScreen(
                                             }
                                             cacheVersionTick++
                                             selectedPaths = emptySet()
-                                            snackbarHostState.showSnackbar("Aus Zwischenspeicher gelöscht")
+                                            snackbarHostState.showSnackbar("Aus Zwischenspeicher gelöscht.")
                                         }
                                     } else {
                                         FileTransferService.enqueueCloudDownload(
@@ -526,7 +526,7 @@ fun ExplorerScreen(
                                                     )
                                                 }.onFailure { err ->
                                                     scope.launch {
-                                                        snackbarHostState.showSnackbar(err.message ?: "Teilen fehlgeschlagen")
+                                                        snackbarHostState.showSnackbar(err.message ?: "Teilen fehlgeschlagen.")
                                                     }
                                                 }
                                             } else {
@@ -542,7 +542,7 @@ fun ExplorerScreen(
                                                 )
                                             }.onFailure { err ->
                                                 scope.launch {
-                                                    snackbarHostState.showSnackbar(err.message ?: "Teilen fehlgeschlagen")
+                                                    snackbarHostState.showSnackbar(err.message ?: "Teilen fehlgeschlagen.")
                                                 }
                                             }
                                         }
@@ -1151,10 +1151,10 @@ fun ExplorerScreen(
                                 title = target.name,
                             )
                         }.onFailure { err ->
-                            snackbarHostState.showSnackbar(err.message ?: "Teilen fehlgeschlagen")
+                            snackbarHostState.showSnackbar(err.message ?: "Teilen fehlgeschlagen.")
                         }
                     }.onFailure { err ->
-                        snackbarHostState.showSnackbar(err.message ?: "Zwischenspeichern fehlgeschlagen")
+                        snackbarHostState.showSnackbar(err.message ?: "Zwischenspeichern fehlgeschlagen.")
                     }
                 }
             },

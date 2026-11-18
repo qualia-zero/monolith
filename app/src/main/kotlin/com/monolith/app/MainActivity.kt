@@ -95,18 +95,16 @@ class MainActivity : ComponentActivity() {
             var downloadingDriveFile by remember { mutableStateOf<String?>(null) }
             val transferProgress by FileTransferService.progress.collectAsState()
             val transferTasks by FileTransferService.tasks.collectAsState()
-            var lastSeenTransferTaskId by remember { mutableStateOf<Long?>(null) }
+            val latestCreatedTaskId by FileTransferService.latestCreatedTaskId.collectAsState()
+            var highestSeenTaskId by remember { mutableStateOf(0L) }
             var focusedTransferTaskId by remember { mutableStateOf<Long?>(null) }
             var showTransferOverlay by remember { mutableStateOf(false) }
 
-            LaunchedEffect(transferProgress?.taskId) {
-                val current = transferProgress ?: return@LaunchedEffect
-                if (current.taskId != lastSeenTransferTaskId) {
-                    lastSeenTransferTaskId = current.taskId
-                    if (!current.isFinished) {
-                        focusedTransferTaskId = current.taskId
-                        showTransferOverlay = true
-                    }
+            LaunchedEffect(latestCreatedTaskId) {
+                if (latestCreatedTaskId > highestSeenTaskId) {
+                    highestSeenTaskId = latestCreatedTaskId
+                    focusedTransferTaskId = latestCreatedTaskId
+                    showTransferOverlay = true
                 }
             }
 
