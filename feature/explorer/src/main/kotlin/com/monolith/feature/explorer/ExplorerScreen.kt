@@ -7,6 +7,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -46,8 +47,6 @@ import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.FolderZip
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.MoreVert
-import androidx.compose.material.icons.outlined.Movie
-import androidx.compose.material.icons.outlined.MusicNote
 import androidx.compose.material.icons.outlined.SdStorage
 import androidx.compose.material.icons.outlined.SelectAll
 import androidx.compose.material.icons.outlined.Usb
@@ -82,6 +81,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
@@ -89,9 +89,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalContext
@@ -100,6 +104,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import com.monolith.core.media.MpvEngine
+import com.monolith.core.media.ThumbnailEngine
 import com.monolith.core.model.FileCategory
 import com.monolith.core.model.LocationType
 import com.monolith.core.model.SortBy
@@ -509,6 +514,7 @@ fun ExplorerScreen(
                     }
                     if (showMiniPlayer) {
                         MiniPlayerBar(
+                            mediaUri = playbackState.mediaUri,
                             title = playbackState.title.ifBlank { "Wiedergabe" },
                             subtitle = listOf(playbackState.artist, playbackState.album)
                                 .filter { it.isNotBlank() }
@@ -1023,6 +1029,7 @@ private fun ClipboardActionBar(
 
 @Composable
 private fun MiniPlayerBar(
+    mediaUri: String,
     title: String,
     subtitle: String,
     isVideo: Boolean,
@@ -1031,6 +1038,46 @@ private fun MiniPlayerBar(
     onTogglePlayPause: () -> Unit,
     onStop: () -> Unit,
 ) {
+    val context = LocalContext.current
+    val mediaPath = remember(mediaUri) {
+        if (mediaUri.startsWith("file://")) mediaUri.removePrefix("file://") else mediaUri
+    }
+    val lastModified = remember(mediaPath) {
+        if (mediaPath.startsWith("/")) {
+            runCatching { File(mediaPath).lastModified() }.getOrDefault(0L)
+        } else {
+            0L
+        }
+    }
+    val category = if (isVideo) FileCategory.VIDEO else FileCategory.AUDIO
+    val thumbnail by produceState<ImageBitmap?>(
+        initialValue = ThumbnailEngine.getCachedListThumbnail(
+            path = mediaPath,
+            lastModifiedMs = lastModified,
+        )?.asImageBitmap(),
+        key1 = mediaUri,
+        key2 = isVideo,
+    ) {
+        val cached = ThumbnailEngine.getCachedListThumbnail(
+            path = mediaPath,
+            lastModifiedMs = lastModified,
+        )
+        if (cached != null) {
+            value = cached.asImageBitmap()
+            return@produceState
+        }
+        val listThumb = ThumbnailEngine.loadListThumbnail(
+            context = context,
+            path = mediaPath,
+            category = category,
+            lastModifiedMs = lastModified,
+        )
+        value = (listThumb ?: ThumbnailEngine.loadMediaThumbnail(
+            context = context,
+            uriString = mediaUri,
+            isVideo = isVideo,
+        ))?.asImageBitmap()
+    }
     Surface(
         modifier = Modifier.fillMaxWidth(),
         color = MaterialTheme.colorScheme.surfaceVariant,
@@ -1044,12 +1091,29 @@ private fun MiniPlayerBar(
                     .padding(horizontal = 16.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(
-                    imageVector = if (isVideo) Icons.Outlined.Movie else Icons.Outlined.MusicNote,
-                    contentDescription = if (isVideo) "Video" else "Musik",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
-                    modifier = Modifier.size(18.dp),
-                )
+                Box(
+                    modifier = Modifier.size(40.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    val bitmap = thumbnail
+                    if (bitmap != null) {
+                        Image(
+                            bitmap = bitmap,
+                            contentDescription = if (isVideo) "Video" else "Musik",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clip(MaterialTheme.shapes.small),
+                        )
+                    } else {
+                        Icon(
+                            imageVector = if (isVideo) Icons.Outlined.VideoFile else Icons.Outlined.AudioFile,
+                            contentDescription = if (isVideo) "Video" else "Musik",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(24.dp),
+                        )
+                    }
+                }
                 Spacer(modifier = Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(

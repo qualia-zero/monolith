@@ -310,7 +310,11 @@ class MediaPlaybackService : Service() {
     }
 
     private fun buildNotification(state: PlaybackUiState): Notification {
-        val smallIcon = applicationInfo.icon.takeIf { it != 0 } ?: android.R.drawable.ic_media_play
+        val smallIcon = if (state.isVideo) {
+            R.drawable.ic_notification_video
+        } else {
+            R.drawable.ic_notification_audio
+        }
         val playPauseIcon = if (state.isPlaying) {
             android.R.drawable.ic_media_pause
         } else {

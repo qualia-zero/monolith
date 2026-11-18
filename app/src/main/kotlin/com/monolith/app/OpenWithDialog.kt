@@ -79,7 +79,10 @@ internal fun resolveFileExtension(node: VfsNode): String =
         .lowercase(Locale.ROOT)
 
 internal fun resolveMimeType(node: VfsNode): String {
-    if (node.mimeType.isNotBlank() && node.mimeType != "*/*") return node.mimeType
+    val rawMime = node.mimeType.trim()
+    if (rawMime.isNotBlank() && rawMime != "*/*" && rawMime != "application/octet-stream") {
+        return rawMime
+    }
     val ext = resolveFileExtension(node)
     val mapped = if (ext.isNotEmpty()) {
         MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext)
@@ -92,8 +95,16 @@ internal fun resolveMimeType(node: VfsNode): String {
         FileCategory.VIDEO -> "video/*"
         FileCategory.AUDIO -> "audio/*"
         FileCategory.TEXT -> "text/plain"
-        else -> "*/*"
+        else -> rawMime.ifBlank { "*/*" }
     }
+}
+
+private fun categoryWildcardMime(category: FileCategory): String? = when (category) {
+    FileCategory.IMAGE -> "image/*"
+    FileCategory.VIDEO -> "video/*"
+    FileCategory.AUDIO -> "audio/*"
+    FileCategory.TEXT -> "text/*"
+    else -> null
 }
 
 internal fun buildOpenWithOptions(context: Context, node: VfsNode): List<OpenWithOption> {
@@ -125,35 +136,52 @@ internal fun buildOpenWithOptions(context: Context, node: VfsNode): List<OpenWit
 
     val pm = context.packageManager
     val mimeType = resolveMimeType(node)
-    val viewIntent = Intent(Intent.ACTION_VIEW).apply {
-        if (node.path.startsWith("gdrive://")) {
-            setType(mimeType)
-        } else {
-            val contentUri = runCatching {
-                FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", File(node.path))
-            }.getOrElse { Uri.fromFile(File(node.path)) }
-            setDataAndType(contentUri, mimeType)
-        }
-        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    val queryUri = if (node.path.startsWith("gdrive://")) {
+        Uri.Builder()
+            .scheme("content")
+            .authority("${context.packageName}.fileprovider")
+            .appendPath(node.name.ifBlank { "file" })
+            .build()
+    } else {
+        runCatching {
+            FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", File(node.path))
+        }.getOrElse { Uri.fromFile(File(node.path)) }
     }
 
-    val resolved = pm.queryIntentActivities(viewIntent, PackageManager.MATCH_DEFAULT_ONLY)
-    val seen = HashSet<String>()
-    resolved.forEach { info ->
-        val act = info.activityInfo ?: return@forEach
-        if (act.packageName == context.packageName) return@forEach
-        val key = "${act.packageName}/${act.name}"
-        if (!seen.add(key)) return@forEach
-        val label = info.loadLabel(pm)?.toString()?.trim().orEmpty().ifBlank { act.packageName }
-        val iconBmp = runCatching { info.loadIcon(pm).toBitmap(width = 72, height = 72).asImageBitmap() }.getOrNull()
-        options += OpenWithOption(
-            handlerId = "pkg:$key",
-            label = label,
-            iconBitmap = iconBmp,
-            packageName = act.packageName,
-            activityName = act.name,
-        )
+    val mimeQueries = buildList {
+        add(mimeType)
+        val wildcard = categoryWildcardMime(node.category)
+        if (wildcard != null && wildcard != mimeType) {
+            add(wildcard)
+        }
     }
+
+    val seen = HashSet<String>()
+    val externalOptions = mutableListOf<OpenWithOption>()
+    for (queryMime in mimeQueries) {
+        val viewIntent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(queryUri, queryMime)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        val resolved = pm.queryIntentActivities(viewIntent, PackageManager.MATCH_DEFAULT_ONLY)
+        resolved.forEach { info ->
+            val act = info.activityInfo ?: return@forEach
+            if (act.packageName == context.packageName) return@forEach
+            val key = "${act.packageName}/${act.name}"
+            if (!seen.add(key)) return@forEach
+            val label = info.loadLabel(pm)?.toString()?.trim().orEmpty().ifBlank { act.packageName }
+            val iconBmp = runCatching { info.loadIcon(pm).toBitmap(width = 72, height = 72).asImageBitmap() }.getOrNull()
+            externalOptions += OpenWithOption(
+                handlerId = "pkg:$key",
+                label = label,
+                iconBitmap = iconBmp,
+                packageName = act.packageName,
+                activityName = act.name,
+            )
+        }
+    }
+    externalOptions.sortBy { it.label.lowercase(Locale.ROOT) }
+    options += externalOptions
 
     if (node.category != FileCategory.TEXT && options.isEmpty()) {
         options += OpenWithOption(
