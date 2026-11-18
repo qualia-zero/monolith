@@ -637,7 +637,7 @@ class FileTransferService : Service() {
         private const val RESULT_NOTIFICATION_ID = 20042
         private const val REQUEST_CODE_OPEN_TRANSFER_PANEL = 20043
         private const val PROGRESS_NOTIFICATION_MAX = 1000
-        private const val NOTIFICATION_THROTTLE_MS = 200L
+        private const val NOTIFICATION_THROTTLE_MS = 750L
 
         private const val EXTRA_SOURCES = "extra_sources"
         private const val EXTRA_DESTINATION = "extra_destination"

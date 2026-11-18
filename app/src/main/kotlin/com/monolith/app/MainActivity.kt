@@ -42,6 +42,7 @@ import com.monolith.core.ui.theme.MonolithTheme
 import com.monolith.core.vfs.FileTransferService
 import com.monolith.core.vfs.GoogleDriveAuthManager
 import com.monolith.core.vfs.GoogleDriveVfsProvider
+import com.monolith.feature.explorer.CloudCacheManager
 import com.monolith.feature.explorer.ExplorerScreen
 import com.monolith.feature.explorer.SettingsScreen
 import com.monolith.feature.explorer.ai.AiChatScreen
@@ -141,6 +142,15 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
+            fun resolveOfflineDriveFile(node: VfsNode): File? {
+                if (!node.path.startsWith("gdrive://")) return null
+                return if (CloudCacheManager.isNodeCached(this@MainActivity, node)) {
+                    CloudCacheManager.cachedFileFor(this@MainActivity, node)
+                } else {
+                    null
+                }
+            }
+
             fun openLocalWithAssociation(
                 node: VfsNode,
                 siblings: List<VfsNode>,
@@ -162,13 +172,15 @@ class MainActivity : ComponentActivity() {
                         val isVideo = handlerId == HANDLER_INTERNAL_VIDEO || node.category == FileCategory.VIDEO
                         val playlist = siblings.ifEmpty { listOf(node) }
                         val uri = if (node.path.startsWith("gdrive://")) {
-                            driveProvider.streamUrl(node.path)
+                            resolveOfflineDriveFile(node)?.let { Uri.fromFile(it).toString() }
+                                ?: driveProvider.streamUrl(node.path)
                         } else {
                             Uri.fromFile(File(node.path)).toString()
                         }
                         val pairs = playlist.map { item ->
                             val itemUri = if (item.path.startsWith("gdrive://")) {
-                                driveProvider.streamUrl(item.path)
+                                resolveOfflineDriveFile(item)?.let { Uri.fromFile(it).toString() }
+                                    ?: driveProvider.streamUrl(item.path)
                             } else {
                                 Uri.fromFile(File(item.path)).toString()
                             }
@@ -203,6 +215,26 @@ class MainActivity : ComponentActivity() {
             ): Boolean {
                 val isMediaStream = handlerId == HANDLER_INTERNAL_VIDEO || handlerId == HANDLER_INTERNAL_AUDIO
                 if (node.path.startsWith("gdrive://") && !isMediaStream) {
+                    val offlineFile = resolveOfflineDriveFile(node)
+                    if (offlineFile != null) {
+                        val localNode = node.copy(path = offlineFile.absolutePath)
+                        val localSiblings = siblings.mapNotNull { sibling ->
+                            if (sibling.path == node.path) {
+                                localNode
+                            } else if (sibling.path.startsWith("gdrive://")) {
+                                resolveOfflineDriveFile(sibling)?.let { sibling.copy(path = it.absolutePath) }
+                            } else {
+                                sibling
+                            }
+                        }.ifEmpty { listOf(localNode) }
+                        return openLocalWithAssociation(
+                            node = localNode,
+                            siblings = localSiblings,
+                            handlerId = handlerId,
+                            packageName = packageName,
+                            activityName = activityName,
+                        )
+                    }
                     scope.launch {
                         downloadingDriveFile = node.name
                         val cacheDir = File(cacheDir, "drive_preview").apply { mkdirs() }
