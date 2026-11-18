@@ -2,24 +2,30 @@ package com.monolith.app
 
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import com.monolith.core.model.TransferOperation
 import com.monolith.core.model.TransferProgress
 import com.monolith.core.ui.components.MonolithDialog
+import com.monolith.core.ui.theme.LocalMonolithButtonShape
 import java.util.Locale
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun TransferProgressDialog(
     progress: TransferProgress,
+    activeTasks: List<TransferProgress> = emptyList(),
+    onSelectTask: (Long) -> Unit = {},
     onDismiss: () -> Unit,
     onCancel: () -> Unit = {},
 ) {
@@ -59,6 +65,24 @@ fun TransferProgressDialog(
         confirmLabel = if (progress.isFinished) "Schließen" else "Abbrechen",
         onConfirmClick = if (progress.isFinished) onDismiss else onCancel,
     ) {
+        if (activeTasks.size > 1) {
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                activeTasks.forEachIndexed { index, task ->
+                    val queued = task.currentFileName == "In Warteschlange…"
+                    val chipLabel = if (queued) "#${index + 1} (Warteschlange)" else "#${index + 1}"
+                    FilterChip(
+                        selected = task.taskId == progress.taskId,
+                        shape = LocalMonolithButtonShape.current,
+                        onClick = { onSelectTask(task.taskId) },
+                        label = { Text(chipLabel) },
+                    )
+                }
+            }
+        }
+
         Text(
             text = progress.currentFileName.ifBlank { "Wird vorbereitet…" },
             style = MaterialTheme.typography.bodyMedium,

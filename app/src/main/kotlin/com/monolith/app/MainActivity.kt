@@ -68,6 +68,7 @@ private data class PendingOpenRequest(
 class MainActivity : ComponentActivity() {
     private var hasStoragePermission by mutableStateOf(false)
     private var openTransferFromNotification by mutableStateOf(false)
+    private var notificationTargetTaskId by mutableStateOf<Long?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -93,7 +94,9 @@ class MainActivity : ComponentActivity() {
             var pendingOpen by remember { mutableStateOf<PendingOpenRequest?>(null) }
             var downloadingDriveFile by remember { mutableStateOf<String?>(null) }
             val transferProgress by FileTransferService.progress.collectAsState()
+            val transferTasks by FileTransferService.tasks.collectAsState()
             var lastSeenTransferTaskId by remember { mutableStateOf<Long?>(null) }
+            var focusedTransferTaskId by remember { mutableStateOf<Long?>(null) }
             var showTransferOverlay by remember { mutableStateOf(false) }
 
             LaunchedEffect(transferProgress?.taskId) {
@@ -101,6 +104,7 @@ class MainActivity : ComponentActivity() {
                 if (current.taskId != lastSeenTransferTaskId) {
                     lastSeenTransferTaskId = current.taskId
                     if (!current.isFinished) {
+                        focusedTransferTaskId = current.taskId
                         showTransferOverlay = true
                     }
                 }
@@ -109,7 +113,11 @@ class MainActivity : ComponentActivity() {
             LaunchedEffect(openTransferFromNotification) {
                 if (openTransferFromNotification) {
                     openTransferFromNotification = false
-                    if (FileTransferService.progress.value != null) {
+                    notificationTargetTaskId?.let { targetId ->
+                        focusedTransferTaskId = targetId
+                    }
+                    notificationTargetTaskId = null
+                    if (transferTasks.isNotEmpty() || FileTransferService.progress.value != null) {
                         showTransferOverlay = true
                     }
                 }
@@ -382,13 +390,28 @@ class MainActivity : ComponentActivity() {
                 }
 
                 if (showTransferOverlay) {
-                    transferProgress?.let { progress ->
+                    val activeProgress = focusedTransferTaskId?.let { transferTasks[it] }
+                        ?: transferProgress
+                        ?: transferTasks.values.lastOrNull()
+                    activeProgress?.let { progress ->
+                        val activeTasks = transferTasks.values
+                            .filter { !it.isFinished || it.taskId == progress.taskId }
+                            .sortedBy { it.taskId }
                         TransferProgressDialog(
                             progress = progress,
+                            activeTasks = activeTasks,
+                            onSelectTask = { focusedTransferTaskId = it },
                             onDismiss = { showTransferOverlay = false },
                             onCancel = {
-                                FileTransferService.cancel(this@MainActivity)
-                                showTransferOverlay = false
+                                FileTransferService.cancel(this@MainActivity, progress.taskId)
+                                val nextUnfinished = transferTasks.values
+                                    .filter { !it.isFinished && it.taskId != progress.taskId }
+                                    .minByOrNull { it.taskId }
+                                if (nextUnfinished != null) {
+                                    focusedTransferTaskId = nextUnfinished.taskId
+                                } else {
+                                    showTransferOverlay = false
+                                }
                             },
                         )
                     }
@@ -405,7 +428,11 @@ class MainActivity : ComponentActivity() {
 
     private fun handleTransferIntent(intent: Intent?) {
         if (intent?.getBooleanExtra(FileTransferService.EXTRA_OPEN_TRANSFER_PANEL, false) == true) {
+            val targetId = intent.getLongExtra(FileTransferService.EXTRA_TRANSFER_TASK_ID, -1L)
+                .takeIf { it > 0L }
             intent.removeExtra(FileTransferService.EXTRA_OPEN_TRANSFER_PANEL)
+            intent.removeExtra(FileTransferService.EXTRA_TRANSFER_TASK_ID)
+            notificationTargetTaskId = targetId
             openTransferFromNotification = true
         }
     }
