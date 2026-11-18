@@ -439,7 +439,7 @@ object ThumbnailEngine {
 
     /**
      * Fallback for Drive videos when Drive's thumbnailLink is missing or fails:
-     * checks embedded cover art first, then extracts a 5s/10s/15s frame within [FALLBACK_GENERATE_TIMEOUT_MS].
+     * checks embedded cover art first, then extracts a frame starting at 30s within [FALLBACK_GENERATE_TIMEOUT_MS].
      */
     private fun decodeDriveVideoFallback(
         gdrivePath: String,
@@ -496,7 +496,7 @@ object ThumbnailEngine {
     }
 
     private fun extractNonBlackVideoFrame(retriever: MediaMetadataRetriever): Bitmap? {
-        val candidateTimesUs = longArrayOf(5_000_000L, 10_000_000L, 15_000_000L, 1_000_000L)
+        val candidateTimesUs = longArrayOf(30_000_000L, 10_000_000L, 5_000_000L, 1_000_000L)
         var fallbackFrame: Bitmap? = null
 
         for (timeUs in candidateTimesUs) {
