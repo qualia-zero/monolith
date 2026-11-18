@@ -26,17 +26,17 @@ fun TransferProgressDialog(
     val title = when (progress.operation) {
         TransferOperation.DOWNLOAD -> when {
             progress.errorMessage != null -> "Download fehlgeschlagen"
-            progress.isFinished -> "Download abgeschlossen"
+            progress.isFinished -> "Download abgeschlossen."
             else -> "Dateien herunterladen…"
         }
         TransferOperation.MOVE -> when {
             progress.errorMessage != null -> "Verschieben fehlgeschlagen"
-            progress.isFinished -> "Verschieben abgeschlossen"
+            progress.isFinished -> "Verschieben abgeschlossen."
             else -> "Dateien verschieben…"
         }
         else -> when {
             progress.errorMessage != null -> "Kopieren fehlgeschlagen"
-            progress.isFinished -> "Kopieren abgeschlossen"
+            progress.isFinished -> "Kopieren abgeschlossen."
             else -> "Dateien kopieren…"
         }
     }
@@ -78,36 +78,27 @@ fun TransferProgressDialog(
             )
         }
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = "${progress.processedItems}/${progress.totalItems.coerceAtLeast(1)} Elemente",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            val byteSummary = buildString {
-                if (progress.totalBytes > 0L) {
-                    append(formatBytes(progress.bytesProcessed))
-                    append(" / ")
-                    append(formatBytes(progress.totalBytes))
-                }
-                if (!progress.isFinished && progress.bytesPerSecond > 0L) {
-                    if (isNotEmpty()) append(" · ")
-                    append(formatBytes(progress.bytesPerSecond))
-                    append("/s")
-                }
+        val statusLine = buildString {
+            append("${progress.processedItems}/${progress.totalItems.coerceAtLeast(1)} Elemente")
+            if (progress.totalBytes > 0L) {
+                append(" · ")
+                append(formatBytes(progress.bytesProcessed))
+                append(" / ")
+                append(formatBytes(progress.totalBytes))
             }
-            if (byteSummary.isNotEmpty()) {
-                Text(
-                    text = byteSummary,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+            if (!progress.isFinished && progress.bytesPerSecond > 0L) {
+                append(" · ")
+                append(formatBytes(progress.bytesPerSecond))
+                append("/s")
             }
         }
+        Text(
+            text = statusLine,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
 
         if (progress.errorMessage != null) {
             Text(

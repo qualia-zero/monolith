@@ -381,9 +381,9 @@ class FileTransferService : Service() {
                 job.isMove -> "Verschieben fehlgeschlagen"
                 else -> "Kopieren fehlgeschlagen"
             }
-            job.isCloudDownload -> "Download abgeschlossen"
-            job.isMove -> "Verschieben abgeschlossen"
-            else -> "Kopieren abgeschlossen"
+            job.isCloudDownload -> "Download abgeschlossen."
+            job.isMove -> "Verschieben abgeschlossen."
+            else -> "Kopieren abgeschlossen."
         }
         val resultText = error?.message ?: "${job.sources.size} Element(e) verarbeitet"
         notificationManager.notify(
@@ -577,7 +577,7 @@ class FileTransferService : Service() {
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setProgress(max, progress, indeterminate)
-            .setContentIntent(createLaunchPendingIntent())
+            .setContentIntent(cachedLaunchPendingIntent)
             .build()
     }
 
@@ -587,8 +587,12 @@ class FileTransferService : Service() {
             .setContentTitle(title)
             .setContentText(text)
             .setAutoCancel(true)
-            .setContentIntent(createLaunchPendingIntent())
+            .setContentIntent(cachedLaunchPendingIntent)
             .build()
+    }
+
+    private val cachedLaunchPendingIntent: PendingIntent? by lazy {
+        createLaunchPendingIntent()
     }
 
     private fun createLaunchPendingIntent(): PendingIntent? {
@@ -602,7 +606,7 @@ class FileTransferService : Service() {
         })?.apply {
             action = EXTRA_OPEN_TRANSFER_PANEL
             putExtra(EXTRA_OPEN_TRANSFER_PANEL, true)
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_SINGLE_TOP
         } ?: return null
         return PendingIntent.getActivity(
             this,
