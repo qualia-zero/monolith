@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CutCornerShape
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Switch
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -22,8 +21,6 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import com.monolith.core.model.ThemeMode
-import com.monolith.core.ui.theme.LocalMonolithThemeMode
 
 private val SwitchWidth = 52.dp
 private val SwitchHeight = 28.dp
@@ -37,34 +34,15 @@ fun MonolithSwitch(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
 ) {
-    when (LocalMonolithThemeMode.current) {
-        ThemeMode.CYBER_PHOSPHOR -> CustomMonolithSwitch(
-            checked = checked,
-            onCheckedChange = onCheckedChange,
-            trackShape = CutCornerShape(4.dp),
-            thumbShape = CutCornerShape(2.dp),
-            borderWidth = 1.5.dp,
-            modifier = modifier,
-            enabled = enabled,
-        )
-
-        ThemeMode.OBSIDIAN -> CustomMonolithSwitch(
-            checked = checked,
-            onCheckedChange = onCheckedChange,
-            trackShape = CutCornerShape(7.dp),
-            thumbShape = CutCornerShape(4.dp),
-            borderWidth = 1.2.dp,
-            modifier = modifier,
-            enabled = enabled,
-        )
-
-        ThemeMode.SYSTEM, ThemeMode.LIGHT, ThemeMode.DARK, null -> Switch(
-            checked = checked,
-            onCheckedChange = onCheckedChange,
-            modifier = modifier,
-            enabled = enabled,
-        )
-    }
+    CustomMonolithSwitch(
+        checked = checked,
+        onCheckedChange = onCheckedChange,
+        trackShape = CutCornerShape(7.dp),
+        thumbShape = CutCornerShape(4.dp),
+        borderWidth = 1.2.dp,
+        modifier = modifier,
+        enabled = enabled,
+    )
 }
 
 @Composable

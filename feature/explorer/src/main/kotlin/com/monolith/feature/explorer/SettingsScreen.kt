@@ -220,29 +220,31 @@ fun SettingsScreen(
                 )
             }
 
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = "Untertitelgröße",
-                        style = MaterialTheme.typography.bodyLarge,
-                    )
-                    Text(
-                        text = "${settings.subtitleSize.roundToInt()} pt",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+            if (settings.subtitlesEnabled) {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = "Untertitelgröße",
+                            style = MaterialTheme.typography.bodyLarge,
+                        )
+                        Text(
+                            text = "${settings.subtitleSize.roundToInt()} pt",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Slider(
+                        value = settings.subtitleSize.coerceIn(12f, 48f),
+                        onValueChange = { size ->
+                            MpvEngine.setSubtitleSize(size)
+                        },
+                        valueRange = 12f..48f,
                     )
                 }
-                Slider(
-                    value = settings.subtitleSize.coerceIn(12f, 48f),
-                    onValueChange = { size ->
-                        MpvEngine.setSubtitleSize(size)
-                    },
-                    valueRange = 12f..48f,
-                )
             }
 
             HorizontalDivider(thickness = 0.5.dp)
@@ -277,12 +279,12 @@ fun SettingsScreen(
             HorizontalDivider(thickness = 0.5.dp)
 
             Text(
-                text = "Gemini-AI",
+                text = "Gemini-API",
                 style = MaterialTheme.typography.titleMedium,
             )
 
             Text(
-                text = "Aktiver API-Key für das integrierte Monolith-AI-Chatfenster (wird lokal gespeichert).",
+                text = "Aktiver API-Key für alle Gemini-Funktionen (lokal gespeichert).",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -339,12 +341,16 @@ fun SettingsScreen(
                         )
                     },
                     dismissButton = {
-                        TextButton(onClick = { showResetConfirm = false }) {
+                        TextButton(
+                            shape = LocalMonolithButtonShape.current,
+                            onClick = { showResetConfirm = false },
+                        ) {
                             Text("Abbrechen")
                         }
                     },
                     confirmButton = {
                         TextButton(
+                            shape = LocalMonolithButtonShape.current,
                             onClick = {
                                 showResetConfirm = false
                                 AppSettingsStore.update { AppSettings() }
@@ -375,7 +381,10 @@ fun SettingsScreen(
                     color = MaterialTheme.colorScheme.primary,
                 )
                 if (defaultApps.isNotEmpty()) {
-                    TextButton(onClick = { DefaultAppsStore.clearAll() }) {
+                    TextButton(
+                        shape = LocalMonolithButtonShape.current,
+                        onClick = { DefaultAppsStore.clearAll() },
+                    ) {
                         Text("Alle zurücksetzen")
                     }
                 }

@@ -76,6 +76,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -117,6 +119,9 @@ import com.monolith.core.model.LocationType
 import com.monolith.core.model.SortBy
 import com.monolith.core.model.ThemeMode
 import com.monolith.core.model.VfsNode
+import com.monolith.core.ui.components.CornerMenuItem
+import com.monolith.core.ui.components.MonolithCornerMenuOverlay
+import com.monolith.core.ui.components.MonolithRefreshIndicator
 import com.monolith.core.ui.components.MonolithStarMenuOverlay
 import com.monolith.core.ui.components.StarMenuItem
 import com.monolith.core.ui.haptics.MonolithHaptics
@@ -128,6 +133,7 @@ import com.monolith.core.vfs.GoogleDriveVfsProvider
 import com.monolith.core.vfs.LocalVfsProvider
 import com.monolith.core.vfs.VfsProvider
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -281,10 +287,12 @@ fun ExplorerScreen(
 
     var starMenuExpanded by remember { mutableStateOf(false) }
     var starAnchorCenter by remember { mutableStateOf(Offset.Unspecified) }
+    var menuAnchorCenter by remember { mutableStateOf(Offset.Unspecified) }
     var rootOrigin by remember { mutableStateOf(Offset.Zero) }
 
-    BackHandler(enabled = starMenuExpanded) {
+    BackHandler(enabled = starMenuExpanded || menuExpanded) {
         starMenuExpanded = false
+        menuExpanded = false
     }
 
     BackHandler(enabled = selectedPaths.isNotEmpty() || canNavigateUp) {
@@ -359,20 +367,28 @@ fun ExplorerScreen(
             targetValue = if (starMenuExpanded) 1f else 0f,
             label = "starMenuBackgroundRecede",
         )
+        val cornerMenuRecede by animateFloatAsState(
+            targetValue = if (menuExpanded) 1f else 0f,
+            label = "cornerMenuBackgroundRecede",
+        )
     Scaffold(
         modifier = Modifier
             .fillMaxSize()
             .then(
-                if (backgroundRecede > 0.01f) {
-                    Modifier
-                        .blur(10.dp * backgroundRecede)
-                        .graphicsLayer {
-                            val s = 1f - 0.025f * backgroundRecede
-                            scaleX = s
-                            scaleY = s
-                        }
-                } else {
-                    Modifier
+                when {
+                    backgroundRecede > 0.01f -> {
+                        Modifier
+                            .blur(10.dp * backgroundRecede)
+                            .graphicsLayer {
+                                val s = 1f - 0.025f * backgroundRecede
+                                scaleX = s
+                                scaleY = s
+                            }
+                    }
+                    cornerMenuRecede > 0.01f -> {
+                        Modifier.blur(4.dp * cornerMenuRecede)
+                    }
+                    else -> Modifier
                 }
             ),
         containerColor = if (LocalMonolithThemeMode.current == ThemeMode.OBSIDIAN) {
@@ -491,65 +507,16 @@ fun ExplorerScreen(
                         }
                     },
                     actions = {
-                        Box {
-                            IconButton(onClick = { menuExpanded = true }) {
-                                Icon(Icons.Outlined.MoreVert, contentDescription = "Menü")
-                            }
-                            DropdownMenu(
-                                expanded = menuExpanded,
-                                onDismissRequest = { menuExpanded = false },
-                            ) {
-                                DropdownMenuItem(
-                                    text = { Text("Neuer Ordner") },
-                                    onClick = {
-                                        menuExpanded = false
-                                        showCreateFolderDialog = true
-                                    },
-                                )
-                                DropdownMenuItem(
-                                    text = { Text("Sortieren nach") },
-                                    onClick = {
-                                        menuExpanded = false
-                                        showSortDialog = true
-                                    },
-                                )
-                                DropdownMenuItem(
-                                    text = { Text(if (showHidden) "Versteckte ausblenden" else "Versteckte anzeigen") },
-                                    onClick = {
-                                        showHidden = !showHidden
-                                        menuExpanded = false
-                                    },
-                                )
-                                DropdownMenuItem(
-                                    text = { Text("Einstellungen") },
-                                    onClick = {
-                                        menuExpanded = false
-                                        onOpenSettings()
-                                    },
-                                )
-                                if (activeLocation == LocationType.GOOGLE_DRIVE && signedInEmail != null) {
-                                    DropdownMenuItem(
-                                        text = { Text("Drive abmelden (${signedInEmail!!.substringBefore('@')})") },
-                                        onClick = {
-                                            val targetEmail = signedInEmail
-                                            menuExpanded = false
-                                            scope.launch {
-                                                GoogleDriveAuthManager.signOut(context, targetEmail)
-                                                signedInAccounts = GoogleDriveAuthManager.getSignedInAccounts(context)
-                                                val nextEmail = GoogleDriveAuthManager.getActiveEmail(context)
-                                                signedInEmail = nextEmail
-                                                driveStack = listOf(
-                                                    "gdrive://root" to (nextEmail?.substringBefore('@') ?: "Google Drive"),
-                                                )
-                                                if (nextEmail == null && activeLocation == LocationType.GOOGLE_DRIVE) {
-                                                    activeLocation = LocationType.LOCAL
-                                                    nodes = emptyList()
-                                                }
-                                            }
-                                        },
-                                    )
-                                }
-                            }
+                        IconButton(
+                            onClick = {
+                                MonolithHaptics.navClick(context, view)
+                                menuExpanded = !menuExpanded
+                            },
+                            modifier = Modifier.onGloballyPositioned { coords ->
+                                menuAnchorCenter = coords.boundsInRoot().center - rootOrigin
+                            },
+                        ) {
+                            Icon(Icons.Outlined.MoreVert, contentDescription = "Menü")
                         }
                     },
                 )
@@ -832,9 +799,46 @@ fun ExplorerScreen(
                     CircularProgressIndicator()
                 }
             } else {
-                LazyColumn(
+                var isPullRefreshing by remember { mutableStateOf(false) }
+                val pullState = rememberPullToRefreshState()
+                val pullThresholdReached = pullState.distanceFraction >= 1f
+
+                LaunchedEffect(pullThresholdReached) {
+                    if (pullThresholdReached && !isPullRefreshing) {
+                        MonolithHaptics.tick(context, view)
+                    }
+                }
+
+                PullToRefreshBox(
+                    isRefreshing = isPullRefreshing,
+                    onRefresh = {
+                        if (!isPullRefreshing) {
+                            isPullRefreshing = true
+                            MonolithHaptics.navClick(context, view)
+                            refreshTrigger++
+                            scope.launch {
+                                delay(480L)
+                                while (isLoading) {
+                                    delay(50L)
+                                }
+                                isPullRefreshing = false
+                                MonolithHaptics.successPulse(context)
+                            }
+                        }
+                    },
+                    state = pullState,
                     modifier = Modifier.fillMaxSize(),
+                    indicator = {
+                        MonolithRefreshIndicator(
+                            state = pullState,
+                            isRefreshing = isPullRefreshing,
+                            modifier = Modifier.align(Alignment.TopCenter),
+                        )
+                    },
                 ) {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                    ) {
                     items(nodes, key = { it.id }) { node ->
                         val isSelected = node.path in selectedPaths
                         FileRow(
@@ -893,6 +897,7 @@ fun ExplorerScreen(
                         )
                     }
                 }
+                }
             }
         }
     }
@@ -926,18 +931,70 @@ fun ExplorerScreen(
                     onOpenAiChat(localPath)
                 },
             ),
-            StarMenuItem(
-                id = "extend_files",
-                label = "Dateien erweitern",
-                icon = Icons.Outlined.Explore,
-                onClick = {
-                    scope.launch {
-                        snackbarHostState.showSnackbar("Dateien erweitern folgt")
-                    }
-                },
-            ),
         ),
         onDismiss = { starMenuExpanded = false },
+    )
+
+    val cornerItems = buildList {
+        add(
+            CornerMenuItem(
+                id = "new_folder",
+                label = "Neuer Ordner",
+                onClick = { showCreateFolderDialog = true },
+            ),
+        )
+        add(
+            CornerMenuItem(
+                id = "sort",
+                label = "Sortieren nach",
+                onClick = { showSortDialog = true },
+            ),
+        )
+        add(
+            CornerMenuItem(
+                id = "hidden",
+                label = if (showHidden) "Versteckte ausblenden" else "Versteckte anzeigen",
+                onClick = { showHidden = !showHidden },
+            ),
+        )
+        add(
+            CornerMenuItem(
+                id = "settings",
+                label = "Einstellungen",
+                onClick = onOpenSettings,
+            ),
+        )
+        if (activeLocation == LocationType.GOOGLE_DRIVE && signedInEmail != null) {
+            add(
+                CornerMenuItem(
+                    id = "drive_signout",
+                    label = "Drive abmelden (${signedInEmail!!.substringBefore('@')})",
+                    onClick = {
+                        val targetEmail = signedInEmail
+                        scope.launch {
+                            GoogleDriveAuthManager.signOut(context, targetEmail)
+                            signedInAccounts = GoogleDriveAuthManager.getSignedInAccounts(context)
+                            val nextEmail = GoogleDriveAuthManager.getActiveEmail(context)
+                            signedInEmail = nextEmail
+                            driveStack = listOf(
+                                "gdrive://root" to (nextEmail?.substringBefore('@') ?: "Google Drive"),
+                            )
+                            if (nextEmail == null && activeLocation == LocationType.GOOGLE_DRIVE) {
+                                activeLocation = LocationType.LOCAL
+                                nodes = emptyList()
+                            }
+                        }
+                    },
+                ),
+            )
+        }
+    }
+
+    MonolithCornerMenuOverlay(
+        expanded = menuExpanded,
+        anchorCenter = menuAnchorCenter,
+        items = cornerItems,
+        onDismiss = { menuExpanded = false },
     )
     }
 

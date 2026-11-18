@@ -59,6 +59,9 @@ private val LightColors = lightColorScheme(
     onSurface = Color(0xFF141416),
     surfaceVariant = Color(0xFFEFEFF2),
     onSurfaceVariant = Color(0xFF606066),
+    surfaceContainerLow = Color(0xFFF4F4F7),
+    surfaceContainer = Color(0xFFEEEEF1),
+    surfaceContainerHigh = Color(0xFFEAEAEF),
     surfaceContainerHighest = Color(0xFFE6E6EA),
     outline = Color(0xFF72727A),
     outlineVariant = Color(0xFFE0E0E4),
@@ -79,6 +82,9 @@ private val DarkColors = darkColorScheme(
     onSurface = Color(0xFFF2F2F4),
     surfaceVariant = Color(0xFF1B1B1E),
     onSurfaceVariant = Color(0xFF9E9EA6),
+    surfaceContainerLow = Color(0xFF141418),
+    surfaceContainer = Color(0xFF18181D),
+    surfaceContainerHigh = Color(0xFF1D1D22),
     surfaceContainerHighest = Color(0xFF202026),
     outline = Color(0xFF8E8E98),
     outlineVariant = Color(0xFF2A2A2E),
@@ -99,6 +105,9 @@ private val CyberPhosphorColors = darkColorScheme(
     onSurface = Color(0xFFCDE0D7),
     surfaceVariant = Color(0xFF0B1611),
     onSurfaceVariant = Color(0xFF6B887C),
+    surfaceContainerLow = Color(0xFF06100C),
+    surfaceContainer = Color(0xFF08140F),
+    surfaceContainerHigh = Color(0xFF0A1611),
     surfaceContainerHighest = Color(0xFF0A1813),
     outline = Color(0xFF2E7D60),
     outlineVariant = Color(0xFF1A3027),
@@ -119,25 +128,12 @@ private val ObsidianColors = darkColorScheme(
     onSurface = Color(0xFFECEEF2),
     surfaceVariant = Color(0xFF161920),
     onSurfaceVariant = Color(0xFF9EA4B0),
+    surfaceContainerLow = Color(0xFF12151B),
+    surfaceContainer = Color(0xFF161920),
+    surfaceContainerHigh = Color(0xFF1A1E26),
     surfaceContainerHighest = Color(0xFF1E222B),
     outline = Color(0xFFA88B4A),
     outlineVariant = Color(0xFF262A34),
-)
-
-private val StandardShapes = Shapes(
-    extraSmall = RoundedCornerShape(4.dp),
-    small = RoundedCornerShape(8.dp),
-    medium = RoundedCornerShape(12.dp),
-    large = RoundedCornerShape(16.dp),
-    extraLarge = RoundedCornerShape(28.dp),
-)
-
-private val PhosphorRoughShapes = Shapes(
-    extraSmall = CutCornerShape(2.dp),
-    small = CutCornerShape(4.dp),
-    medium = CutCornerShape(6.dp),
-    large = CutCornerShape(8.dp),
-    extraLarge = CutCornerShape(10.dp),
 )
 
 private val ObsidianShapes = Shapes(
@@ -212,8 +208,6 @@ private val ObsidianTypography = Typography().let { base ->
     )
 }
 
-private val StandardButtonShape: Shape = RoundedCornerShape(50)
-private val PhosphorButtonShape: Shape = CutCornerShape(4.dp)
 private val ObsidianButtonShape: Shape = CutCornerShape(
     topStart = 2.dp,
     topEnd = 10.dp,
@@ -234,21 +228,13 @@ fun MonolithTheme(
         ThemeMode.DARK -> DarkColors
         ThemeMode.SYSTEM, null -> if (darkTheme) DarkColors else LightColors
     }
-    val shapes = when (themeMode) {
-        ThemeMode.CYBER_PHOSPHOR -> PhosphorRoughShapes
-        ThemeMode.OBSIDIAN -> ObsidianShapes
-        else -> StandardShapes
-    }
+    val shapes = ObsidianShapes
     val typography = when (themeMode) {
         ThemeMode.CYBER_PHOSPHOR -> PhosphorTypography
         ThemeMode.OBSIDIAN -> ObsidianTypography
         else -> MaterialTheme.typography
     }
-    val buttonShape = when (themeMode) {
-        ThemeMode.CYBER_PHOSPHOR -> PhosphorButtonShape
-        ThemeMode.OBSIDIAN -> ObsidianButtonShape
-        else -> StandardButtonShape
-    }
+    val buttonShape = ObsidianButtonShape
     CompositionLocalProvider(
         LocalMonolithButtonShape provides buttonShape,
         LocalMonolithThemeMode provides themeMode,

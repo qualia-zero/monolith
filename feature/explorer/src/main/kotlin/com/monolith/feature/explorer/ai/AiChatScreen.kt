@@ -39,7 +39,6 @@ import androidx.compose.material.icons.outlined.Build
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
-import androidx.compose.material.icons.outlined.Explore
 import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.Psychology
@@ -106,6 +105,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
 import com.monolith.core.common.AppSettingsStore
 import com.monolith.core.model.ThemeMode
+import com.monolith.core.ui.components.CornerMenuItem
+import com.monolith.core.ui.components.MonolithCornerMenuOverlay
 import com.monolith.core.ui.components.MonolithStarMenuOverlay
 import com.monolith.core.ui.components.StarMenuItem
 import com.monolith.core.ui.haptics.MonolithHaptics
@@ -213,6 +214,7 @@ fun AiChatScreen(
 
     var starMenuExpanded by remember { mutableStateOf(false) }
     var starAnchorCenter by remember { mutableStateOf(Offset.Unspecified) }
+    var menuAnchorCenter by remember { mutableStateOf(Offset.Unspecified) }
     var rootOrigin by remember { mutableStateOf(Offset.Zero) }
 
     var menuExpanded by remember { mutableStateOf(false) }
@@ -223,11 +225,12 @@ fun AiChatScreen(
     var showMissingKeyPopup by remember { mutableStateOf(false) }
     var showApiKeyDialog by remember { mutableStateOf(false) }
 
-    BackHandler(enabled = starMenuExpanded) {
+    BackHandler(enabled = starMenuExpanded || menuExpanded) {
         starMenuExpanded = false
+        menuExpanded = false
     }
 
-    BackHandler(enabled = !starMenuExpanded) {
+    BackHandler(enabled = !starMenuExpanded && !menuExpanded) {
         activeJob?.cancel()
         onBack()
     }
@@ -366,21 +369,29 @@ fun AiChatScreen(
             targetValue = if (starMenuExpanded) 1f else 0f,
             label = "aiStarMenuBackgroundRecede",
         )
+        val cornerMenuRecede by animateFloatAsState(
+            targetValue = if (menuExpanded) 1f else 0f,
+            label = "aiCornerMenuBackgroundRecede",
+        )
 
         Scaffold(
             modifier = Modifier
                 .fillMaxSize()
                 .then(
-                    if (backgroundRecede > 0.01f) {
-                        Modifier
-                            .blur(10.dp * backgroundRecede)
-                            .graphicsLayer {
-                                val s = 1f - 0.025f * backgroundRecede
-                                scaleX = s
-                                scaleY = s
-                            }
-                    } else {
-                        Modifier
+                    when {
+                        backgroundRecede > 0.01f -> {
+                            Modifier
+                                .blur(10.dp * backgroundRecede)
+                                .graphicsLayer {
+                                    val s = 1f - 0.025f * backgroundRecede
+                                    scaleX = s
+                                    scaleY = s
+                                }
+                        }
+                        cornerMenuRecede > 0.01f -> {
+                            Modifier.blur(4.dp * cornerMenuRecede)
+                        }
+                        else -> Modifier
                     }
                 ),
             containerColor = if (LocalMonolithThemeMode.current == ThemeMode.OBSIDIAN) {
@@ -417,57 +428,16 @@ fun AiChatScreen(
                         }
                     },
                     actions = {
-                        Box {
-                            IconButton(onClick = { menuExpanded = true }) {
-                                Icon(Icons.Outlined.MoreVert, contentDescription = "Menü")
-                            }
-                            DropdownMenu(
-                                expanded = menuExpanded,
-                                onDismissRequest = { menuExpanded = false },
-                            ) {
-                                DropdownMenuItem(
-                                    text = {
-                                        val shortModel = currentModelOption.label.removePrefix("Gemini ")
-                                        Column {
-                                            Text("Modell")
-                                            Text(
-                                                text = "($shortModel ${currentThinkingOption.label})",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            )
-                                        }
-                                    },
-                                    onClick = {
-                                        menuExpanded = false
-                                        showModelDialog = true
-                                    },
-                                )
-                                DropdownMenuItem(
-                                    text = { Text("Systemprompt") },
-                                    onClick = {
-                                        menuExpanded = false
-                                        showSystemPromptDialog = true
-                                    },
-                                )
-                                DropdownMenuItem(
-                                    text = { Text("API-Verwaltung") },
-                                    onClick = {
-                                        menuExpanded = false
-                                        showApiKeyDialog = true
-                                    },
-                                )
-                                DropdownMenuItem(
-                                    text = { Text("Neuer Chat") },
-                                    onClick = {
-                                        menuExpanded = false
-                                        if (messages.isEmpty() && previousInteractionId == null) {
-                                            startNewChat()
-                                        } else {
-                                            showNewChatConfirm = true
-                                        }
-                                    },
-                                )
-                            }
+                        IconButton(
+                            onClick = {
+                                MonolithHaptics.navClick(context, view)
+                                menuExpanded = !menuExpanded
+                            },
+                            modifier = Modifier.onGloballyPositioned { coords ->
+                                menuAnchorCenter = coords.boundsInRoot().center - rootOrigin
+                            },
+                        ) {
+                            Icon(Icons.Outlined.MoreVert, contentDescription = "Menü")
                         }
                     },
                 )
@@ -530,6 +500,7 @@ fun AiChatScreen(
                                         activeJob = null
                                         isStreaming = false
                                     },
+                                    shape = LocalMonolithButtonShape.current,
                                     modifier = Modifier.size(40.dp),
                                     colors = IconButtonDefaults.filledIconButtonColors(
                                         containerColor = MaterialTheme.colorScheme.primaryContainer,
@@ -546,6 +517,7 @@ fun AiChatScreen(
                                 FilledIconButton(
                                     onClick = { sendUserMessage(inputText) },
                                     enabled = inputText.isNotBlank(),
+                                    shape = LocalMonolithButtonShape.current,
                                     modifier = Modifier.size(40.dp),
                                     colors = IconButtonDefaults.filledIconButtonColors(
                                         containerColor = MaterialTheme.colorScheme.primary,
@@ -626,18 +598,44 @@ fun AiChatScreen(
                         starMenuExpanded = false
                     },
                 ),
-                StarMenuItem(
-                    id = "extend_files",
-                    label = "Dateien erweitern",
-                    icon = Icons.Outlined.Explore,
+            ),
+            onDismiss = { starMenuExpanded = false },
+        )
+
+        val shortModel = currentModelOption.label.removePrefix("Gemini ")
+        MonolithCornerMenuOverlay(
+            expanded = menuExpanded,
+            anchorCenter = menuAnchorCenter,
+            items = listOf(
+                CornerMenuItem(
+                    id = "model",
+                    label = "Modell",
+                    subtitle = "($shortModel ${currentThinkingOption.label})",
+                    onClick = { showModelDialog = true },
+                ),
+                CornerMenuItem(
+                    id = "system_prompt",
+                    label = "Systemprompt",
+                    onClick = { showSystemPromptDialog = true },
+                ),
+                CornerMenuItem(
+                    id = "api_keys",
+                    label = "API-Verwaltung",
+                    onClick = { showApiKeyDialog = true },
+                ),
+                CornerMenuItem(
+                    id = "new_chat",
+                    label = "Neuer Chat",
                     onClick = {
-                        scope.launch {
-                            snackbarHostState.showSnackbar("Dateien erweitern folgt")
+                        if (messages.isEmpty() && previousInteractionId == null) {
+                            startNewChat()
+                        } else {
+                            showNewChatConfirm = true
                         }
                     },
                 ),
             ),
-            onDismiss = { starMenuExpanded = false },
+            onDismiss = { menuExpanded = false },
         )
     }
 

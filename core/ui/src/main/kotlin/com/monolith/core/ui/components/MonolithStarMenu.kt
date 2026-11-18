@@ -19,9 +19,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -40,6 +43,7 @@ import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
@@ -272,6 +276,165 @@ fun MonolithStarMenuOverlay(
                                 overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier.weight(1f),
                             )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+data class CornerMenuItem(
+    val id: String,
+    val label: String,
+    val subtitle: String? = null,
+    val onClick: () -> Unit,
+)
+
+/**
+ * Theme-styled overflow menu overlay anchored below-left of the top-right 3-dot icon,
+ * with a gentle scrim so the background recedes softly without hiding context.
+ */
+@Composable
+fun MonolithCornerMenuOverlay(
+    expanded: Boolean,
+    anchorCenter: Offset,
+    items: List<CornerMenuItem>,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val expandProgress by animateFloatAsState(
+        targetValue = if (expanded) 1f else 0f,
+        animationSpec = if (expanded) {
+            spring(dampingRatio = 0.82f, stiffness = Spring.StiffnessMedium)
+        } else {
+            tween(durationMillis = 150, easing = FastOutSlowInEasing)
+        },
+        label = "monolithCornerMenuExpand",
+    )
+
+    if (!expanded && expandProgress <= 0.01f) return
+    if (anchorCenter == Offset.Unspecified || items.isEmpty()) return
+
+    val context = LocalContext.current
+    val view = LocalView.current
+    val density = LocalDensity.current
+    val screenWidthPx = with(density) { LocalConfiguration.current.screenWidthDp.dp.toPx() }
+    val primaryColor = MaterialTheme.colorScheme.primary
+    val scrimColor = MaterialTheme.colorScheme.background
+    val buttonShape = LocalMonolithButtonShape.current
+
+    val menuWidth = 224.dp
+    val menuWidthPx = with(density) { menuWidth.toPx() }
+    val rightEdgeX = (anchorCenter.x + with(density) { 12.dp.toPx() }).coerceAtMost(screenWidthPx - with(density) { 8.dp.toPx() })
+    val menuStartX = (rightEdgeX - menuWidthPx).coerceAtLeast(with(density) { 8.dp.toPx() })
+    val menuStartY = anchorCenter.y + with(density) { 26.dp.toPx() }
+
+    Box(modifier = modifier.fillMaxSize()) {
+        // Gentle scrim
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(scrimColor.copy(alpha = 0.38f * expandProgress.coerceIn(0f, 1f)))
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                ) {
+                    onDismiss()
+                },
+        )
+
+        // Crisp 3-dot icon above the gentle scrim
+        val anchorBoxSize = 44.dp
+        val anchorBoxRadiusPx = with(density) { (anchorBoxSize / 2).toPx() }
+        Box(
+            modifier = Modifier
+                .offset {
+                    IntOffset(
+                        x = (anchorCenter.x - anchorBoxRadiusPx).roundToInt(),
+                        y = (anchorCenter.y - anchorBoxRadiusPx).roundToInt(),
+                    )
+                }
+                .size(anchorBoxSize)
+                .graphicsLayer { alpha = expandProgress.coerceIn(0f, 1f) }
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                ) {
+                    MonolithHaptics.navClick(context, view)
+                    onDismiss()
+                },
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.MoreVert,
+                contentDescription = "Menü schließen",
+                tint = primaryColor,
+                modifier = Modifier.size(22.dp),
+            )
+        }
+
+        Surface(
+            modifier = Modifier
+                .offset {
+                    IntOffset(
+                        x = menuStartX.roundToInt(),
+                        y = menuStartY.roundToInt(),
+                    )
+                }
+                .width(menuWidth)
+                .graphicsLayer {
+                    val p = expandProgress.coerceIn(0f, 1f)
+                    alpha = p
+                    scaleX = 0.9f + 0.1f * p
+                    scaleY = 0.9f + 0.1f * p
+                    transformOrigin = TransformOrigin(1f, 0f)
+                },
+            shape = MaterialTheme.shapes.large,
+            color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.97f),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+            tonalElevation = 6.dp,
+            shadowElevation = 10.dp,
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(6.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                items.forEach { item ->
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = buttonShape,
+                        color = Color.Transparent,
+                        contentColor = MaterialTheme.colorScheme.onSurface,
+                        onClick = {
+                            MonolithHaptics.navClick(context, view)
+                            onDismiss()
+                            item.onClick()
+                        },
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                        ) {
+                            Text(
+                                text = item.label,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Medium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            if (!item.subtitle.isNullOrBlank()) {
+                                Text(
+                                    text = item.subtitle,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
                         }
                     }
                 }
