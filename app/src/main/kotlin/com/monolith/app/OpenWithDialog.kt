@@ -5,10 +5,10 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.webkit.MimeTypeMap
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -23,9 +23,9 @@ import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.Movie
 import androidx.compose.material.icons.outlined.MusicNote
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -47,6 +47,8 @@ import androidx.core.graphics.drawable.toBitmap
 import com.monolith.core.model.DefaultAppAssociation
 import com.monolith.core.model.FileCategory
 import com.monolith.core.model.VfsNode
+import com.monolith.core.ui.components.MonolithDialog
+import com.monolith.core.ui.theme.LocalMonolithButtonShape
 import java.io.File
 import java.util.Locale
 
@@ -205,93 +207,112 @@ internal fun OpenWithDialog(
     var selected by remember(node.path, options) { mutableStateOf(options.firstOrNull()) }
     val ext = remember(node.path) { resolveFileExtension(node) }
 
-    AlertDialog(
+    MonolithDialog(
         onDismissRequest = onDismiss,
-        title = {
-            Column {
-                Text("Öffnen mit", style = MaterialTheme.typography.titleLarge)
-                Text(
-                    text = node.name,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        },
-        text = {
-            if (options.isEmpty()) {
-                Text(
-                    text = "Keine passende App für diesen Dateityp gefunden.",
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-            } else {
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 320.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    items(options, key = { it.handlerId }) { option ->
-                        val isSelected = selected?.handlerId == option.handlerId
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { selected = option }
-                                .padding(vertical = 8.dp, horizontal = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            RadioButton(
-                                selected = isSelected,
-                                onClick = { selected = option },
+        title = "Öffnen mit",
+    ) {
+        Text(
+            text = node.name,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+
+        if (options.isEmpty()) {
+            Text(
+                text = "Keine passende App für diesen Dateityp gefunden.",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        } else {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 320.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                items(options, key = { it.handlerId }) { option ->
+                    val isSelected = selected?.handlerId == option.handlerId
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { selected = option }
+                            .padding(vertical = 8.dp, horizontal = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RadioButton(
+                            selected = isSelected,
+                            onClick = { selected = option },
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        when {
+                            option.iconBitmap != null -> Image(
+                                bitmap = option.iconBitmap,
+                                contentDescription = null,
+                                modifier = Modifier.size(28.dp),
                             )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            when {
-                                option.iconBitmap != null -> Image(
-                                    bitmap = option.iconBitmap,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(28.dp),
-                                )
-                                option.iconVector != null -> Icon(
-                                    imageVector = option.iconVector,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(28.dp),
-                                )
-                            }
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Text(
-                                text = option.label,
-                                style = MaterialTheme.typography.bodyLarge,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
+                            option.iconVector != null -> Icon(
+                                imageVector = option.iconVector,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(28.dp),
                             )
                         }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text(
+                            text = option.label,
+                            style = MaterialTheme.typography.bodyLarge,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
                     }
                 }
             }
-        },
-        dismissButton = {
+        }
+
+        val alwaysEnabled = selected != null && ext.isNotEmpty()
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            TextButton(
+                onClick = onDismiss,
+                shape = LocalMonolithButtonShape.current,
+            ) {
+                Text("Abbrechen")
+            }
+            Spacer(modifier = Modifier.weight(1f))
             TextButton(
                 onClick = {
                     val choice = selected
                     if (choice != null) onSelect(choice, false) else onDismiss()
                 },
                 enabled = selected != null,
+                shape = LocalMonolithButtonShape.current,
             ) {
-                Text("Nur diesmal")
+                Text("Einmal")
             }
-        },
-        confirmButton = {
-            TextButton(
+            OutlinedButton(
                 onClick = {
-                    val choice = selected ?: return@TextButton
+                    val choice = selected ?: return@OutlinedButton
                     onSelect(choice, true)
                 },
-                enabled = selected != null && ext.isNotEmpty(),
+                enabled = alwaysEnabled,
+                shape = LocalMonolithButtonShape.current,
+                border = BorderStroke(
+                    1.dp,
+                    if (alwaysEnabled) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.outlineVariant
+                    },
+                ),
             ) {
                 Text("Immer")
             }
-        },
-    )
+        }
+    }
 }

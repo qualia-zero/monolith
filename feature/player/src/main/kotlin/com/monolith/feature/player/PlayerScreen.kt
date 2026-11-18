@@ -41,7 +41,6 @@ import androidx.compose.material.icons.filled.Replay10
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
@@ -58,7 +57,6 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -88,6 +86,7 @@ import com.monolith.core.media.MpvEngine
 import com.monolith.core.media.ThumbnailEngine
 import com.monolith.core.model.MediaTrackType
 import com.monolith.core.model.PlaybackUiState
+import com.monolith.core.ui.components.MonolithDialog
 import com.monolith.core.model.PlayerSettings
 import com.monolith.core.model.ResumeMode
 import com.monolith.core.ui.components.MonolithSwitch
@@ -134,23 +133,16 @@ fun PlayerScreen(
     }
 
     if (pendingResumePositionMs != null && pendingResumePositionMs > 0L) {
-        AlertDialog(
+        MonolithDialog(
             onDismissRequest = onDismissResume,
-            title = { Text("Wiedergabe fortsetzen") },
-            text = {
-                Text("Ab ${formatDuration(pendingResumePositionMs)} fortsetzen?")
-            },
-            confirmButton = {
-                TextButton(onClick = { onConfirmResume(pendingResumePositionMs) }) {
-                    Text("Fortsetzen")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = onDismissResume) {
-                    Text("Von vorn")
-                }
-            },
-        )
+            title = "Wiedergabe fortsetzen",
+            dismissLabel = "Von vorn",
+            onDismissClick = onDismissResume,
+            confirmLabel = "Fortsetzen",
+            onConfirmClick = { onConfirmResume(pendingResumePositionMs) },
+        ) {
+            Text("Ab ${formatDuration(pendingResumePositionMs)} fortsetzen?")
+        }
     }
 
     if (showSettingsSheet) {

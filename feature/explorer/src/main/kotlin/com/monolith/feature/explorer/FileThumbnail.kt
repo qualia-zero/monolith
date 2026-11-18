@@ -4,6 +4,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -74,14 +75,15 @@ fun FileThumbnail(
     Box(
         modifier = modifier
             .size(40.dp)
-            .clip(MaterialTheme.shapes.small)
             .then(
                 if (isOfflineCached) {
-                    Modifier.border(
-                        width = 1.5.dp,
-                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.65f),
-                        shape = MaterialTheme.shapes.small,
-                    )
+                    Modifier
+                        .border(
+                            width = 1.5.dp,
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.65f),
+                            shape = MaterialTheme.shapes.small,
+                        )
+                        .padding(2.5.dp)
                 } else {
                     Modifier
                 }

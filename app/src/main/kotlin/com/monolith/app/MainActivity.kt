@@ -16,7 +16,6 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.LaunchedEffect
@@ -38,6 +37,7 @@ import com.monolith.core.model.DefaultAppAssociation
 import com.monolith.core.model.FileCategory
 import com.monolith.core.model.ThemeMode
 import com.monolith.core.model.VfsNode
+import com.monolith.core.ui.components.MonolithDialog
 import com.monolith.core.ui.theme.MonolithTheme
 import com.monolith.core.vfs.FileTransferService
 import com.monolith.core.vfs.GoogleDriveAuthManager
@@ -334,21 +334,19 @@ class MainActivity : ComponentActivity() {
                 }
 
                 downloadingDriveFile?.let { fileName ->
-                    AlertDialog(
+                    MonolithDialog(
                         onDismissRequest = {},
-                        title = { Text("Google Drive") },
-                        text = {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                                modifier = Modifier.padding(top = 4.dp),
-                            ) {
-                                CircularProgressIndicator()
-                                Text("Lade „$fileName“…")
-                            }
-                        },
-                        confirmButton = {},
-                    )
+                        title = "Google Drive",
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(16.dp),
+                            modifier = Modifier.padding(top = 4.dp),
+                        ) {
+                            CircularProgressIndicator()
+                            Text("Lade „$fileName“…")
+                        }
+                    }
                 }
 
                 if (showTransferOverlay) {
@@ -356,6 +354,10 @@ class MainActivity : ComponentActivity() {
                         TransferProgressDialog(
                             progress = progress,
                             onDismiss = { showTransferOverlay = false },
+                            onCancel = {
+                                FileTransferService.cancel(this@MainActivity)
+                                showTransferOverlay = false
+                            },
                         )
                     }
                 }

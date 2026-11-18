@@ -2,6 +2,7 @@ package com.monolith.feature.viewers
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -32,7 +33,6 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -41,6 +41,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -75,6 +76,8 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.monolith.core.ui.components.MonolithDialog
+import com.monolith.core.ui.theme.LocalMonolithButtonShape
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -527,37 +530,55 @@ fun TextEditorScreen(
     }
 
     if (showUnsavedDialog) {
-        AlertDialog(
+        MonolithDialog(
             onDismissRequest = { showUnsavedDialog = false },
-            title = { Text("Ungespeicherte Änderungen") },
-            text = { Text("Möchtest du die Änderungen vor dem Schließen speichern?") },
-            confirmButton = {
+            title = "Ungespeicherte Änderungen",
+        ) {
+            Text("Möchtest du die Änderungen vor dem Schließen speichern?")
+            val canSave = !isReadOnly && !isSaving
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 TextButton(
+                    onClick = {
+                        showUnsavedDialog = false
+                        onNavigateBack()
+                    },
+                    shape = LocalMonolithButtonShape.current,
+                ) {
+                    Text("Verwerfen")
+                }
+                Spacer(modifier = Modifier.weight(1f))
+                TextButton(
+                    onClick = { showUnsavedDialog = false },
+                    shape = LocalMonolithButtonShape.current,
+                ) {
+                    Text("Abbrechen")
+                }
+                OutlinedButton(
                     onClick = {
                         showUnsavedDialog = false
                         saveFile(closeAfterSave = true)
                     },
-                    enabled = !isReadOnly && !isSaving,
+                    enabled = canSave,
+                    shape = LocalMonolithButtonShape.current,
+                    border = BorderStroke(
+                        1.dp,
+                        if (canSave) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.outlineVariant
+                        },
+                    ),
                 ) {
                     Text("Speichern")
                 }
-            },
-            dismissButton = {
-                Row {
-                    TextButton(
-                        onClick = {
-                            showUnsavedDialog = false
-                            onNavigateBack()
-                        },
-                    ) {
-                        Text("Verwerfen")
-                    }
-                    TextButton(onClick = { showUnsavedDialog = false }) {
-                        Text("Abbrechen")
-                    }
-                }
-            },
-        )
+            }
+        }
     }
 }
 

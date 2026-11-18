@@ -5,6 +5,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
@@ -19,9 +20,12 @@ import com.monolith.core.model.VfsNode
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -31,6 +35,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import java.io.File
+import java.util.Collections
+import java.util.Locale
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 
@@ -54,6 +60,8 @@ class FileTransferService : Service() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val jobQueue = Channel<TransferJob>(Channel.UNLIMITED)
     private val pendingJobs = AtomicInteger(0)
+    private var activeExecutionJob: Job? = null
+    private val activeTempFiles = Collections.synchronizedSet(HashSet<File>())
     private lateinit var notificationManager: NotificationManager
 
     override fun onCreate() {
@@ -63,8 +71,19 @@ class FileTransferService : Service() {
 
         serviceScope.launch {
             for (job in jobQueue) {
-                executeJob(job)
+                val executionJob = launch {
+                    executeJob(job)
+                }
+                activeExecutionJob = executionJob
+                try {
+                    executionJob.join()
+                } finally {
+                    if (activeExecutionJob === executionJob) {
+                        activeExecutionJob = null
+                    }
+                }
                 if (pendingJobs.decrementAndGet() <= 0) {
+                    pendingJobs.set(0)
                     ServiceCompat.stopForeground(this@FileTransferService, ServiceCompat.STOP_FOREGROUND_REMOVE)
                     stopSelf()
                 }
@@ -73,6 +92,27 @@ class FileTransferService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_CANCEL_TRANSFER) {
+            while (jobQueue.tryReceive().isSuccess) {
+                // Drain pending transfer jobs
+            }
+            pendingJobs.set(0)
+            activeExecutionJob?.cancel()
+            activeExecutionJob = null
+            synchronized(activeTempFiles) {
+                activeTempFiles.forEach { runCatching { it.delete() } }
+                activeTempFiles.clear()
+            }
+            notificationManager.cancel(PROGRESS_NOTIFICATION_ID)
+            ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+            _progress.value = _progress.value?.copy(
+                isFinished = true,
+                errorMessage = "Abgebrochen",
+            )
+            stopSelf()
+            return START_NOT_STICKY
+        }
+
         val sources = intent?.getStringArrayListExtra(EXTRA_SOURCES).orEmpty()
         val destinationDir = intent?.getStringExtra(EXTRA_DESTINATION).orEmpty()
         val isMove = intent?.getBooleanExtra(EXTRA_IS_MOVE, false) ?: false
@@ -148,9 +188,9 @@ class FileTransferService : Service() {
             else -> TransferOperation.COPY
         }
         val title = when {
-            job.isCloudDownload -> "Dateien herunterladen"
-            job.isMove -> "Dateien verschieben"
-            else -> "Dateien kopieren"
+            job.isCloudDownload -> "Dateien herunterladen…"
+            job.isMove -> "Dateien verschieben…"
+            else -> "Dateien kopieren…"
         }
 
         var totalBytes = 0L
@@ -176,7 +216,7 @@ class FileTransferService : Service() {
         var bytesPerSecond = 0L
         val startTimeMs = System.currentTimeMillis()
         var lastNotificationUpdateMs = 0L
-        var lastNotifiedFileName = ""
+        var lastNotifiedItems = -1
 
         fun publishProgress(forceNotification: Boolean = false) {
             _progress.value = TransferProgress(
@@ -193,10 +233,10 @@ class FileTransferService : Service() {
             val now = System.currentTimeMillis()
             if (forceNotification ||
                 now - lastNotificationUpdateMs >= NOTIFICATION_THROTTLE_MS ||
-                currentFileName != lastNotifiedFileName
+                processedItems != lastNotifiedItems
             ) {
                 lastNotificationUpdateMs = now
-                lastNotifiedFileName = currentFileName
+                lastNotifiedItems = processedItems
                 val scaledProgress = when {
                     totalBytes > 0L -> ((bytesProcessed.coerceIn(0L, totalBytes) * PROGRESS_NOTIFICATION_MAX) / totalBytes)
                         .toInt()
@@ -206,12 +246,20 @@ class FileTransferService : Service() {
                     else -> 0
                 }
                 val indeterminate = totalBytes <= 0L && totalItems <= 1
-                val displayIndex = (processedItems + 1).coerceAtMost(totalItems)
+                val notificationText = buildString {
+                    append("$processedItems/$totalItems Elemente")
+                    if (totalBytes > 0L) {
+                        append(" · ${formatBytes(bytesProcessed)} / ${formatBytes(totalBytes)}")
+                    }
+                    if (bytesPerSecond > 0L) {
+                        append(" · ${formatBytes(bytesPerSecond)}/s")
+                    }
+                }
                 notificationManager.notify(
                     PROGRESS_NOTIFICATION_ID,
                     buildProgressNotification(
                         title = title,
-                        text = "$displayIndex/$totalItems · $currentFileName",
+                        text = notificationText,
                         progress = scaledProgress,
                         max = PROGRESS_NOTIFICATION_MAX,
                         indeterminate = indeterminate,
@@ -309,7 +357,7 @@ class FileTransferService : Service() {
                 totalBytes = totalBytes,
                 bytesPerSecond = bytesPerSecond,
                 isFinished = true,
-                errorMessage = null,
+                errorMessage = "Abgebrochen",
             )
             throw error
         }
@@ -416,10 +464,13 @@ class FileTransferService : Service() {
             }
 
             val tmpFile = File(cacheFolder, "$cachedName.tmp")
+            activeTempFiles.add(tmpFile)
+            var renamed = false
             try {
                 driveProvider.openInputStream(fileNode.path).use { input ->
                     tmpFile.outputStream().use { output ->
                         while (true) {
+                            currentCoroutineContext().ensureActive()
                             val read = input.read(buffer)
                             if (read < 0) break
                             if (read > 0) {
@@ -429,6 +480,7 @@ class FileTransferService : Service() {
                         }
                     }
                 }
+                currentCoroutineContext().ensureActive()
                 if (targetFile.exists()) {
                     targetFile.delete()
                 }
@@ -436,9 +488,12 @@ class FileTransferService : Service() {
                     tmpFile.copyTo(targetFile, overwrite = true)
                     tmpFile.delete()
                 }
-            } catch (t: Throwable) {
-                tmpFile.delete()
-                throw t
+                renamed = true
+            } finally {
+                activeTempFiles.remove(tmpFile)
+                if (!renamed) {
+                    tmpFile.delete()
+                }
             }
 
             onProgress(VfsTransferUpdate(currentFileName = displayName, itemsDelta = 1))
@@ -537,9 +592,17 @@ class FileTransferService : Service() {
     }
 
     private fun createLaunchPendingIntent(): PendingIntent? {
-        val launchIntent = packageManager.getLaunchIntentForPackage(packageName)?.apply {
+        val explicitIntent = Intent().apply {
+            component = ComponentName(packageName, "com.monolith.app.MainActivity")
+        }
+        val launchIntent = (if (explicitIntent.resolveActivity(packageManager) != null) {
+            explicitIntent
+        } else {
+            packageManager.getLaunchIntentForPackage(packageName)
+        })?.apply {
+            action = EXTRA_OPEN_TRANSFER_PANEL
             putExtra(EXTRA_OPEN_TRANSFER_PANEL, true)
-            addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
         } ?: return null
         return PendingIntent.getActivity(
             this,
@@ -549,8 +612,21 @@ class FileTransferService : Service() {
         )
     }
 
+    private fun formatBytes(bytes: Long): String {
+        if (bytes < 1024L) return "$bytes B"
+        val units = arrayOf("KB", "MB", "GB", "TB")
+        var value = bytes.toDouble()
+        var unitIndex = -1
+        while (value >= 1024.0 && unitIndex < units.lastIndex) {
+            value /= 1024.0
+            unitIndex++
+        }
+        return String.format(Locale.getDefault(), "%.1f %s", value, units[unitIndex])
+    }
+
     companion object {
         const val EXTRA_OPEN_TRANSFER_PANEL = "com.monolith.core.vfs.EXTRA_OPEN_TRANSFER_PANEL"
+        private const val ACTION_CANCEL_TRANSFER = "com.monolith.core.vfs.ACTION_CANCEL_TRANSFER"
 
         private const val CHANNEL_ID = "monolith_file_transfer"
         private const val PROGRESS_NOTIFICATION_ID = 20041
@@ -599,6 +675,13 @@ class FileTransferService : Service() {
                 putExtra(EXTRA_IS_CLOUD_DOWNLOAD, true)
             }
             ContextCompat.startForegroundService(context.applicationContext, intent)
+        }
+
+        fun cancel(context: Context) {
+            val intent = Intent(context.applicationContext, FileTransferService::class.java).apply {
+                action = ACTION_CANCEL_TRANSFER
+            }
+            runCatching { context.applicationContext.startService(intent) }
         }
     }
 }
