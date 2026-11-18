@@ -750,67 +750,60 @@ fun AiChatScreen(
                 showSystemPromptDialog = false
             },
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
+            OutlinedTextField(
+                value = promptDraft,
+                onValueChange = { promptDraft = it },
+                label = { Text("Prompt-Vorlage") },
+                minLines = 4,
+                maxLines = 9,
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            OutlinedButton(
+                onClick = { showResetPromptConfirm = true },
+                shape = LocalMonolithButtonShape.current,
+                modifier = Modifier.fillMaxWidth(),
             ) {
-                OutlinedTextField(
-                    value = promptDraft,
-                    onValueChange = { promptDraft = it },
-                    label = { Text("Prompt-Vorlage") },
-                    minLines = 4,
-                    maxLines = 9,
-                    modifier = Modifier.fillMaxWidth(),
-                )
+                Text("Auf Standard zurücksetzen")
+            }
 
-                OutlinedButton(
-                    onClick = { showResetPromptConfirm = true },
-                    shape = LocalMonolithButtonShape.current,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text("Auf Standard zurücksetzen")
-                }
+            Text(
+                text = copiedTokenHint?.let { "Kopiert: $it" }
+                    ?: "Bausteine (antippen zum Kopieren):",
+                style = MaterialTheme.typography.labelMedium,
+                color = if (copiedTokenHint != null) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                },
+            )
 
-                Text(
-                    text = copiedTokenHint?.let { "Kopiert: $it" }
-                        ?: "Bausteine (antippen zum Kopieren):",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = if (copiedTokenHint != null) {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        MaterialTheme.colorScheme.onSurface
-                    },
-                )
-
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    buildingBlocks.forEach { (token, desc) ->
-                        Surface(
-                            shape = MaterialTheme.shapes.small,
-                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    clipboardManager.setText(AnnotatedString(token))
-                                    copiedTokenHint = token
-                                },
-                        ) {
-                            Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)) {
-                                Text(
-                                    text = token,
-                                    style = MaterialTheme.typography.labelSmall.copy(
-                                        fontFamily = FontFamily.Monospace,
-                                    ),
-                                    color = MaterialTheme.colorScheme.primary,
-                                )
-                                Text(
-                                    text = desc,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                buildingBlocks.forEach { (token, desc) ->
+                    Surface(
+                        shape = MaterialTheme.shapes.small,
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                clipboardManager.setText(AnnotatedString(token))
+                                copiedTokenHint = token
+                            },
+                    ) {
+                        Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)) {
+                            Text(
+                                text = token,
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontFamily = FontFamily.Monospace,
+                                ),
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                            Text(
+                                text = desc,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
                         }
                     }
                 }
@@ -846,94 +839,87 @@ fun AiChatScreen(
             confirmLabel = "Schließen",
             onConfirmClick = { showApiKeyDialog = false },
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                if (appSettings.geminiApiKeys.isEmpty()) {
-                    Text(
-                        text = "Noch keine API-Keys gespeichert.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+            if (appSettings.geminiApiKeys.isEmpty()) {
+                Text(
+                    text = "Noch keine API-Keys gespeichert.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                appSettings.geminiApiKeys.forEach { entry ->
+                    val isSelected = entry.id == appSettings.activeGeminiApiKeyId
+                    MonolithDialogOption(
+                        label = entry.label,
+                        subtitle = maskApiKey(entry.key),
+                        selected = isSelected,
+                        onClick = { AppSettingsStore.selectGeminiApiKey(entry.id) },
+                        trailing = {
+                            IconButton(
+                                onClick = { AppSettingsStore.removeGeminiApiKey(entry.id) },
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.DeleteOutline,
+                                    contentDescription = "Key entfernen",
+                                )
+                            }
+                        },
                     )
+                }
+            }
+
+            HorizontalDivider(thickness = 0.5.dp)
+
+            Text(
+                text = "Neuen Key hinzufügen",
+                style = MaterialTheme.typography.labelLarge,
+            )
+
+            OutlinedTextField(
+                value = newLabel,
+                onValueChange = { newLabel = it },
+                label = { Text("Bezeichnung (optional)") },
+                placeholder = { Text("z. B. Privat, Arbeit") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            OutlinedTextField(
+                value = newKey,
+                onValueChange = { newKey = it },
+                label = { Text("Gemini-API-Key") },
+                placeholder = { Text("AIza…") },
+                singleLine = true,
+                visualTransformation = if (showNewKey) {
+                    VisualTransformation.None
                 } else {
-                    appSettings.geminiApiKeys.forEach { entry ->
-                        val isSelected = entry.id == appSettings.activeGeminiApiKeyId
-                        MonolithDialogOption(
-                            label = entry.label,
-                            subtitle = maskApiKey(entry.key),
-                            selected = isSelected,
-                            onClick = { AppSettingsStore.selectGeminiApiKey(entry.id) },
-                            trailing = {
-                                IconButton(
-                                    onClick = { AppSettingsStore.removeGeminiApiKey(entry.id) },
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Outlined.DeleteOutline,
-                                        contentDescription = "Key entfernen",
-                                    )
-                                }
+                    PasswordVisualTransformation()
+                },
+                trailingIcon = {
+                    IconButton(onClick = { showNewKey = !showNewKey }) {
+                        Icon(
+                            imageVector = if (showNewKey) {
+                                Icons.Outlined.VisibilityOff
+                            } else {
+                                Icons.Outlined.Visibility
                             },
+                            contentDescription = if (showNewKey) "Verbergen" else "Anzeigen",
                         )
                     }
-                }
+                },
+                modifier = Modifier.fillMaxWidth(),
+            )
 
-                HorizontalDivider(thickness = 0.5.dp)
-
-                Text(
-                    text = "Neuen Key hinzufügen",
-                    style = MaterialTheme.typography.labelLarge,
-                )
-
-                OutlinedTextField(
-                    value = newLabel,
-                    onValueChange = { newLabel = it },
-                    label = { Text("Bezeichnung (optional)") },
-                    placeholder = { Text("z. B. Privat, Arbeit") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-
-                OutlinedTextField(
-                    value = newKey,
-                    onValueChange = { newKey = it },
-                    label = { Text("Gemini-API-Key") },
-                    placeholder = { Text("AIza…") },
-                    singleLine = true,
-                    visualTransformation = if (showNewKey) {
-                        VisualTransformation.None
-                    } else {
-                        PasswordVisualTransformation()
-                    },
-                    trailingIcon = {
-                        IconButton(onClick = { showNewKey = !showNewKey }) {
-                            Icon(
-                                imageVector = if (showNewKey) {
-                                    Icons.Outlined.VisibilityOff
-                                } else {
-                                    Icons.Outlined.Visibility
-                                },
-                                contentDescription = if (showNewKey) "Verbergen" else "Anzeigen",
-                            )
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                )
-
-                Button(
-                    onClick = {
-                        AppSettingsStore.addGeminiApiKey(newLabel, newKey)
-                        newLabel = ""
-                        newKey = ""
-                    },
-                    enabled = newKey.isNotBlank(),
-                    shape = LocalMonolithButtonShape.current,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text("Hinzufügen & aktivieren")
-                }
+            Button(
+                onClick = {
+                    AppSettingsStore.addGeminiApiKey(newLabel, newKey)
+                    newLabel = ""
+                    newKey = ""
+                },
+                enabled = newKey.isNotBlank(),
+                shape = LocalMonolithButtonShape.current,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("Hinzufügen & aktivieren")
             }
         }
     }

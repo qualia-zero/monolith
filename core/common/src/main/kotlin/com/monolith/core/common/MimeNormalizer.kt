@@ -4,7 +4,7 @@ import com.monolith.core.model.FileCategory
 import java.util.Locale
 
 /**
- * MIME resolution and container normalization aligned with EMFE's video/audio coverage.
+ * MIME resolution and container normalization across video, audio, image, document, and archive formats.
  */
 object MimeNormalizer {
     private val videoExtensions = mapOf(
