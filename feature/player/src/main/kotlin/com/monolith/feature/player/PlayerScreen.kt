@@ -90,6 +90,7 @@ import com.monolith.core.ui.components.MonolithDialog
 import com.monolith.core.model.PlayerSettings
 import com.monolith.core.model.ResumeMode
 import com.monolith.core.ui.components.MonolithSwitch
+import com.monolith.core.ui.theme.LocalMonolithButtonShape
 import kotlinx.coroutines.delay
 import java.util.Locale
 import kotlin.math.roundToInt
@@ -150,6 +151,9 @@ fun PlayerScreen(
         ModalBottomSheet(
             onDismissRequest = { showSettingsSheet = false },
             sheetState = sheetState,
+            shape = MaterialTheme.shapes.large,
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+            contentColor = MaterialTheme.colorScheme.onSurface,
         ) {
             PlayerSettingsSheetContent(
                 state = state,
@@ -704,6 +708,7 @@ private fun PlayerSettingsSheetContent(
                     val selected = kotlin.math.abs(state.speed - speed) < 0.01f
                     FilterChip(
                         selected = selected,
+                        shape = LocalMonolithButtonShape.current,
                         onClick = { MpvEngine.setSpeed(speed) },
                         label = { Text("${speed}x") },
                     )
@@ -728,6 +733,7 @@ private fun PlayerSettingsSheetContent(
                         val label = buildTrackLabel(track.id, track.title, track.language)
                         FilterChip(
                             selected = track.isSelected,
+                            shape = LocalMonolithButtonShape.current,
                             onClick = { MpvEngine.selectAudioTrack(track.id) },
                             label = { Text(label) },
                         )
@@ -752,6 +758,7 @@ private fun PlayerSettingsSheetContent(
                     val noneSelected = subtitleTracks.none { it.isSelected }
                     FilterChip(
                         selected = noneSelected,
+                        shape = LocalMonolithButtonShape.current,
                         onClick = { MpvEngine.selectSubtitleTrack(-1) },
                         label = { Text("Aus") },
                     )
@@ -759,6 +766,7 @@ private fun PlayerSettingsSheetContent(
                         val label = buildTrackLabel(track.id, track.title, track.language)
                         FilterChip(
                             selected = track.isSelected,
+                            shape = LocalMonolithButtonShape.current,
                             onClick = { MpvEngine.selectSubtitleTrack(track.id) },
                             label = { Text(label) },
                         )

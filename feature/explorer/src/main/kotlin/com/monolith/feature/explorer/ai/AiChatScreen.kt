@@ -704,7 +704,7 @@ fun AiChatScreen(
         MonolithDialog(
             onDismissRequest = { showThinkingDialog = false },
             title = "Denkaufwand",
-            confirmLabel = "Fertig",
+            confirmLabel = "Schließen",
             onConfirmClick = { showThinkingDialog = false },
         ) {
             supportedLevels.forEach { option ->

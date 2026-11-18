@@ -7,6 +7,11 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import com.monolith.core.common.AppSettingsStore
+import com.monolith.core.model.ThemeMode
 import com.monolith.core.ui.theme.MonolithTheme
 
 /**
@@ -24,8 +29,19 @@ class TextEditorActivity : ComponentActivity() {
             return
         }
 
+        AppSettingsStore.init(applicationContext)
+
         setContent {
-            MonolithTheme {
+            val appSettings by AppSettingsStore.settings.collectAsState()
+            val darkTheme = when (appSettings.themeMode) {
+                ThemeMode.SYSTEM -> isSystemInDarkTheme()
+                ThemeMode.LIGHT -> false
+                ThemeMode.DARK, ThemeMode.CYBER_PHOSPHOR, ThemeMode.OBSIDIAN -> true
+            }
+            MonolithTheme(
+                darkTheme = darkTheme,
+                themeMode = appSettings.themeMode,
+            ) {
                 TextEditorScreen(
                     path = path,
                     onNavigateBack = { finish() },

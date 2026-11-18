@@ -9,6 +9,9 @@ import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import com.monolith.core.common.AppSettingsStore
 import com.monolith.core.ui.theme.MonolithTheme
 
 /**
@@ -38,8 +41,14 @@ class ImageViewerActivity : ComponentActivity() {
 
         val initialIndex = imagePaths.indexOf(path).coerceAtLeast(0)
 
+        AppSettingsStore.init(applicationContext)
+
         setContent {
-            MonolithTheme(darkTheme = true) {
+            val appSettings by AppSettingsStore.settings.collectAsState()
+            MonolithTheme(
+                darkTheme = true,
+                themeMode = appSettings.themeMode,
+            ) {
                 ImageViewerScreen(
                     imagePaths = imagePaths,
                     initialIndex = initialIndex,
