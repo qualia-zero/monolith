@@ -1,6 +1,5 @@
 package com.monolith.core.ui.components
 
-import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
@@ -13,30 +12,31 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.PathEffect
-import androidx.compose.ui.graphics.PathMeasure
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -44,28 +44,24 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.monolith.core.ui.haptics.MonolithHaptics
 import com.monolith.core.ui.theme.LocalMonolithButtonShape
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import kotlin.math.PI
-import kotlin.math.cos
 import kotlin.math.roundToInt
-import kotlin.math.sin
 
 data class StarMenuItem(
     val id: String,
     val label: String,
     val icon: ImageVector,
+    val isSelected: Boolean = false,
     val onClick: () -> Unit,
 )
 
 /**
- * Radial star menu overlay expanding toward the bottom-right from [anchorCenter].
- * Connects the anchor logo to each option node with animated glowing constellation lines.
+ * Modern floating menu overlay anchored below-right of [anchorCenter],
+ * keeping the anchor icon crisp over the dimmed background and scaling cleanly with any item count.
  */
 @Composable
 fun MonolithStarMenuOverlay(
@@ -76,18 +72,15 @@ fun MonolithStarMenuOverlay(
     modifier: Modifier = Modifier,
     anchorIcon: ImageVector? = null,
     onAnchorClick: (() -> Unit)? = null,
-    radius: Dp = 132.dp,
-    startAngleDeg: Float = 16f,
-    endAngleDeg: Float = 66f,
 ) {
     val expandProgress by animateFloatAsState(
         targetValue = if (expanded) 1f else 0f,
         animationSpec = if (expanded) {
-            spring(dampingRatio = 0.72f, stiffness = Spring.StiffnessMediumLow)
+            spring(dampingRatio = 0.78f, stiffness = Spring.StiffnessMedium)
         } else {
-            tween(durationMillis = 180, easing = FastOutSlowInEasing)
+            tween(durationMillis = 160, easing = FastOutSlowInEasing)
         },
-        label = "starMenuExpand",
+        label = "monolithMenuExpand",
     )
 
     if (!expanded && expandProgress <= 0.01f) return
@@ -97,56 +90,17 @@ fun MonolithStarMenuOverlay(
     val view = LocalView.current
     val density = LocalDensity.current
     val primaryColor = MaterialTheme.colorScheme.primary
-    val secondaryColor = MaterialTheme.colorScheme.secondary
     val scrimColor = MaterialTheme.colorScheme.background
     val buttonShape = LocalMonolithButtonShape.current
 
-    val radiusPx = with(density) { radius.toPx() }
-    val ringRadiusPx = with(density) { 23.dp.toPx() }
-    val nodeSize = 44.dp
-    val nodeRadiusPx = with(density) { (nodeSize / 2).toPx() }
-
-    val itemProgresses = remember(items.size) {
-        List(items.size) { Animatable(0f) }
-    }
-
-    LaunchedEffect(expanded, items.size) {
-        if (expanded) {
-            itemProgresses.forEachIndexed { index, anim ->
-                launch {
-                    delay(index * 45L)
-                    anim.animateTo(
-                        targetValue = 1f,
-                        animationSpec = spring(
-                            dampingRatio = 0.68f,
-                            stiffness = Spring.StiffnessMediumLow,
-                        ),
-                    )
-                }
-            }
-        } else {
-            itemProgresses.forEach { anim ->
-                launch {
-                    anim.animateTo(
-                        targetValue = 0f,
-                        animationSpec = tween(durationMillis = 150, easing = FastOutSlowInEasing),
-                    )
-                }
-            }
-        }
-    }
-
-    val anglesDeg = remember(items.size, startAngleDeg, endAngleDeg) {
-        if (items.size == 1) {
-            listOf((startAngleDeg + endAngleDeg) / 2f)
-        } else {
-            val step = (endAngleDeg - startAngleDeg) / (items.size - 1)
-            List(items.size) { idx -> startAngleDeg + step * idx }
-        }
-    }
+    val ringRadiusPx = with(density) { 22.dp.toPx() }
+    val menuOffsetX = with(density) { 10.dp.toPx() }
+    val menuOffsetY = with(density) { 30.dp.toPx() }
+    val menuStartX = anchorCenter.x + menuOffsetX
+    val menuStartY = anchorCenter.y + menuOffsetY
 
     Box(modifier = modifier.fillMaxSize()) {
-        // Strong scrim so the background recedes cleanly while the star menu is open
+        // Strong scrim so the background recedes cleanly while the menu is open
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -159,117 +113,47 @@ fun MonolithStarMenuOverlay(
                 },
         )
 
-        // Glowing constellation lines, orbital arc, and anchor halo
+        // Anchor halo, ring, and subtle connector trace to the menu card
         Canvas(modifier = Modifier.fillMaxSize()) {
-            val clampedProgress = expandProgress.coerceIn(0f, 1f)
+            val p = expandProgress.coerceIn(0f, 1f)
 
-            // Radial glow around the Monolith anchor icon
             drawCircle(
                 brush = Brush.radialGradient(
                     colors = listOf(
-                        primaryColor.copy(alpha = 0.24f * clampedProgress),
-                        primaryColor.copy(alpha = 0.06f * clampedProgress),
+                        primaryColor.copy(alpha = 0.24f * p),
+                        primaryColor.copy(alpha = 0.06f * p),
                         Color.Transparent,
                     ),
                     center = anchorCenter,
-                    radius = ringRadiusPx * 2.4f,
+                    radius = ringRadiusPx * 2.3f,
                 ),
-                radius = ringRadiusPx * 2.4f,
+                radius = ringRadiusPx * 2.3f,
                 center = anchorCenter,
             )
 
-            // Crisp anchor ring
             drawCircle(
-                color = primaryColor.copy(alpha = 0.75f * clampedProgress),
-                radius = ringRadiusPx * (0.78f + 0.22f * clampedProgress),
+                color = primaryColor.copy(alpha = 0.78f * p),
+                radius = ringRadiusPx * (0.8f + 0.2f * p),
                 center = anchorCenter,
                 style = Stroke(width = 1.5.dp.toPx()),
             )
 
-            // Dashed outer orbital arc connecting the star menu quadrant
-            val arcRadius = radiusPx * clampedProgress
-            if (arcRadius > ringRadiusPx) {
-                drawArc(
-                    color = primaryColor.copy(alpha = 0.24f * clampedProgress),
-                    startAngle = (startAngleDeg - 8f),
-                    sweepAngle = (endAngleDeg - startAngleDeg) + 16f,
-                    useCenter = false,
-                    topLeft = Offset(anchorCenter.x - arcRadius, anchorCenter.y - arcRadius),
-                    size = Size(arcRadius * 2f, arcRadius * 2f),
-                    style = Stroke(
-                        width = 1.2.dp.toPx(),
-                        pathEffect = PathEffect.dashPathEffect(floatArrayOf(12f, 10f), 0f),
-                        cap = StrokeCap.Round,
-                    ),
+            val start = Offset(anchorCenter.x + ringRadiusPx * 0.45f, anchorCenter.y + ringRadiusPx * 0.88f)
+            val end = Offset(menuStartX + 16.dp.toPx(), menuStartY)
+            val connectorPath = Path().apply {
+                moveTo(start.x, start.y)
+                quadraticTo(
+                    start.x,
+                    end.y * 0.5f + start.y * 0.5f,
+                    end.x,
+                    end.y,
                 )
             }
-
-            // Curved glowing spokes from anchor ring to each option node
-            anglesDeg.forEachIndexed { index, angleDeg ->
-                val p = itemProgresses.getOrNull(index)?.value?.coerceIn(0f, 1.15f) ?: clampedProgress
-                if (p <= 0.02f) return@forEachIndexed
-
-                val rad = angleDeg * (PI / 180.0)
-                val dir = Offset(cos(rad).toFloat(), sin(rad).toFloat())
-                val perp = Offset(-dir.y, dir.x)
-
-                val start = anchorCenter + dir * ringRadiusPx
-                val fullEnd = anchorCenter + dir * (radiusPx * p)
-                val mid = (start + fullEnd) * 0.5f
-                val curveSign = if (index % 2 == 0) -1f else 1f
-                val curveOffset = (16.dp.toPx()) * curveSign * p
-                val control = mid + perp * curveOffset
-
-                val fullPath = Path().apply {
-                    moveTo(start.x, start.y)
-                    quadraticTo(control.x, control.y, fullEnd.x, fullEnd.y)
-                }
-
-                // Trim the path slightly before the node center so it meets the node border cleanly
-                val measure = PathMeasure().apply { setPath(fullPath, false) }
-                val trimmedLength = (measure.length - nodeRadiusPx * 0.85f).coerceAtLeast(0f)
-                val visiblePath = Path()
-                if (trimmedLength > 0f) {
-                    measure.getSegment(0f, trimmedLength, visiblePath, true)
-                }
-
-                val lineAlpha = p.coerceIn(0f, 1f)
-
-                // Soft outer glow stroke
-                drawPath(
-                    path = visiblePath,
-                    brush = Brush.linearGradient(
-                        colors = listOf(
-                            primaryColor.copy(alpha = 0.28f * lineAlpha),
-                            secondaryColor.copy(alpha = 0.12f * lineAlpha),
-                        ),
-                        start = start,
-                        end = fullEnd,
-                    ),
-                    style = Stroke(width = 6.dp.toPx(), cap = StrokeCap.Round),
-                )
-
-                // Crisp core line
-                drawPath(
-                    path = visiblePath,
-                    brush = Brush.linearGradient(
-                        colors = listOf(
-                            primaryColor.copy(alpha = 0.92f * lineAlpha),
-                            primaryColor.copy(alpha = 0.65f * lineAlpha),
-                        ),
-                        start = start,
-                        end = fullEnd,
-                    ),
-                    style = Stroke(width = 1.8.dp.toPx(), cap = StrokeCap.Round),
-                )
-
-                // Starlight junction dot on the anchor ring
-                drawCircle(
-                    color = primaryColor.copy(alpha = lineAlpha),
-                    radius = 3.dp.toPx(),
-                    center = start,
-                )
-            }
+            drawPath(
+                path = connectorPath,
+                color = primaryColor.copy(alpha = 0.65f * p),
+                style = Stroke(width = 1.6.dp.toPx(), cap = StrokeCap.Round),
+            )
         }
 
         // Crisp, unblurred anchor icon rendered above the scrim & anchor ring
@@ -310,72 +194,86 @@ fun MonolithStarMenuOverlay(
             }
         }
 
-        // Option nodes + labels
-        items.forEachIndexed { index, item ->
-            val p = itemProgresses.getOrNull(index)?.value ?: expandProgress
-            val angleDeg = anglesDeg[index]
-            val rad = angleDeg * (PI / 180.0)
-            val currentRadius = radiusPx * p
-            val nodeCenterX = anchorCenter.x + cos(rad).toFloat() * currentRadius
-            val nodeCenterY = anchorCenter.y + sin(rad).toFloat() * currentRadius
-
-            val alpha = p.coerceIn(0f, 1f)
-            val scale = 0.65f + 0.35f * p.coerceIn(0f, 1.1f)
-
-            Row(
-                modifier = Modifier
-                    .offset {
-                        IntOffset(
-                            x = (nodeCenterX - nodeRadiusPx).roundToInt(),
-                            y = (nodeCenterY - nodeRadiusPx).roundToInt(),
-                        )
-                    }
-                    .graphicsLayer {
-                        this.alpha = alpha
-                        this.scaleX = scale
-                        this.scaleY = scale
-                    }
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                    ) {
-                        MonolithHaptics.navClick(context, view)
-                        onDismiss()
-                        item.onClick()
-                    },
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Surface(
-                    modifier = Modifier.size(nodeSize),
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.surfaceContainerHighest,
-                    border = BorderStroke(1.5.dp, primaryColor.copy(alpha = 0.85f)),
-                    shadowElevation = 6.dp,
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            imageVector = item.icon,
-                            contentDescription = item.label,
-                            tint = primaryColor,
-                            modifier = Modifier.size(20.dp),
-                        )
-                    }
-                }
-
-                Surface(
-                    shape = buttonShape,
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.96f),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                    shadowElevation = 4.dp,
-                ) {
-                    Text(
-                        text = item.label,
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Medium,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+        // Modern floating menu card expanding below-right of the Monolith icon
+        Surface(
+            modifier = Modifier
+                .offset {
+                    IntOffset(
+                        x = menuStartX.roundToInt(),
+                        y = menuStartY.roundToInt(),
                     )
+                }
+                .widthIn(min = 210.dp, max = 270.dp)
+                .graphicsLayer {
+                    val p = expandProgress.coerceIn(0f, 1f)
+                    alpha = p
+                    scaleX = 0.86f + 0.14f * p
+                    scaleY = 0.86f + 0.14f * p
+                    transformOrigin = TransformOrigin(0f, 0f)
+                },
+            shape = MaterialTheme.shapes.large,
+            color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.97f),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+            tonalElevation = 6.dp,
+            shadowElevation = 10.dp,
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(8.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                items.forEach { item ->
+                    val rowContainerColor = if (item.isSelected) {
+                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.85f)
+                    } else {
+                        Color.Transparent
+                    }
+                    val rowContentColor = if (item.isSelected) {
+                        MaterialTheme.colorScheme.onPrimaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.onSurface
+                    }
+                    val iconTint = if (item.isSelected) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    }
+
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = buttonShape,
+                        color = rowContainerColor,
+                        contentColor = rowContentColor,
+                        onClick = {
+                            MonolithHaptics.navClick(context, view)
+                            onDismiss()
+                            item.onClick()
+                        },
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 11.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            Icon(
+                                imageVector = item.icon,
+                                contentDescription = item.label,
+                                tint = iconTint,
+                                modifier = Modifier.size(20.dp),
+                            )
+                            Text(
+                                text = item.label,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = if (item.isSelected) FontWeight.SemiBold else FontWeight.Medium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
+                    }
                 }
             }
         }

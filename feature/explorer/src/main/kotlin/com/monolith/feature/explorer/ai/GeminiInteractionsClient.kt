@@ -26,6 +26,14 @@ object GeminiInteractionsClient {
 
     const val DEFAULT_MODEL = "gemini-4-hydrogen"
     const val DEFAULT_THINKING_LEVEL = "medium"
+    const val CURRENT_DIR_PLACEHOLDER = "{current_dir}"
+
+    val DEFAULT_SYSTEM_PROMPT = """
+        Du bist Monolith, ein hilfreicher Assistent im Monolith-Dateiexplorer (Android). Antworte auf Deutsch, klar und prägnant.
+        Aktueller Ordner: $CURRENT_DIR_PLACEHOLDER
+        Nutze deine Dateisystem-Tools (`list_directory`, `read_text_file`, `get_file_info`, `search_files`) nur bei Bedarf. Unterordner öffnest du über `<dir>/<name>`.
+    """.trimIndent()
+
     private const val ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/interactions"
     private const val API_REVISION = "2026-05-20"
     private const val MAX_TOOL_ROUNDS = 6
@@ -50,19 +58,16 @@ object GeminiInteractionsClient {
         currentDirectory: String,
         model: String = DEFAULT_MODEL,
         thinkingLevel: String = DEFAULT_THINKING_LEVEL,
+        systemPromptTemplate: String = DEFAULT_SYSTEM_PROMPT,
         onTextDelta: (String) -> Unit,
         onThoughtDelta: (String) -> Unit = {},
         onToolCallTrace: (ToolCallTrace) -> Unit = {},
         onToolStatus: (String?) -> Unit,
     ): Result<String?> = withContext(Dispatchers.IO) {
         runCatching {
-            val systemInstruction = buildString {
-                append("Du bist Monolith, ein hilfreicher Assistent direkt im Monolith-Dateiexplorer auf Android. ")
-                append("Antworte standardmäßig auf Deutsch, klar und prägnant. ")
-                append("Der Nutzer befindet sich aktuell im Ordner: $currentDirectory. ")
-                append("Du hast Lese-Tools für das lokale Dateisystem (`list_directory`, `read_text_file`, `get_file_info`, `search_files`). ")
-                append("Nutze diese Tools nur dann, wenn du für die Frage des Nutzers wirklich Datei- oder Ordnerinfos brauchst.")
-            }
+            val resolvedPrompt = systemPromptTemplate
+                .ifBlank { DEFAULT_SYSTEM_PROMPT }
+                .replace(CURRENT_DIR_PLACEHOLDER, currentDirectory)
 
             var activePrevId = previousInteractionId
             var currentInput: Any = userMessage
@@ -82,7 +87,7 @@ object GeminiInteractionsClient {
                     )
                     put("tools", ExplorerAiTools.toolDeclarationsJson())
                     if (activePrevId == null) {
-                        put("system_instruction", systemInstruction)
+                        put("system_instruction", resolvedPrompt)
                     } else {
                         put("previous_interaction_id", activePrevId)
                     }
@@ -108,10 +113,14 @@ object GeminiInteractionsClient {
                 val toolResults = JSONArray()
                 for (call in turn.functionCalls) {
                     onToolStatus("Tool: ${call.name}…")
-                    val argsJson = call.directArguments ?: runCatching {
-                        val raw = call.argsBuffer.toString().trim()
-                        if (raw.isEmpty()) JSONObject() else JSONObject(raw)
-                    }.getOrElse { JSONObject() }
+                    val bufferedRaw = call.argsBuffer.toString().trim()
+                    val argsJson = if (bufferedRaw.isNotEmpty()) {
+                        runCatching { JSONObject(bufferedRaw) }.getOrElse {
+                            call.directArguments ?: JSONObject()
+                        }
+                    } else {
+                        call.directArguments ?: JSONObject()
+                    }
 
                     val outputText = ExplorerAiTools.execute(
                         name = call.name,
@@ -243,6 +252,7 @@ object GeminiInteractionsClient {
                                         val callId = step.optString("id")
                                         val callName = step.optString("name")
                                         val directArgs = step.optJSONObject("arguments")
+                                            ?.takeIf { it.length() > 0 }
                                         if (index >= 0 && callId.isNotBlank() && callName.isNotBlank()) {
                                             callsByIndex[index] = PendingFunctionCall(
                                                 id = callId,
@@ -294,9 +304,15 @@ object GeminiInteractionsClient {
                                         }
                                     }
                                     "arguments_delta" -> {
-                                        val argsDelta = delta.optString("arguments")
-                                        if (argsDelta.isNotEmpty()) {
-                                            callsByIndex[index]?.argsBuffer?.append(argsDelta)
+                                        val argsObj = delta.optJSONObject("arguments")
+                                        if (argsObj != null && argsObj.length() > 0) {
+                                            callsByIndex[index]?.directArguments = argsObj
+                                        } else {
+                                            val argsDelta = delta.optString("arguments")
+                                                .ifEmpty { delta.optString("arguments_delta") }
+                                            if (argsDelta.isNotEmpty()) {
+                                                callsByIndex[index]?.argsBuffer?.append(argsDelta)
+                                            }
                                         }
                                     }
                                 }

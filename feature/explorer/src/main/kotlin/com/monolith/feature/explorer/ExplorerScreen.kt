@@ -46,6 +46,7 @@ import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Explore
 import androidx.compose.material.icons.outlined.Folder
+import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.FolderZip
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.MoreVert
@@ -908,6 +909,15 @@ fun ExplorerScreen(
         anchorCenter = starAnchorCenter,
         anchorIcon = currentAnchorIcon,
         items = listOf(
+            StarMenuItem(
+                id = "files",
+                label = "Dateien",
+                icon = Icons.Outlined.FolderOpen,
+                isSelected = true,
+                onClick = {
+                    starMenuExpanded = false
+                },
+            ),
             StarMenuItem(
                 id = "ai_chat",
                 label = "AI",

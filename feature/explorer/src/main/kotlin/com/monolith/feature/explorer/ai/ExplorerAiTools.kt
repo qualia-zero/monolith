@@ -177,22 +177,26 @@ object ExplorerAiTools {
         return runCatching {
             when (name) {
                 "list_directory" -> {
-                    val path = arguments.optString("path").ifBlank { defaultDir }
+                    val rawPath = arguments.optString("path").trim()
+                    val path = resolvePath(rawPath, defaultDir)
                     val includeHidden = arguments.optBoolean("include_hidden", false)
                     listDirectory(path, includeHidden)
                 }
                 "read_text_file" -> {
-                    val path = arguments.optString("path")
+                    val rawPath = arguments.optString("path").trim()
+                    val path = if (rawPath.isEmpty()) "" else resolvePath(rawPath, defaultDir)
                     val maxChars = arguments.optInt("max_chars", 12_000).coerceIn(256, MAX_READ_CHARS)
                     readTextFile(path, maxChars)
                 }
                 "get_file_info" -> {
-                    val path = arguments.optString("path")
+                    val rawPath = arguments.optString("path").trim()
+                    val path = if (rawPath.isEmpty()) "" else resolvePath(rawPath, defaultDir)
                     getFileInfo(path)
                 }
                 "search_files" -> {
                     val query = arguments.optString("query")
-                    val dir = arguments.optString("directory").ifBlank { defaultDir }
+                    val rawDir = arguments.optString("directory").trim()
+                    val dir = resolvePath(rawDir, defaultDir)
                     searchFiles(query, dir)
                 }
                 else -> JSONObject().put("error", "Unknown tool: $name").toString()
@@ -200,6 +204,26 @@ object ExplorerAiTools {
         }.getOrElse { err ->
             JSONObject().put("error", err.message ?: "Tool execution failed").toString()
         }
+    }
+
+    private fun resolvePath(rawPath: String, defaultDir: String): String {
+        if (rawPath.isBlank()) return defaultDir
+        val candidate = if (rawPath.startsWith("/")) {
+            File(rawPath)
+        } else {
+            File(defaultDir, rawPath)
+        }
+        if (candidate.exists()) return candidate.absolutePath
+        // Fallback: case-insensitive match in parent directory
+        val parent = candidate.parentFile
+        val targetName = candidate.name
+        if (parent != null && parent.isDirectory) {
+            val match = parent.listFiles()?.firstOrNull {
+                it.name.equals(targetName, ignoreCase = true)
+            }
+            if (match != null) return match.absolutePath
+        }
+        return candidate.absolutePath
     }
 
     private fun listDirectory(path: String, includeHidden: Boolean): String {
@@ -214,23 +238,19 @@ object ExplorerAiTools {
 
         val items = JSONArray()
         children.take(MAX_LIST_ITEMS).forEach { file ->
-            items.put(
-                JSONObject().apply {
-                    put("name", file.name)
-                    put("path", file.absolutePath)
-                    put("type", if (file.isDirectory) "directory" else "file")
-                    if (!file.isDirectory) {
-                        put("size_bytes", file.length())
-                    }
-                },
-            )
+            val entry = if (file.isDirectory) {
+                "D ${file.name}"
+            } else {
+                "F ${file.name} (${formatCompactSize(file.length())})"
+            }
+            items.put(entry)
         }
 
         return JSONObject().apply {
-            put("directory", dir.absolutePath)
-            put("total_count", children.size)
-            put("truncated", children.size > MAX_LIST_ITEMS)
-            put("items", items)
+            put("dir", dir.absolutePath)
+            put("total", children.size)
+            if (children.size > MAX_LIST_ITEMS) put("truncated", true)
+            put("entries", items)
         }.toString()
     }
 
@@ -266,15 +286,14 @@ object ExplorerAiTools {
         }
 
         return JSONObject().apply {
-            put("name", file.name)
             put("path", file.absolutePath)
-            put("type", if (file.isDirectory) "directory" else "file")
-            if (ext.isNotEmpty()) put("extension", ext)
-            if (!mimeType.isNullOrBlank()) put("mime_type", mimeType)
-            put("size_bytes", file.length())
-            put("last_modified", dateFormat.format(Date(file.lastModified())))
-            put("can_read", file.canRead())
-            put("can_write", file.canWrite())
+            put("type", if (file.isDirectory) "dir" else "file")
+            if (ext.isNotEmpty()) put("ext", ext)
+            if (!mimeType.isNullOrBlank()) put("mime", mimeType)
+            put("size", formatCompactSize(file.length()))
+            put("modified", dateFormat.format(Date(file.lastModified())))
+            if (!file.canRead()) put("readable", false)
+            if (!file.canWrite()) put("writable", false)
 
             if (file.isFile && mimeType != null) {
                 when {
@@ -338,20 +357,20 @@ object ExplorerAiTools {
         val queue = ArrayDeque<Pair<File, Int>>()
         queue.add(root to 0)
 
+        val rootPrefix = root.absolutePath.trimEnd('/') + "/"
         while (queue.isNotEmpty() && matches.length() < MAX_SEARCH_RESULTS) {
             val (dir, depth) = queue.removeFirst()
             val children = dir.listFiles() ?: continue
             for (child in children) {
                 if (child.name.startsWith(".")) continue
                 if (child.name.lowercase().contains(lowerQuery)) {
-                    matches.put(
-                        JSONObject().apply {
-                            put("name", child.name)
-                            put("path", child.absolutePath)
-                            put("type", if (child.isDirectory) "directory" else "file")
-                            if (!child.isDirectory) put("size_bytes", child.length())
-                        },
-                    )
+                    val relPath = child.absolutePath.removePrefix(rootPrefix)
+                    val entry = if (child.isDirectory) {
+                        "D $relPath"
+                    } else {
+                        "F $relPath (${formatCompactSize(child.length())})"
+                    }
+                    matches.put(entry)
                     if (matches.length() >= MAX_SEARCH_RESULTS) break
                 }
                 if (child.isDirectory && depth < MAX_SEARCH_DEPTH) {
@@ -366,5 +385,14 @@ object ExplorerAiTools {
             put("count", matches.length())
             put("results", matches)
         }.toString()
+    }
+
+    private fun formatCompactSize(bytes: Long): String {
+        return when {
+            bytes < 1024L -> "${bytes}B"
+            bytes < 1024L * 1024L -> "${bytes / 1024L}KB"
+            bytes < 1024L * 1024L * 1024L -> String.format(Locale.US, "%.1fMB", bytes / (1024.0 * 1024.0))
+            else -> String.format(Locale.US, "%.2fGB", bytes / (1024.0 * 1024.0 * 1024.0))
+        }
     }
 }

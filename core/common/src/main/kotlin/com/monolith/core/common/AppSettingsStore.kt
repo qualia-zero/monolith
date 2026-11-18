@@ -25,6 +25,7 @@ object AppSettingsStore {
     private const val KEY_ACTIVE_GEMINI_API_KEY_ID = "active_gemini_api_key_id"
     private const val KEY_AI_MODEL_ID = "ai_model_id"
     private const val KEY_AI_THINKING_LEVEL = "ai_thinking_level"
+    private const val KEY_AI_SYSTEM_PROMPT = "ai_system_prompt"
 
     @Volatile
     private var prefs: SharedPreferences? = null
@@ -159,6 +160,8 @@ object AppSettingsStore {
             aiModelId = sp.getString(KEY_AI_MODEL_ID, defaults.aiModelId) ?: defaults.aiModelId,
             aiThinkingLevel = sp.getString(KEY_AI_THINKING_LEVEL, defaults.aiThinkingLevel)
                 ?: defaults.aiThinkingLevel,
+            aiSystemPrompt = sp.getString(KEY_AI_SYSTEM_PROMPT, defaults.aiSystemPrompt)
+                ?: defaults.aiSystemPrompt,
         )
     }
 
@@ -186,6 +189,7 @@ object AppSettingsStore {
             ?.putString(KEY_ACTIVE_GEMINI_API_KEY_ID, value.activeGeminiApiKeyId)
             ?.putString(KEY_AI_MODEL_ID, value.aiModelId)
             ?.putString(KEY_AI_THINKING_LEVEL, value.aiThinkingLevel)
+            ?.putString(KEY_AI_SYSTEM_PROMPT, value.aiSystemPrompt)
             ?.apply()
     }
 

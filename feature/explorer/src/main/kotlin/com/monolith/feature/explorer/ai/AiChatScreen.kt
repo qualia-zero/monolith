@@ -34,11 +34,13 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Build
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.Explore
+import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.Psychology
 import androidx.compose.material.icons.outlined.Stop
@@ -57,6 +59,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
@@ -90,8 +93,10 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -212,6 +217,7 @@ fun AiChatScreen(
     var menuExpanded by remember { mutableStateOf(false) }
     var showModelDialog by remember { mutableStateOf(false) }
     var showThinkingDialog by remember { mutableStateOf(false) }
+    var showSystemPromptDialog by remember { mutableStateOf(false) }
     var showNewChatConfirm by remember { mutableStateOf(false) }
     var showMissingKeyPopup by remember { mutableStateOf(false) }
     var showApiKeyDialog by remember { mutableStateOf(false) }
@@ -276,6 +282,7 @@ fun AiChatScreen(
                 currentDirectory = currentDirectory,
                 model = usedModel.id,
                 thinkingLevel = usedThinking.id,
+                systemPromptTemplate = appSettings.aiSystemPrompt,
                 onTextDelta = { delta ->
                     val idx = messages.indexOfFirst { it.id == assistantId }
                     if (idx >= 0) {
@@ -418,10 +425,27 @@ fun AiChatScreen(
                                 onDismissRequest = { menuExpanded = false },
                             ) {
                                 DropdownMenuItem(
-                                    text = { Text("Modell") },
+                                    text = {
+                                        val shortModel = currentModelOption.label.removePrefix("Gemini ")
+                                        Column {
+                                            Text("Modell")
+                                            Text(
+                                                text = "($shortModel ${currentThinkingOption.label})",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                        }
+                                    },
                                     onClick = {
                                         menuExpanded = false
                                         showModelDialog = true
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Systemprompt") },
+                                    onClick = {
+                                        menuExpanded = false
+                                        showSystemPromptDialog = true
                                     },
                                 )
                                 DropdownMenuItem(
@@ -584,9 +608,19 @@ fun AiChatScreen(
             },
             items = listOf(
                 StarMenuItem(
+                    id = "files",
+                    label = "Dateien",
+                    icon = Icons.Outlined.FolderOpen,
+                    onClick = {
+                        activeJob?.cancel()
+                        onBack()
+                    },
+                ),
+                StarMenuItem(
                     id = "ai_chat",
                     label = "AI",
-                    icon = Icons.Outlined.ViewInAr,
+                    icon = Icons.Outlined.AutoAwesome,
+                    isSelected = true,
                     onClick = {
                         starMenuExpanded = false
                     },
@@ -745,6 +779,138 @@ fun AiChatScreen(
                 }
             },
         )
+    }
+
+    if (showSystemPromptDialog) {
+        val clipboardManager = LocalClipboardManager.current
+        val currentStored = appSettings.aiSystemPrompt.ifBlank { GeminiInteractionsClient.DEFAULT_SYSTEM_PROMPT }
+        var promptDraft by remember(appSettings.aiSystemPrompt) { mutableStateOf(currentStored) }
+        var showResetPromptConfirm by remember { mutableStateOf(false) }
+        var copiedTokenHint by remember { mutableStateOf<String?>(null) }
+        val buildingBlocks = remember {
+            listOf(
+                GeminiInteractionsClient.CURRENT_DIR_PLACEHOLDER to "Aktueller Explorer-Ordner",
+                "list_directory(path?, include_hidden?)" to "Ordnerinhalt auflisten",
+                "read_text_file(path, max_chars?)" to "UTF-8-Textdatei lesen",
+                "get_file_info(path)" to "Kompakte Datei-/Media-Metadaten",
+                "search_files(query, directory?)" to "Rekursive Dateisuche (Tiefe 4)",
+            )
+        }
+
+        AlertDialog(
+            onDismissRequest = { showSystemPromptDialog = false },
+            title = { Text("Systemprompt") },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    OutlinedTextField(
+                        value = promptDraft,
+                        onValueChange = { promptDraft = it },
+                        label = { Text("Prompt-Vorlage") },
+                        minLines = 4,
+                        maxLines = 9,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+
+                    OutlinedButton(
+                        onClick = { showResetPromptConfirm = true },
+                        shape = LocalMonolithButtonShape.current,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text("Auf Standard zurücksetzen")
+                    }
+
+                    Text(
+                        text = copiedTokenHint?.let { "Kopiert: $it" }
+                            ?: "Bausteine (antippen zum Kopieren):",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = if (copiedTokenHint != null) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurface
+                        },
+                    )
+
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        buildingBlocks.forEach { (token, desc) ->
+                            Surface(
+                                shape = MaterialTheme.shapes.small,
+                                color = MaterialTheme.colorScheme.surfaceVariant,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        MonolithHaptics.navClick(context, view)
+                                        clipboardManager.setText(AnnotatedString(token))
+                                        copiedTokenHint = token
+                                    },
+                            ) {
+                                Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)) {
+                                    Text(
+                                        text = token,
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontFamily = FontFamily.Monospace,
+                                        ),
+                                        color = MaterialTheme.colorScheme.primary,
+                                    )
+                                    Text(
+                                        text = desc,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showSystemPromptDialog = false }) {
+                    Text("Abbrechen")
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val cleaned = promptDraft.trim()
+                        val toStore = if (cleaned == GeminiInteractionsClient.DEFAULT_SYSTEM_PROMPT) "" else cleaned
+                        AppSettingsStore.update { it.copy(aiSystemPrompt = toStore) }
+                        showSystemPromptDialog = false
+                    },
+                ) {
+                    Text("Speichern")
+                }
+            },
+        )
+
+        if (showResetPromptConfirm) {
+            AlertDialog(
+                onDismissRequest = { showResetPromptConfirm = false },
+                title = { Text("Systemprompt zurücksetzen") },
+                text = {
+                    Text("Möchtest du den Systemprompt wirklich auf den Standard zurücksetzen?")
+                },
+                dismissButton = {
+                    TextButton(onClick = { showResetPromptConfirm = false }) {
+                        Text("Abbrechen")
+                    }
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            showResetPromptConfirm = false
+                            promptDraft = GeminiInteractionsClient.DEFAULT_SYSTEM_PROMPT
+                            AppSettingsStore.update { it.copy(aiSystemPrompt = "") }
+                        },
+                    ) {
+                        Text("Zurücksetzen")
+                    }
+                },
+            )
+        }
     }
 
     if (showApiKeyDialog) {
