@@ -1070,7 +1070,8 @@ fun ExplorerScreen(
             add(
                 CornerMenuItem(
                     id = "drive_signout",
-                    label = "Drive abmelden (${signedInEmail!!.substringBefore('@')})",
+                    label = "Drive abmelden",
+                    subtitle = signedInEmail!!.substringBefore('@'),
                     onClick = {
                         val targetEmail = signedInEmail
                         scope.launch {
