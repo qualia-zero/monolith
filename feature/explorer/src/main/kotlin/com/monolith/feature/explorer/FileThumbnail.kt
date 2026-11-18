@@ -83,7 +83,7 @@ fun FileThumbnail(
                             color = MaterialTheme.colorScheme.primary.copy(alpha = 0.65f),
                             shape = MaterialTheme.shapes.small,
                         )
-                        .padding(2.5.dp)
+                        .padding(1.5.dp)
                 } else {
                     Modifier
                 }
