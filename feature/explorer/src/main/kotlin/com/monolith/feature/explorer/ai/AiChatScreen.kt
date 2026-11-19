@@ -158,9 +158,9 @@ private val THINKING_XHIGH = ThinkingLevelOption("xhigh", "xHigh")
 
 private val GEMINI_MODELS = listOf(
     GeminiModelOption(
-        id = "gemini-4-hydrogen",
-        label = "Gemini 4 Hydrogen",
-        supportedThinkingLevels = listOf(THINKING_LOW, THINKING_MEDIUM, THINKING_HIGH, THINKING_XHIGH),
+        id = "gemini-3.5-flash-lite",
+        label = "Gemini 3.5 Flash-Lite",
+        supportedThinkingLevels = listOf(THINKING_MINIMAL, THINKING_LOW, THINKING_MEDIUM, THINKING_HIGH),
     ),
     GeminiModelOption(
         id = "gemini-3.8-flash",
@@ -168,9 +168,14 @@ private val GEMINI_MODELS = listOf(
         supportedThinkingLevels = listOf(THINKING_LOW, THINKING_MEDIUM, THINKING_HIGH),
     ),
     GeminiModelOption(
-        id = "gemini-3.5-flash-lite",
-        label = "Gemini 3.5 Flash-Lite",
-        supportedThinkingLevels = listOf(THINKING_MINIMAL, THINKING_LOW, THINKING_MEDIUM, THINKING_HIGH),
+        id = "gemini-4-hydrogen",
+        label = "Gemini 4 Hydrogen",
+        supportedThinkingLevels = listOf(THINKING_LOW, THINKING_MEDIUM, THINKING_HIGH, THINKING_XHIGH),
+    ),
+    GeminiModelOption(
+        id = "gemini-4-neon",
+        label = "Gemini 4 Neon",
+        supportedThinkingLevels = listOf(THINKING_LOW, THINKING_MEDIUM, THINKING_HIGH, THINKING_XHIGH),
     ),
 )
 
