@@ -27,7 +27,7 @@
 - **Built-in Viewers (`:feature:viewers`):**
   - Text editor and image viewer, plus "Open With" system app discovery and default-app associations.
 - **Integrated Gemini AI Chat (`:feature:explorer`):**
-  - Streaming responses, collapsible thinking & tool-call traces, Markdown rendering, multi-API-key management, customizable system prompt with quick-copy tool blocks, and read-only explorer tool calling (`list_directory`, `read_text_file`, `get_file_info`, `search_files`, `analyze_storage_summary`, `list_archive_contents`).
+  - Streaming responses, collapsible thinking & tool-call traces, Markdown rendering, multi-API-key management, customizable system prompt with quick-copy tool blocks, and read-only explorer tool calling (`list_directory`, `read_text_file`, `get_file_info`, `search_files`, `list_archive_contents`).
 - **Design & Tactile Polish (`:core:ui`):**
   - **Obsidian** (textured stone aesthetic, cut-corner geometry, unified `MonolithDialog` & `MonolithStarMenu`) and **Phosphor** themes with Day/Night modes and granular per-action haptic feedback settings.
 
