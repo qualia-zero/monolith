@@ -18,7 +18,7 @@ data class CategoryBreakdown(
     val fractionOfScanned: Float,
 )
 
-data class AnalyzedFolderItem(
+data class StorageFolderNode(
     val path: String,
     val relativePath: String,
     val name: String,
@@ -26,8 +26,8 @@ data class AnalyzedFolderItem(
     val ownFilesBytes: Long,
     val fileCount: Int,
     val subfolderCount: Int,
-    val dominantExtensions: List<String>,
-    val fractionOfScanned: Float,
+    val directFolders: List<StorageFolderNode>,
+    val directFiles: List<AnalyzedFileItem>,
 )
 
 data class AnalyzedFileItem(
@@ -58,14 +58,11 @@ data class StorageScanResult(
     val totalFilesCount: Int,
     val totalFoldersCount: Int,
     val categoryBreakdowns: List<CategoryBreakdown>,
-    val disjointTopFolders: List<AnalyzedFolderItem>,
+    val rootFolder: StorageFolderNode,
+    val folderByPath: Map<String, StorageFolderNode>,
     val largestFiles: List<AnalyzedFileItem>,
     val duplicateGroups: List<DuplicateGroup>,
-    val largeFilesOver100MbBytes: Long,
-    val largeFilesOver100MbCount: Int,
-    val archiveAndApkBytes: Long,
-    val archiveAndApkCount: Int,
-    val tempAndCacheBytes: Long,
-    val tempAndCacheCount: Int,
     val reclaimableDuplicatesBytes: Long,
-)
+) {
+    fun findFolder(path: String): StorageFolderNode? = folderByPath[path]
+}

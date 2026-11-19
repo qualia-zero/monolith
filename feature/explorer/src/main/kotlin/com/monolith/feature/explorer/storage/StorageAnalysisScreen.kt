@@ -5,14 +5,14 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -20,31 +20,24 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.CutCornerShape
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.automirrored.outlined.InsertDriveFile
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.outlined.Android
 import androidx.compose.material.icons.outlined.AudioFile
-import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.ChevronRight
-import androidx.compose.material.icons.outlined.DeleteOutline
+import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
@@ -52,33 +45,23 @@ import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.FolderZip
 import androidx.compose.material.icons.outlined.Image
-import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.MoreVert
-import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.SdStorage
 import androidx.compose.material.icons.outlined.SelectAll
-import androidx.compose.material.icons.outlined.Stop
 import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material.icons.outlined.Usb
 import androidx.compose.material.icons.outlined.VideoFile
 import androidx.compose.material.icons.outlined.ViewInAr
-import androidx.compose.material.icons.outlined.Visibility
-import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.IconButtonDefaults
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SecondaryTabRow
 import androidx.compose.material3.SnackbarHost
@@ -90,7 +73,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -112,12 +94,8 @@ import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.monolith.core.common.AppSettingsStore
 import com.monolith.core.model.FileCategory
 import com.monolith.core.model.LocationType
 import com.monolith.core.model.ThemeMode
@@ -135,20 +113,20 @@ import com.monolith.feature.explorer.ExternalVolumeKind
 import com.monolith.feature.explorer.FileThumbnail
 import com.monolith.feature.explorer.MonolithToolDestination
 import com.monolith.feature.explorer.MonolithToolStarMenu
-import com.monolith.feature.explorer.ai.MarkdownText
 import com.monolith.feature.explorer.rememberExternalStorageVolumes
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.Locale
 
 private enum class StorageTab(val title: String) {
-    FOLDERS("Ordneransicht"),
-    FILES("Dateiansicht"),
-    AI("AI-Analyse"),
+    FOLDERS("Ordner"),
+    FILES("Dateien"),
+}
+
+private enum class FolderSortBy(val label: String) {
+    SIZE("Größe"),
+    NAME("Name"),
 }
 
 private enum class FileFilter(val label: String) {
@@ -178,7 +156,7 @@ private val STANDARD_FILE_FILTERS = listOf(
 
 private const val SIX_MONTHS_MS = 180L * 86_400_000L
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun StorageAnalysisScreen(
     initialRootPath: String? = null,
@@ -186,15 +164,12 @@ fun StorageAnalysisScreen(
     onNavigateToFiles: () -> Unit,
     onOpenFolderInExplorer: (String) -> Unit,
     onNavigateToArchives: (List<String>) -> Unit,
-    onNavigateToAi: () -> Unit,
+    onNavigateToDownloader: () -> Unit,
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
     val view = LocalView.current
-    AppSettingsStore.init(context)
-    val appSettings by AppSettingsStore.settings.collectAsState()
-    val apiKey = appSettings.activeGeminiApiKey.trim()
 
     val defaultInternalPath = remember { Environment.getExternalStorageDirectory().absolutePath }
     val externalVolumes = rememberExternalStorageVolumes(context)
@@ -202,97 +177,87 @@ fun StorageAnalysisScreen(
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
 
-    val resolvedInitialRoot = remember(initialRootPath, defaultInternalPath) {
-        initialRootPath?.takeIf { it.isNotBlank() && File(it).isDirectory } ?: defaultInternalPath
+    val normalizedInitialRoot = remember(initialRootPath) {
+        initialRootPath?.takeIf { it.isNotBlank() }?.let { File(it).absolutePath }
     }
-    var activeRootPath by remember { mutableStateOf(resolvedInitialRoot) }
-    var pathBackStack by remember { mutableStateOf<List<String>>(emptyList()) }
+    val matchingExternalForInitial = remember(normalizedInitialRoot, externalVolumes) {
+        normalizedInitialRoot?.let { target ->
+            externalVolumes.firstOrNull { vol -> isSameOrDescendant(target, vol.rootPath) }
+        }
+    }
+    val initialVolumeRoot = matchingExternalForInitial?.rootPath ?: defaultInternalPath
+    val initialSubfolderTarget = remember(normalizedInitialRoot, initialVolumeRoot) {
+        val target = normalizedInitialRoot
+        if (
+            target != null &&
+            target != initialVolumeRoot &&
+            isSameOrDescendant(target, initialVolumeRoot) &&
+            File(target).isDirectory
+        ) {
+            target
+        } else {
+            null
+        }
+    }
+
+    var userSelectedVolume by remember(initialRootPath) { mutableStateOf(false) }
+    var activeVolumeRoot by remember(initialRootPath) { mutableStateOf(initialVolumeRoot) }
+    var currentBrowsePath by remember(initialRootPath) {
+        mutableStateOf(initialSubfolderTarget ?: initialVolumeRoot)
+    }
+    var pendingTargetPath by remember(initialRootPath) { mutableStateOf(initialSubfolderTarget) }
     var scanTrigger by remember { mutableIntStateOf(0) }
 
     var isScanning by remember { mutableStateOf(true) }
     var progressFiles by remember { mutableIntStateOf(0) }
     var progressBytes by remember { mutableLongStateOf(0L) }
-    var progressCurrentDir by remember { mutableStateOf(resolvedInitialRoot) }
+    var progressCurrentDir by remember { mutableStateOf(initialVolumeRoot) }
     var scanResult by remember { mutableStateOf<StorageScanResult?>(null) }
     var scanError by remember { mutableStateOf<String?>(null) }
 
     var selectedTab by remember { mutableStateOf(StorageTab.FOLDERS) }
-    var summaryExpanded by remember { mutableStateOf(true) }
+    var folderSortBy by remember { mutableStateOf(FolderSortBy.SIZE) }
+    var showHidden by remember { mutableStateOf(true) }
+    var showEmptyFolders by remember { mutableStateOf(false) }
+    var summaryExpanded by remember { mutableStateOf(false) }
     var activeFileFilter by remember { mutableStateOf(FileFilter.ALL) }
-    var selectedFilePaths by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var selectedPaths by remember { mutableStateOf<Set<String>>(emptySet()) }
 
-    var activeFolderDialogTarget by remember { mutableStateOf<AnalyzedFolderItem?>(null) }
-    var folderDeleteConfirmTarget by remember { mutableStateOf<AnalyzedFolderItem?>(null) }
-    var showFilesDeleteConfirm by remember { mutableStateOf(false) }
+    var showSortDialog by remember { mutableStateOf(false) }
+    var inspectedFileItem by remember { mutableStateOf<AnalyzedFileItem?>(null) }
+    var singleFileDeleteTarget by remember { mutableStateOf<AnalyzedFileItem?>(null) }
+    var showDeleteConfirm by remember { mutableStateOf(false) }
     var isDeleting by remember { mutableStateOf(false) }
-    var showSubfolderPickerDialog by remember { mutableStateOf(false) }
-    var showTempCacheDialog by remember { mutableStateOf(false) }
 
-    // AI Advisor state
-    var selectedPreset by remember { mutableStateOf<StorageAiPreset?>(null) }
-    var customQuestion by remember { mutableStateOf("") }
-    var aiResponseText by remember { mutableStateOf("") }
-    var aiErrorText by remember { mutableStateOf<String?>(null) }
-    var isAiStreaming by remember { mutableStateOf(false) }
-    var activeAiJob by remember { mutableStateOf<Job?>(null) }
-    var showMissingKeyPopup by remember { mutableStateOf(false) }
-    var showApiKeyDialog by remember { mutableStateOf(false) }
-
-    // Menu overlays
     var starMenuExpanded by remember { mutableStateOf(false) }
     var menuExpanded by remember { mutableStateOf(false) }
     var starAnchorCenter by remember { mutableStateOf(Offset.Unspecified) }
     var menuAnchorCenter by remember { mutableStateOf(Offset.Unspecified) }
     var rootOrigin by remember { mutableStateOf(Offset.Zero) }
 
-    val matchingVolume = remember(activeRootPath, defaultInternalPath, externalVolumes) {
-        when {
-            activeRootPath == defaultInternalPath || activeRootPath.startsWith("$defaultInternalPath/") -> null
-            else -> externalVolumes.firstOrNull {
-                activeRootPath == it.rootPath || activeRootPath.startsWith("${it.rootPath}/")
-            }
+    val activeVolumeLabel = remember(activeVolumeRoot, externalVolumes) {
+        externalVolumes.firstOrNull { it.rootPath == activeVolumeRoot }?.name ?: "Intern"
+    }
+
+    LaunchedEffect(initialVolumeRoot, initialSubfolderTarget) {
+        if (!userSelectedVolume && activeVolumeRoot != initialVolumeRoot) {
+            activeVolumeRoot = initialVolumeRoot
+            currentBrowsePath = initialSubfolderTarget ?: initialVolumeRoot
+            pendingTargetPath = initialSubfolderTarget
+            selectedPaths = emptySet()
         }
     }
-    val baseVolumeRoot = matchingVolume?.rootPath ?: defaultInternalPath
-    val baseVolumeLabel = matchingVolume?.name ?: "Intern"
-    val isCustomSubfolder = activeRootPath != defaultInternalPath &&
-        externalVolumes.none { it.rootPath == activeRootPath }
 
-    fun applyRootPathChange(path: String) {
-        selectedFilePaths = emptySet()
-        activeAiJob?.cancel()
-        activeAiJob = null
-        isAiStreaming = false
-        aiResponseText = ""
-        aiErrorText = null
-        activeRootPath = path
-    }
-
-    fun navigateToAnalysisRoot(path: String, pushToHistory: Boolean) {
-        if (path == activeRootPath) return
-        if (pushToHistory) {
-            pathBackStack = pathBackStack + activeRootPath
-        } else {
-            pathBackStack = emptyList()
-        }
-        applyRootPathChange(path)
-    }
-
-    LaunchedEffect(activeRootPath, scanTrigger, baseVolumeLabel) {
+    LaunchedEffect(activeVolumeRoot, scanTrigger) {
         isScanning = true
         scanError = null
         progressFiles = 0
         progressBytes = 0L
-        progressCurrentDir = activeRootPath
-        val label = if (isCustomSubfolder) {
-            File(activeRootPath).name.ifBlank { baseVolumeLabel }
-        } else {
-            baseVolumeLabel
-        }
+        progressCurrentDir = activeVolumeRoot
         try {
             val result = StorageAnalyzer.scanStorage(
-                rootPath = activeRootPath,
-                volumeLabel = label,
+                rootPath = activeVolumeRoot,
+                volumeLabel = activeVolumeLabel,
                 maxResults = 200,
                 onProgress = { files, bytes, dir ->
                     progressFiles = files
@@ -301,7 +266,10 @@ fun StorageAnalysisScreen(
                 },
             )
             scanResult = result
-            selectedFilePaths = emptySet()
+            selectedPaths = emptySet()
+            val desiredPath = pendingTargetPath ?: currentBrowsePath
+            pendingTargetPath = null
+            currentBrowsePath = resolveBestExistingPath(desiredPath, result)
             isScanning = false
         } catch (e: CancellationException) {
             throw e
@@ -311,69 +279,154 @@ fun StorageAnalysisScreen(
         }
     }
 
-    fun triggerAiAdvice(preset: StorageAiPreset?, question: String?) {
-        val currentScan = scanResult ?: return
-        if (isAiStreaming) return
-        if (apiKey.isBlank()) {
-            showMissingKeyPopup = true
-            return
+    val activeFolder: StorageFolderNode? = scanResult?.let {
+        it.folderByPath[currentBrowsePath] ?: it.rootFolder
+    }
+
+    val visibleFolders = remember(activeFolder, folderSortBy, showHidden, showEmptyFolders) {
+        val folder = activeFolder ?: return@remember emptyList()
+        val filtered = folder.directFolders.filter { child ->
+            val hiddenOk = showHidden || !child.name.startsWith(".")
+            val emptyOk = showEmptyFolders ||
+                child.totalBytes > 0L ||
+                child.fileCount > 0 ||
+                child.subfolderCount > 0
+            hiddenOk && emptyOk
         }
-        activeAiJob?.cancel()
-        selectedPreset = preset
-        aiErrorText = null
-        aiResponseText = ""
-        isAiStreaming = true
-        val modelId = appSettings.aiModelId
-        val sb = StringBuilder()
-        val textLock = Any()
-        activeAiJob = scope.launch {
-            val res = StorageAiAdvisor.streamStorageAdvice(
-                apiKey = apiKey,
-                model = modelId,
-                scan = currentScan,
-                preset = preset,
-                customQuestion = question,
-                onTextDelta = { delta ->
-                    synchronized(textLock) {
-                        sb.append(delta)
-                    }
-                    scope.launch(Dispatchers.Main.immediate) {
-                        aiResponseText = synchronized(textLock) { sb.toString() }
-                    }
-                },
+        when (folderSortBy) {
+            FolderSortBy.SIZE -> filtered.sortedWith(
+                compareByDescending<StorageFolderNode> { it.totalBytes }
+                    .thenBy { it.name.lowercase(Locale.ROOT) },
             )
-            res.onSuccess {
-                if (aiResponseText.isBlank()) {
-                    aiResponseText = "(Keine Antwort erhalten)"
-                }
-            }.onFailure { err ->
-                if (err !is CancellationException) {
-                    aiErrorText = err.message ?: "AI-Analyse fehlgeschlagen."
-                }
-            }
-            isAiStreaming = false
-            activeAiJob = null
+            FolderSortBy.NAME -> filtered.sortedBy { it.name.lowercase(Locale.ROOT) }
         }
     }
 
-    BackHandler(enabled = starMenuExpanded || menuExpanded) {
-        starMenuExpanded = false
-        menuExpanded = false
+    val visibleFiles = remember(activeFolder, folderSortBy, showHidden) {
+        val folder = activeFolder ?: return@remember emptyList()
+        val filtered = folder.directFiles.filter { file ->
+            showHidden || !file.name.startsWith(".")
+        }
+        when (folderSortBy) {
+            FolderSortBy.SIZE -> filtered.sortedWith(
+                compareByDescending<AnalyzedFileItem> { it.sizeBytes }
+                    .thenBy { it.name.lowercase(Locale.ROOT) },
+            )
+            FolderSortBy.NAME -> filtered.sortedBy { it.name.lowercase(Locale.ROOT) }
+        }
     }
 
-    BackHandler(enabled = !starMenuExpanded && !menuExpanded && selectedFilePaths.isNotEmpty()) {
-        selectedFilePaths = emptySet()
+    val nowMs = remember(scanResult) { System.currentTimeMillis() }
+    val filteredFilesInFilesTab = remember(scanResult, activeFileFilter, nowMs) {
+        val result = scanResult ?: return@remember emptyList()
+        when (activeFileFilter) {
+            FileFilter.ALL -> result.largestFiles
+            FileFilter.DUPLICATES -> emptyList()
+            FileFilter.VIDEOS -> result.largestFiles.filter { it.category == FileCategory.VIDEO }
+            FileFilter.IMAGES -> result.largestFiles.filter { it.category == FileCategory.IMAGE }
+            FileFilter.AUDIO -> result.largestFiles.filter { it.category == FileCategory.AUDIO }
+            FileFilter.ARCHIVES -> result.largestFiles.filter { it.category == FileCategory.ARCHIVE }
+            FileFilter.APKS -> result.largestFiles.filter { it.category == FileCategory.APK }
+            FileFilter.DOCUMENTS -> result.largestFiles.filter {
+                it.category == FileCategory.DOCUMENT || it.category == FileCategory.TEXT
+            }
+            FileFilter.OLD_FILES -> result.largestFiles.filter {
+                it.lastModifiedMs > 0L && (nowMs - it.lastModifiedMs) > SIX_MONTHS_MS
+            }
+            FileFilter.OTHER -> result.largestFiles.filter { it.category == FileCategory.OTHER }
+        }
     }
 
-    BackHandler(enabled = !starMenuExpanded && !menuExpanded && selectedFilePaths.isEmpty()) {
-        MonolithHaptics.backNav(context, view)
-        if (pathBackStack.isNotEmpty()) {
-            val previous = pathBackStack.last()
-            pathBackStack = pathBackStack.dropLast(1)
-            applyRootPathChange(previous)
+    val selectablePathsInTab = remember(
+        selectedTab,
+        visibleFolders,
+        visibleFiles,
+        activeFileFilter,
+        scanResult,
+        filteredFilesInFilesTab,
+    ) {
+        when (selectedTab) {
+            StorageTab.FOLDERS -> visibleFolders.map { it.path } + visibleFiles.map { it.path }
+            StorageTab.FILES -> if (activeFileFilter == FileFilter.DUPLICATES) {
+                scanResult?.duplicateGroups
+                    ?.flatMap { group -> group.files.drop(1).map { it.path } }
+                    .orEmpty()
+            } else {
+                filteredFilesInFilesTab.map { it.path }
+            }
+        }
+    }
+
+    val selectedTotalBytes = remember(scanResult, activeFolder, selectedPaths) {
+        val result = scanResult
+        if (selectedPaths.isEmpty() || result == null) {
+            0L
         } else {
-            activeAiJob?.cancel()
-            onBack()
+            val fileSizeByPath = HashMap<String, Long>()
+            activeFolder?.directFiles?.forEach { fileSizeByPath[it.path] = it.sizeBytes }
+            result.largestFiles.forEach { fileSizeByPath[it.path] = it.sizeBytes }
+            result.duplicateGroups.forEach { group ->
+                group.files.forEach { fileSizeByPath[it.path] = it.sizeBytes }
+            }
+            selectedPaths.sumOf { path ->
+                result.folderByPath[path]?.totalBytes ?: fileSizeByPath[path] ?: 0L
+            }
+        }
+    }
+
+    val canNavigateUp = selectedTab == StorageTab.FOLDERS && currentBrowsePath != activeVolumeRoot
+
+    fun navigateUp() {
+        val parentPath = File(currentBrowsePath).parentFile?.absolutePath ?: activeVolumeRoot
+        val targetPath = if (isSameOrDescendant(parentPath, activeVolumeRoot)) {
+            parentPath
+        } else {
+            activeVolumeRoot
+        }
+        selectedPaths = emptySet()
+        MonolithHaptics.backNav(context, view)
+        currentBrowsePath = targetPath
+    }
+
+    fun switchVolume(newVolumeRoot: String) {
+        if (newVolumeRoot == activeVolumeRoot) return
+        userSelectedVolume = true
+        selectedPaths = emptySet()
+        pendingTargetPath = null
+        currentBrowsePath = newVolumeRoot
+        activeVolumeRoot = newVolumeRoot
+    }
+
+    fun togglePathSelection(path: String) {
+        selectedPaths = if (path in selectedPaths) {
+            selectedPaths - path
+        } else {
+            selectedPaths + path
+        }
+    }
+
+    LaunchedEffect(canNavigateUp, selectedPaths.isNotEmpty()) {
+        if (canNavigateUp || selectedPaths.isNotEmpty()) {
+            starMenuExpanded = false
+        }
+    }
+
+    BackHandler(enabled = true) {
+        when {
+            starMenuExpanded || menuExpanded -> {
+                starMenuExpanded = false
+                menuExpanded = false
+            }
+            selectedPaths.isNotEmpty() -> {
+                selectedPaths = emptySet()
+            }
+            canNavigateUp -> {
+                navigateUp()
+            }
+            else -> {
+                MonolithHaptics.backNav(context, view)
+                onBack()
+            }
         }
     }
 
@@ -415,86 +468,134 @@ fun StorageAnalysisScreen(
             contentColor = MaterialTheme.colorScheme.onBackground,
             snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
             topBar = {
-                TopAppBar(
-                    title = {
-                        Column {
-                            Text(
-                                text = "Speicherplatz",
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                            if (isCustomSubfolder) {
+                if (selectedPaths.isNotEmpty()) {
+                    TopAppBar(
+                        navigationIcon = {
+                            IconButton(onClick = { selectedPaths = emptySet() }) {
+                                Icon(Icons.Default.Close, contentDescription = "Auswahl aufheben")
+                            }
+                        },
+                        title = {
+                            Column {
                                 Text(
-                                    text = File(activeRootPath).name,
+                                    text = "${selectedPaths.size}",
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                Text(
+                                    text = formatStorageBytes(selectedTotalBytes),
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.primary,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                 )
                             }
-                        }
-                    },
-                    navigationIcon = {
-                        IconButton(
-                            onClick = {
-                                MonolithHaptics.monolithMenuOpen(context, view)
-                                starMenuExpanded = !starMenuExpanded
-                            },
-                            modifier = Modifier.onGloballyPositioned { coords ->
-                                starAnchorCenter = coords.boundsInRoot().center - rootOrigin
-                            },
-                        ) {
-                            Icon(
-                                imageVector = Icons.Outlined.ViewInAr,
-                                contentDescription = "Monolith-Menü",
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(22.dp),
+                        },
+                        actions = {
+                            IconButton(
+                                onClick = {
+                                    if (selectablePathsInTab.isNotEmpty()) {
+                                        val allSelected = selectablePathsInTab.all { it in selectedPaths }
+                                        selectedPaths = if (allSelected) {
+                                            selectedPaths - selectablePathsInTab.toSet()
+                                        } else {
+                                            selectedPaths + selectablePathsInTab
+                                        }
+                                    }
+                                },
+                            ) {
+                                Icon(Icons.Outlined.SelectAll, contentDescription = "Alle auswählen")
+                            }
+                            if (selectedPaths.size == 1) {
+                                val singlePath = selectedPaths.first()
+                                if (scanResult?.folderByPath?.containsKey(singlePath) == true) {
+                                    IconButton(
+                                        onClick = {
+                                            selectedPaths = emptySet()
+                                            onOpenFolderInExplorer(singlePath)
+                                        },
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Outlined.FolderOpen,
+                                            contentDescription = "Im Explorer öffnen",
+                                        )
+                                    }
+                                }
+                            }
+                            IconButton(
+                                onClick = {
+                                    val pathsToPack = selectedPaths.toList()
+                                    selectedPaths = emptySet()
+                                    onNavigateToArchives(pathsToPack)
+                                },
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.FolderZip,
+                                    contentDescription = "Packen",
+                                )
+                            }
+                            IconButton(onClick = { showDeleteConfirm = true }) {
+                                Icon(
+                                    imageVector = Icons.Outlined.Delete,
+                                    contentDescription = "Löschen",
+                                )
+                            }
+                        },
+                    )
+                } else {
+                    TopAppBar(
+                        title = {
+                            val titleText = if (canNavigateUp) {
+                                activeFolder?.name ?: File(currentBrowsePath).name
+                            } else {
+                                "Speicherplatz"
+                            }
+                            Text(
+                                text = titleText,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
                             )
-                        }
-                    },
-                    actions = {
-                        IconButton(
-                            onClick = {
-                                if (!isScanning) scanTrigger++
-                            },
-                            enabled = !isScanning,
-                        ) {
-                            Icon(
-                                imageVector = Icons.Outlined.Refresh,
-                                contentDescription = "Neu scannen",
-                            )
-                        }
-                        IconButton(
-                            onClick = {
-                                MonolithHaptics.cornerMenuOpen(context, view)
-                                menuExpanded = !menuExpanded
-                            },
-                            modifier = Modifier.onGloballyPositioned { coords ->
-                                menuAnchorCenter = coords.boundsInRoot().center - rootOrigin
-                            },
-                        ) {
-                            Icon(Icons.Outlined.MoreVert, contentDescription = "Menü")
-                        }
-                    },
-                )
-            },
-            bottomBar = {
-                val result = scanResult
-                if (selectedTab == StorageTab.FILES && selectedFilePaths.isNotEmpty() && result != null) {
-                    val selectedItems = remember(result, selectedFilePaths) {
-                        val allCandidates = LinkedHashMap<String, AnalyzedFileItem>()
-                        result.largestFiles.forEach { allCandidates[it.path] = it }
-                        result.duplicateGroups.flatMap { it.files }.forEach { allCandidates[it.path] = it }
-                        selectedFilePaths.mapNotNull { allCandidates[it] }
-                    }
-                    val selectedBytes = selectedItems.sumOf { it.sizeBytes }
-                    StorageSelectionActionBar(
-                        count = selectedFilePaths.size,
-                        totalBytes = selectedBytes,
-                        enabled = !isDeleting,
-                        onClear = { selectedFilePaths = emptySet() },
-                        onPack = { onNavigateToArchives(selectedFilePaths.toList()) },
-                        onDelete = { showFilesDeleteConfirm = true },
+                        },
+                        navigationIcon = {
+                            if (canNavigateUp) {
+                                IconButton(onClick = { navigateUp() }) {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                        contentDescription = "Zurück",
+                                    )
+                                }
+                            } else {
+                                IconButton(
+                                    onClick = {
+                                        MonolithHaptics.monolithMenuOpen(context, view)
+                                        starMenuExpanded = !starMenuExpanded
+                                    },
+                                    modifier = Modifier.onGloballyPositioned { coords ->
+                                        starAnchorCenter = coords.boundsInRoot().center - rootOrigin
+                                    },
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.ViewInAr,
+                                        contentDescription = "Monolith-Menü",
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(22.dp),
+                                    )
+                                }
+                            }
+                        },
+                        actions = {
+                            IconButton(
+                                onClick = {
+                                    MonolithHaptics.cornerMenuOpen(context, view)
+                                    menuExpanded = !menuExpanded
+                                },
+                                modifier = Modifier.onGloballyPositioned { coords ->
+                                    menuAnchorCenter = coords.boundsInRoot().center - rootOrigin
+                                },
+                            ) {
+                                Icon(Icons.Outlined.MoreVert, contentDescription = "Menü")
+                            }
+                        },
                     )
                 }
             },
@@ -504,80 +605,53 @@ fun StorageAnalysisScreen(
                     .fillMaxSize()
                     .padding(innerPadding),
             ) {
-                // Volume & custom subfolder selector chips
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState())
-                        .padding(horizontal = 16.dp, vertical = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    FilterChip(
-                        selected = activeRootPath == defaultInternalPath,
-                        shape = LocalMonolithButtonShape.current,
-                        onClick = { navigateToAnalysisRoot(defaultInternalPath, pushToHistory = false) },
-                        leadingIcon = {
-                            Icon(
-                                imageVector = Icons.Outlined.Storage,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp),
+                if (externalVolumes.isNotEmpty()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState())
+                            .padding(horizontal = 16.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        FilterChip(
+                            selected = activeVolumeRoot == defaultInternalPath,
+                            shape = LocalMonolithButtonShape.current,
+                            onClick = { switchVolume(defaultInternalPath) },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Outlined.Storage,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                )
+                            },
+                            label = { Text("Intern") },
+                        )
+                        externalVolumes.forEach { vol ->
+                            FilterChip(
+                                selected = activeVolumeRoot == vol.rootPath,
+                                shape = LocalMonolithButtonShape.current,
+                                onClick = { switchVolume(vol.rootPath) },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = if (vol.kind == ExternalVolumeKind.USB) {
+                                            Icons.Outlined.Usb
+                                        } else {
+                                            Icons.Outlined.SdStorage
+                                        },
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp),
+                                    )
+                                },
+                                label = {
+                                    Text(
+                                        text = vol.name,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                },
                             )
-                        },
-                        label = { Text("Intern") },
-                    )
-                    externalVolumes.forEach { vol ->
-                        FilterChip(
-                            selected = activeRootPath == vol.rootPath,
-                            shape = LocalMonolithButtonShape.current,
-                            onClick = { navigateToAnalysisRoot(vol.rootPath, pushToHistory = false) },
-                            leadingIcon = {
-                                Icon(
-                                    imageVector = if (vol.kind == ExternalVolumeKind.USB) {
-                                        Icons.Outlined.Usb
-                                    } else {
-                                        Icons.Outlined.SdStorage
-                                    },
-                                    contentDescription = null,
-                                    modifier = Modifier.size(16.dp),
-                                )
-                            },
-                            label = {
-                                Text(
-                                    text = vol.name,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                            },
-                        )
-                    }
-                    if (isCustomSubfolder) {
-                        FilterChip(
-                            selected = true,
-                            shape = LocalMonolithButtonShape.current,
-                            onClick = { navigateToAnalysisRoot(baseVolumeRoot, pushToHistory = false) },
-                            leadingIcon = {
-                                Icon(
-                                    imageVector = Icons.Outlined.FolderOpen,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(16.dp),
-                                )
-                            },
-                            trailingIcon = {
-                                Icon(
-                                    imageVector = Icons.Default.Close,
-                                    contentDescription = "Zurücksetzen",
-                                    modifier = Modifier.size(15.dp),
-                                )
-                            },
-                            label = {
-                                Text(
-                                    text = File(activeRootPath).name.ifBlank { "Unterordner" },
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                            },
-                        )
+                        }
                     }
                 }
 
@@ -592,35 +666,21 @@ fun StorageAnalysisScreen(
                     }
                     scanError != null -> {
                         ScanErrorView(
-                            message = scanError ?: "Unbekannter Fehler",
+                            message = scanError ?: "Unbekannter Fehler.",
                             onRetry = { scanTrigger++ },
                             modifier = Modifier.fillMaxSize(),
                         )
                     }
-                    scanResult != null -> {
+                    scanResult != null && activeFolder != null -> {
                         val result = scanResult!!
                         StorageSummaryCard(
                             scan = result,
                             expanded = summaryExpanded,
                             onToggleExpand = { summaryExpanded = !summaryExpanded },
                             onCategoryClick = { category ->
+                                selectedPaths = emptySet()
                                 activeFileFilter = fileFilterForCategory(category)
                                 selectedTab = StorageTab.FILES
-                            },
-                            onInsightLargeFilesClick = {
-                                activeFileFilter = FileFilter.ALL
-                                selectedTab = StorageTab.FILES
-                            },
-                            onInsightDuplicatesClick = {
-                                activeFileFilter = FileFilter.DUPLICATES
-                                selectedTab = StorageTab.FILES
-                            },
-                            onInsightArchivesClick = {
-                                activeFileFilter = FileFilter.ARCHIVES
-                                selectedTab = StorageTab.FILES
-                            },
-                            onInsightTempClick = {
-                                showTempCacheDialog = true
                             },
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -634,7 +694,12 @@ fun StorageAnalysisScreen(
                             StorageTab.entries.forEach { tab ->
                                 Tab(
                                     selected = selectedTab == tab,
-                                    onClick = { selectedTab = tab },
+                                    onClick = {
+                                        if (selectedTab != tab) {
+                                            selectedPaths = emptySet()
+                                            selectedTab = tab
+                                        }
+                                    },
                                     text = {
                                         Text(
                                             text = tab.title,
@@ -648,62 +713,70 @@ fun StorageAnalysisScreen(
 
                         when (selectedTab) {
                             StorageTab.FOLDERS -> {
-                                FolderBreakdownTab(
-                                    folders = result.disjointTopFolders,
-                                    onFolderClick = { folder -> activeFolderDialogTarget = folder },
+                                StorageFolderBrowserTab(
+                                    rootFolder = result.rootFolder,
+                                    currentFolder = activeFolder,
+                                    baseVolumeLabel = activeVolumeLabel,
+                                    visibleFolders = visibleFolders,
+                                    visibleFiles = visibleFiles,
+                                    selectedPaths = selectedPaths,
+                                    nowMs = nowMs,
+                                    onNavigateToFolder = { targetPath ->
+                                        if (targetPath != currentBrowsePath) {
+                                            selectedPaths = emptySet()
+                                            MonolithHaptics.backNav(context, view)
+                                            currentBrowsePath = targetPath
+                                        }
+                                    },
+                                    onFolderClick = { folder ->
+                                        if (selectedPaths.isNotEmpty()) {
+                                            togglePathSelection(folder.path)
+                                        } else {
+                                            MonolithHaptics.folderOpen(context, view)
+                                            currentBrowsePath = folder.path
+                                        }
+                                    },
+                                    onFolderLongClick = { folder ->
+                                        MonolithHaptics.dragLift(view)
+                                        togglePathSelection(folder.path)
+                                    },
+                                    onFileClick = { file ->
+                                        if (selectedPaths.isNotEmpty()) {
+                                            togglePathSelection(file.path)
+                                        } else {
+                                            inspectedFileItem = file
+                                        }
+                                    },
+                                    onFileLongClick = { file ->
+                                        MonolithHaptics.dragLift(view)
+                                        togglePathSelection(file.path)
+                                    },
                                     modifier = Modifier.weight(1f),
                                 )
                             }
                             StorageTab.FILES -> {
                                 FilesBreakdownTab(
                                     scan = result,
+                                    filteredFiles = filteredFilesInFilesTab,
                                     activeFilter = activeFileFilter,
-                                    selectedPaths = selectedFilePaths,
+                                    selectedPaths = selectedPaths,
+                                    nowMs = nowMs,
                                     onFilterChange = { newFilter ->
                                         activeFileFilter = newFilter
-                                        selectedFilePaths = emptySet()
+                                        selectedPaths = emptySet()
                                     },
-                                    onToggleSelection = { path ->
-                                        selectedFilePaths = if (path in selectedFilePaths) {
-                                            selectedFilePaths - path
-                                        } else {
-                                            selectedFilePaths + path
-                                        }
+                                    onToggleSelection = { path -> togglePathSelection(path) },
+                                    onLongPressSelection = { path ->
+                                        MonolithHaptics.dragLift(view)
+                                        togglePathSelection(path)
                                     },
                                     onSelectPaths = { paths, add ->
-                                        selectedFilePaths = if (add) {
-                                            selectedFilePaths + paths
+                                        selectedPaths = if (add) {
+                                            selectedPaths + paths
                                         } else {
-                                            selectedFilePaths - paths.toSet()
+                                            selectedPaths - paths.toSet()
                                         }
                                     },
-                                    modifier = Modifier.weight(1f),
-                                )
-                            }
-                            StorageTab.AI -> {
-                                StorageAiTab(
-                                    scan = result,
-                                    apiKeyPresent = apiKey.isNotBlank(),
-                                    activeModelId = appSettings.aiModelId,
-                                    selectedPreset = selectedPreset,
-                                    customQuestion = customQuestion,
-                                    onCustomQuestionChange = { customQuestion = it },
-                                    aiResponseText = aiResponseText,
-                                    aiErrorText = aiErrorText,
-                                    isStreaming = isAiStreaming,
-                                    onRunPreset = { preset -> triggerAiAdvice(preset, null) },
-                                    onSendCustom = {
-                                        val q = customQuestion.trim()
-                                        if (q.isNotEmpty()) {
-                                            triggerAiAdvice(null, q)
-                                        }
-                                    },
-                                    onStopStreaming = {
-                                        activeAiJob?.cancel()
-                                        activeAiJob = null
-                                        isAiStreaming = false
-                                    },
-                                    onOpenApiKeyManager = { showApiKeyDialog = true },
                                     modifier = Modifier.weight(1f),
                                 )
                             }
@@ -717,19 +790,10 @@ fun StorageAnalysisScreen(
             expanded = starMenuExpanded,
             anchorCenter = starAnchorCenter,
             activeDestination = MonolithToolDestination.STORAGE,
-            onSelectFiles = {
-                activeAiJob?.cancel()
-                onNavigateToFiles()
-            },
-            onSelectArchives = {
-                activeAiJob?.cancel()
-                onNavigateToArchives(emptyList())
-            },
+            onSelectFiles = onNavigateToFiles,
+            onSelectArchives = { onNavigateToArchives(emptyList()) },
             onSelectStorage = { starMenuExpanded = false },
-            onSelectAi = {
-                activeAiJob?.cancel()
-                onNavigateToAi()
-            },
+            onSelectDownloader = onNavigateToDownloader,
             onDismiss = { starMenuExpanded = false },
         )
 
@@ -740,17 +804,29 @@ fun StorageAnalysisScreen(
                 CornerMenuItem(
                     id = "rescan",
                     label = "Neu scannen",
+                    subtitle = if (isScanning) "Läuft…" else null,
                     onClick = { if (!isScanning) scanTrigger++ },
                 ),
                 CornerMenuItem(
-                    id = "pick_subfolder",
-                    label = "Unterordner analysieren…",
-                    onClick = { showSubfolderPickerDialog = true },
+                    id = "sort",
+                    label = "Sortieren nach",
+                    subtitle = "(${folderSortBy.label})",
+                    onClick = { showSortDialog = true },
                 ),
                 CornerMenuItem(
-                    id = "api_keys",
-                    label = "API-Verwaltung",
-                    onClick = { showApiKeyDialog = true },
+                    id = "hidden",
+                    label = if (showHidden) "Versteckte ausblenden" else "Versteckte anzeigen",
+                    onClick = { showHidden = !showHidden },
+                ),
+                CornerMenuItem(
+                    id = "empty_folders",
+                    label = if (showEmptyFolders) "Leere Ordner ausblenden" else "Leere Ordner anzeigen",
+                    onClick = { showEmptyFolders = !showEmptyFolders },
+                ),
+                CornerMenuItem(
+                    id = "open_explorer",
+                    label = "Im Explorer öffnen",
+                    onClick = { onOpenFolderInExplorer(currentBrowsePath) },
                 ),
                 CornerMenuItem(
                     id = "settings",
@@ -762,58 +838,83 @@ fun StorageAnalysisScreen(
         )
     }
 
-    // Folder action dialog
-    activeFolderDialogTarget?.let { folder ->
+    if (showSortDialog) {
         MonolithDialog(
-            onDismissRequest = { activeFolderDialogTarget = null },
-            title = folder.name,
+            onDismissRequest = { showSortDialog = false },
+            title = "Sortieren nach",
+            confirmLabel = "Schließen",
+            onConfirmClick = { showSortDialog = false },
+        ) {
+            FolderSortBy.entries.forEach { option ->
+                MonolithDialogOption(
+                    label = option.label,
+                    selected = folderSortBy == option,
+                    onClick = {
+                        folderSortBy = option
+                        showSortDialog = false
+                    },
+                )
+            }
+        }
+    }
+
+    inspectedFileItem?.let { file ->
+        val ageText = formatAgeDays(file.lastModifiedMs, nowMs)
+        MonolithDialog(
+            onDismissRequest = { inspectedFileItem = null },
+            title = file.name,
             dismissLabel = "Schließen",
-            onDismissClick = { activeFolderDialogTarget = null },
+            onDismissClick = { inspectedFileItem = null },
         ) {
             Text(
-                text = folder.relativePath,
+                text = file.relativePath,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Text(
-                text = "${formatStorageBytes(folder.totalBytes)} · ${folder.fileCount} Dateien · ${folder.subfolderCount} Unterordner",
+                text = "${formatStorageBytes(file.sizeBytes)}${if (ageText != null) " · $ageText" else ""}",
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.primary,
             )
-            if (folder.dominantExtensions.isNotEmpty()) {
-                Text(
-                    text = "Häufige Endungen: ${folder.dominantExtensions.joinToString(", ") { it.uppercase(Locale.ROOT) }}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+            if (file.isDuplicateCandidate) {
+                Surface(
+                    shape = CutCornerShape(4.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                ) {
+                    Text(
+                        text = "Duplikat",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                    )
+                }
             }
             HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
-
-            FolderActionButton(
-                label = "Im Explorer öffnen",
-                onClick = {
-                    activeFolderDialogTarget = null
-                    onOpenFolderInExplorer(folder.path)
-                },
-            )
-            FolderActionButton(
-                label = "Tiefer analysieren",
-                onClick = {
-                    activeFolderDialogTarget = null
-                    navigateToAnalysisRoot(folder.path, pushToHistory = true)
-                },
-            )
-            FolderActionButton(
-                label = "Als Archiv packen",
-                onClick = {
-                    activeFolderDialogTarget = null
-                    onNavigateToArchives(listOf(folder.path))
-                },
-            )
             OutlinedButton(
                 onClick = {
-                    activeFolderDialogTarget = null
-                    folderDeleteConfirmTarget = folder
+                    val parentDir = File(file.path).parentFile?.absolutePath ?: currentBrowsePath
+                    inspectedFileItem = null
+                    onOpenFolderInExplorer(parentDir)
+                },
+                shape = LocalMonolithButtonShape.current,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("Im Explorer öffnen")
+            }
+            OutlinedButton(
+                onClick = {
+                    inspectedFileItem = null
+                    onNavigateToArchives(listOf(file.path))
+                },
+                shape = LocalMonolithButtonShape.current,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("Als Archiv packen")
+            }
+            OutlinedButton(
+                onClick = {
+                    inspectedFileItem = null
+                    singleFileDeleteTarget = file
                 },
                 shape = LocalMonolithButtonShape.current,
                 colors = ButtonDefaults.outlinedButtonColors(
@@ -822,29 +923,28 @@ fun StorageAnalysisScreen(
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.7f)),
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text("Ordner löschen")
+                Text("Löschen")
             }
         }
     }
 
-    // Confirm single folder deletion
-    folderDeleteConfirmTarget?.let { folder ->
+    singleFileDeleteTarget?.let { targetFile ->
         MonolithDialog(
-            onDismissRequest = { if (!isDeleting) folderDeleteConfirmTarget = null },
-            title = "Ordner löschen",
+            onDismissRequest = { if (!isDeleting) singleFileDeleteTarget = null },
+            title = "Datei löschen",
             dismissLabel = "Abbrechen",
             dismissEnabled = !isDeleting,
-            onDismissClick = { folderDeleteConfirmTarget = null },
-            confirmLabel = if (isDeleting) "Lösche…" else "Unwiderruflich löschen",
+            onDismissClick = { singleFileDeleteTarget = null },
+            confirmLabel = if (isDeleting) "Lösche…" else "Löschen",
             confirmEnabled = !isDeleting,
             onConfirmClick = {
                 isDeleting = true
                 scope.launch {
-                    val res = localProvider.delete(listOf(folder.path))
+                    val res = localProvider.delete(listOf(targetFile.path))
                     isDeleting = false
-                    folderDeleteConfirmTarget = null
+                    singleFileDeleteTarget = null
                     res.onSuccess {
-                        snackbarHostState.showSnackbar("„${folder.name}“ gelöscht.")
+                        snackbarHostState.showSnackbar("„${targetFile.name}“ gelöscht.")
                         scanTrigger++
                     }.onFailure { err ->
                         snackbarHostState.showSnackbar(err.message ?: "Löschen fehlgeschlagen.")
@@ -853,20 +953,25 @@ fun StorageAnalysisScreen(
             },
         ) {
             Text(
-                "Möchtest du „${folder.name}“ (${formatStorageBytes(folder.totalBytes)}, ${folder.fileCount} Dateien) wirklich unwiderruflich löschen?",
+                "Möchtest du „${targetFile.name}“ (${formatStorageBytes(targetFile.sizeBytes)}) wirklich unwiderruflich löschen?",
             )
         }
     }
 
-    // Confirm multi-file deletion
-    if (showFilesDeleteConfirm) {
-        val pathsToDelete = selectedFilePaths.toList()
+    if (showDeleteConfirm) {
+        val pathsToDelete = selectedPaths.toList()
+        val singleName = if (pathsToDelete.size == 1) {
+            val singlePath = pathsToDelete.first()
+            scanResult?.folderByPath?.get(singlePath)?.name ?: File(singlePath).name
+        } else {
+            null
+        }
         MonolithDialog(
-            onDismissRequest = { if (!isDeleting) showFilesDeleteConfirm = false },
-            title = "Dateien löschen",
+            onDismissRequest = { if (!isDeleting) showDeleteConfirm = false },
+            title = if (pathsToDelete.size == 1) "Element löschen" else "Elemente löschen",
             dismissLabel = "Abbrechen",
             dismissEnabled = !isDeleting,
-            onDismissClick = { showFilesDeleteConfirm = false },
+            onDismissClick = { showDeleteConfirm = false },
             confirmLabel = if (isDeleting) "Lösche…" else "Löschen",
             confirmEnabled = !isDeleting && pathsToDelete.isNotEmpty(),
             onConfirmClick = {
@@ -874,10 +979,15 @@ fun StorageAnalysisScreen(
                 scope.launch {
                     val res = localProvider.delete(pathsToDelete)
                     isDeleting = false
-                    showFilesDeleteConfirm = false
+                    showDeleteConfirm = false
                     res.onSuccess {
-                        selectedFilePaths = emptySet()
-                        snackbarHostState.showSnackbar("${pathsToDelete.size} Datei(en) gelöscht.")
+                        selectedPaths = emptySet()
+                        val msg = if (singleName != null) {
+                            "„$singleName“ gelöscht."
+                        } else {
+                            "${pathsToDelete.size} Elemente gelöscht."
+                        }
+                        snackbarHostState.showSnackbar(msg)
                         scanTrigger++
                     }.onFailure { err ->
                         snackbarHostState.showSnackbar(err.message ?: "Löschen fehlgeschlagen.")
@@ -885,182 +995,13 @@ fun StorageAnalysisScreen(
                 }
             },
         ) {
-            Text("${pathsToDelete.size} ausgewählte Datei(en) wirklich unwiderruflich löschen?")
-        }
-    }
-
-    // Subfolder picker dialog
-    if (showSubfolderPickerDialog) {
-        SubfolderPickerDialog(
-            initialDir = activeRootPath,
-            rootFloorPath = baseVolumeRoot,
-            onDismiss = { showSubfolderPickerDialog = false },
-            onSelectFolder = { chosenPath ->
-                showSubfolderPickerDialog = false
-                navigateToAnalysisRoot(chosenPath, pushToHistory = chosenPath != activeRootPath)
-            },
-        )
-    }
-
-    if (showTempCacheDialog) {
-        val currentScan = scanResult
-        MonolithDialog(
-            onDismissRequest = { showTempCacheDialog = false },
-            title = "Temp, Cache & Logs",
-            dismissLabel = "Schließen",
-            onDismissClick = { showTempCacheDialog = false },
-            confirmLabel = "AI-Tipps fragen",
-            confirmEnabled = currentScan != null,
-            onConfirmClick = {
-                showTempCacheDialog = false
-                selectedTab = StorageTab.AI
-                triggerAiAdvice(StorageAiPreset.CLEANUP_RECOMMENDATIONS, null)
-            },
-        ) {
-            if (currentScan != null) {
-                Text(
-                    text = "${currentScan.tempAndCacheCount} Dateien · ${formatStorageBytes(currentScan.tempAndCacheBytes)}",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-            }
-            Text(
-                text = "Erfasst wurden temporäre und Protokoll-Dateien (.tmp, .temp, .bak, .log, .cache) sowie Dateien in cache-/tmp-Ordnern.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
-
-    // Missing API key prompt
-    if (showMissingKeyPopup) {
-        MonolithDialog(
-            onDismissRequest = { showMissingKeyPopup = false },
-            title = "Gemini-API-Key fehlt",
-            dismissLabel = "Abbrechen",
-            onDismissClick = { showMissingKeyPopup = false },
-            confirmLabel = "API-Verwaltung öffnen",
-            onConfirmClick = {
-                showMissingKeyPopup = false
-                showApiKeyDialog = true
-            },
-        ) {
-            Text(
-                "Für die Speicher-AI-Analyse wird ein Gemini-API-Key benötigt. Möchtest du jetzt die API-Verwaltung öffnen?",
-            )
-        }
-    }
-
-    // Inline API Key Management Dialog (matching AiChatScreen)
-    if (showApiKeyDialog) {
-        var newLabel by remember { mutableStateOf("") }
-        var newKey by remember { mutableStateOf("") }
-        var showNewKey by remember { mutableStateOf(false) }
-
-        MonolithDialog(
-            onDismissRequest = { showApiKeyDialog = false },
-            title = "API-Verwaltung",
-            confirmLabel = "Schließen",
-            onConfirmClick = { showApiKeyDialog = false },
-        ) {
-            if (appSettings.geminiApiKeys.isEmpty()) {
-                Text(
-                    text = "Noch keine API-Keys gespeichert.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+            val promptText = if (singleName != null) {
+                "Möchtest du „$singleName“ (${formatStorageBytes(selectedTotalBytes)}) wirklich unwiderruflich löschen?"
             } else {
-                appSettings.geminiApiKeys.forEach { entry ->
-                    val isSelected = entry.id == appSettings.activeGeminiApiKeyId
-                    MonolithDialogOption(
-                        label = entry.label,
-                        subtitle = maskStorageApiKey(entry.key),
-                        selected = isSelected,
-                        onClick = { AppSettingsStore.selectGeminiApiKey(entry.id) },
-                        trailing = {
-                            IconButton(
-                                onClick = { AppSettingsStore.removeGeminiApiKey(entry.id) },
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Outlined.DeleteOutline,
-                                    contentDescription = "Key entfernen",
-                                )
-                            }
-                        },
-                    )
-                }
+                "${pathsToDelete.size} ausgewählte Elemente (${formatStorageBytes(selectedTotalBytes)}) wirklich unwiderruflich löschen?"
             }
-
-            HorizontalDivider(thickness = 0.5.dp)
-
-            Text(
-                text = "Neuen Key hinzufügen",
-                style = MaterialTheme.typography.labelLarge,
-            )
-
-            OutlinedTextField(
-                value = newLabel,
-                onValueChange = { newLabel = it },
-                label = { Text("Bezeichnung (optional)") },
-                placeholder = { Text("z. B. Privat, Arbeit") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-            )
-
-            OutlinedTextField(
-                value = newKey,
-                onValueChange = { newKey = it },
-                label = { Text("Gemini-API-Key") },
-                placeholder = { Text("AIza…") },
-                singleLine = true,
-                visualTransformation = if (showNewKey) {
-                    VisualTransformation.None
-                } else {
-                    PasswordVisualTransformation()
-                },
-                trailingIcon = {
-                    IconButton(onClick = { showNewKey = !showNewKey }) {
-                        Icon(
-                            imageVector = if (showNewKey) {
-                                Icons.Outlined.VisibilityOff
-                            } else {
-                                Icons.Outlined.Visibility
-                            },
-                            contentDescription = if (showNewKey) "Verbergen" else "Anzeigen",
-                        )
-                    }
-                },
-                modifier = Modifier.fillMaxWidth(),
-            )
-
-            Button(
-                onClick = {
-                    AppSettingsStore.addGeminiApiKey(newLabel, newKey)
-                    newLabel = ""
-                    newKey = ""
-                },
-                enabled = newKey.isNotBlank(),
-                shape = LocalMonolithButtonShape.current,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text("Hinzufügen & aktivieren")
-            }
+            Text(promptText)
         }
-    }
-}
-
-@Composable
-private fun FolderActionButton(
-    label: String,
-    onClick: () -> Unit,
-) {
-    OutlinedButton(
-        onClick = onClick,
-        shape = LocalMonolithButtonShape.current,
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Text(label)
     }
 }
 
@@ -1136,10 +1077,6 @@ private fun StorageSummaryCard(
     expanded: Boolean,
     onToggleExpand: () -> Unit,
     onCategoryClick: (FileCategory) -> Unit,
-    onInsightLargeFilesClick: () -> Unit,
-    onInsightDuplicatesClick: () -> Unit,
-    onInsightArchivesClick: () -> Unit,
-    onInsightTempClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val stats = scan.volumeStats
@@ -1163,50 +1100,47 @@ private fun StorageSummaryCard(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            // Top header row: Capacity summary + collapse toggle
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable(onClick = onToggleExpand),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    val capLine = if (totalCap > 0L) {
-                        "${formatStorageBytes(stats.usedCapacityBytes)} / ${formatStorageBytes(totalCap)} belegt"
-                    } else {
-                        "${formatStorageBytes(scan.scannedBytes)} gescannt"
+                val capLine = if (totalCap > 0L) {
+                    "${formatStorageBytes(stats.usedCapacityBytes)} / ${formatStorageBytes(totalCap)} belegt"
+                } else {
+                    "${formatStorageBytes(scan.scannedBytes)} gescannt"
+                }
+                Text(
+                    text = capLine,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    if (totalCap > 0L) {
+                        Text(
+                            text = "${formatStorageBytes(stats.freeCapacityBytes)} frei",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                        )
                     }
-                    Text(
-                        text = capLine,
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    val subLine = buildString {
-                        if (totalCap > 0L) {
-                            append("${formatStorageBytes(stats.freeCapacityBytes)} frei · ")
-                        }
-                        append("${scan.totalFilesCount} Dateien · ${scan.totalFoldersCount} Ordner")
-                    }
-                    Text(
-                        text = subLine,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
+                    Icon(
+                        imageVector = if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
+                        contentDescription = if (expanded) "Einklappen" else "Ausklappen",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp),
                     )
                 }
-                Icon(
-                    imageVector = if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
-                    contentDescription = if (expanded) "Einklappen" else "Ausklappen",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(20.dp),
-                )
             }
 
-            // Segmented category bar (always visible even when collapsed for instant orientation)
             SegmentedCategoryBar(
                 breakdowns = scan.categoryBreakdowns,
                 usedFraction = usedFraction,
@@ -1214,82 +1148,42 @@ private fun StorageSummaryCard(
                 totalCapacityBytes = totalCap,
             )
 
-            AnimatedVisibility(visible = expanded) {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (scan.categoryBreakdowns.isNotEmpty()) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            AnimatedVisibility(visible = expanded && scan.categoryBreakdowns.isNotEmpty()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    scan.categoryBreakdowns.forEach { item ->
+                        val dotColor = categoryColor(item.category)
+                        Surface(
+                            shape = CutCornerShape(6.dp),
+                            color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                            border = BorderStroke(
+                                0.8.dp,
+                                MaterialTheme.colorScheme.outlineVariant,
+                            ),
+                            onClick = { onCategoryClick(item.category) },
                         ) {
-                            scan.categoryBreakdowns.forEach { item ->
-                                val dotColor = categoryColor(item.category)
-                                Surface(
-                                    shape = CutCornerShape(6.dp),
-                                    color = MaterialTheme.colorScheme.surfaceContainerHighest,
-                                    border = BorderStroke(
-                                        0.8.dp,
-                                        MaterialTheme.colorScheme.outlineVariant,
-                                    ),
-                                    onClick = { onCategoryClick(item.category) },
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(5.dp),
-                                    ) {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(7.dp)
-                                                .clip(CircleShape)
-                                                .background(dotColor),
-                                        )
-                                        Text(
-                                            text = "${item.label} ${formatStorageBytes(item.totalBytes)}",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            maxLines = 1,
-                                        )
-                                    }
-                                }
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(5.dp),
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(7.dp)
+                                        .clip(CircleShape)
+                                        .background(dotColor),
+                                )
+                                Text(
+                                    text = "${item.label} ${formatStorageBytes(item.totalBytes)}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    maxLines = 1,
+                                )
                             }
                         }
-                    }
-
-                    // 4 quick insight tiles
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    ) {
-                        InsightTile(
-                            title = ">100 MB",
-                            value = formatStorageBytes(scan.largeFilesOver100MbBytes),
-                            subtitle = "${scan.largeFilesOver100MbCount} Dat.",
-                            onClick = onInsightLargeFilesClick,
-                            modifier = Modifier.weight(1f),
-                        )
-                        InsightTile(
-                            title = "Duplikate",
-                            value = formatStorageBytes(scan.reclaimableDuplicatesBytes),
-                            subtitle = "${scan.duplicateGroups.size} Grp.",
-                            highlight = scan.reclaimableDuplicatesBytes > 0L,
-                            onClick = onInsightDuplicatesClick,
-                            modifier = Modifier.weight(1f),
-                        )
-                        InsightTile(
-                            title = "Arch./APK",
-                            value = formatStorageBytes(scan.archiveAndApkBytes),
-                            subtitle = "${scan.archiveAndApkCount} Dat.",
-                            onClick = onInsightArchivesClick,
-                            modifier = Modifier.weight(1f),
-                        )
-                        InsightTile(
-                            title = "Temp/Cache",
-                            value = formatStorageBytes(scan.tempAndCacheBytes),
-                            subtitle = "${scan.tempAndCacheCount} Dat.",
-                            onClick = onInsightTempClick,
-                            modifier = Modifier.weight(1f),
-                        )
                     }
                 }
             }
@@ -1307,13 +1201,15 @@ private fun SegmentedCategoryBar(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(10.dp)
+            .height(8.dp)
             .clip(CutCornerShape(3.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant),
     ) {
         if (breakdowns.isNotEmpty() && scannedBytes > 0L) {
             val scaleFactor = if (totalCapacityBytes > 0L) {
-                (scannedBytes.toDouble() / totalCapacityBytes.toDouble()).toFloat().coerceIn(0.05f, usedFraction.coerceAtLeast(0.05f))
+                (scannedBytes.toDouble() / totalCapacityBytes.toDouble())
+                    .toFloat()
+                    .coerceIn(0.05f, usedFraction.coerceAtLeast(0.05f))
             } else {
                 1f
             }
@@ -1358,227 +1254,440 @@ private fun SegmentedCategoryBar(
 }
 
 @Composable
-private fun InsightTile(
-    title: String,
-    value: String,
-    subtitle: String,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    highlight: Boolean = false,
-) {
-    Surface(
-        modifier = modifier,
-        shape = CutCornerShape(6.dp),
-        color = if (highlight) {
-            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.48f)
-        } else {
-            MaterialTheme.colorScheme.surfaceContainerHighest
-        },
-        border = BorderStroke(
-            0.8.dp,
-            if (highlight) {
-                MaterialTheme.colorScheme.primary.copy(alpha = 0.55f)
-            } else {
-                MaterialTheme.colorScheme.outlineVariant
-            },
-        ),
-        onClick = onClick,
-    ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 6.dp, vertical = 6.dp),
-            verticalArrangement = Arrangement.spacedBy(1.dp),
-        ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                text = value,
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = if (highlight) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-    }
-}
-
-@Composable
-private fun FolderBreakdownTab(
-    folders: List<AnalyzedFolderItem>,
-    onFolderClick: (AnalyzedFolderItem) -> Unit,
+private fun StorageFolderBrowserTab(
+    rootFolder: StorageFolderNode,
+    currentFolder: StorageFolderNode,
+    baseVolumeLabel: String,
+    visibleFolders: List<StorageFolderNode>,
+    visibleFiles: List<AnalyzedFileItem>,
+    selectedPaths: Set<String>,
+    nowMs: Long,
+    onNavigateToFolder: (String) -> Unit,
+    onFolderClick: (StorageFolderNode) -> Unit,
+    onFolderLongClick: (StorageFolderNode) -> Unit,
+    onFileClick: (AnalyzedFileItem) -> Unit,
+    onFileLongClick: (AnalyzedFileItem) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    if (folders.isEmpty()) {
-        Box(
-            modifier = modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                text = "Keine Unterordner mit Dateien gefunden.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        return
+    val listState = rememberLazyListState()
+    LaunchedEffect(currentFolder.path) {
+        listState.scrollToItem(0)
     }
 
-    LazyColumn(
-        modifier = modifier.fillMaxSize(),
-        contentPadding = PaddingValues(bottom = 24.dp),
-    ) {
-        item(key = "disjoint_note") {
+    Column(modifier = modifier.fillMaxSize()) {
+        if (currentFolder.path != rootFolder.path) {
+            val breadcrumbs = remember(rootFolder.path, currentFolder.relativePath, baseVolumeLabel) {
+                buildList {
+                    add(baseVolumeLabel to rootFolder.path)
+                    var acc = rootFolder.path
+                    val parts = currentFolder.relativePath.split('/').filter { it.isNotEmpty() }
+                    for (part in parts) {
+                        acc = File(acc, part).absolutePath
+                        add(part to acc)
+                    }
+                }
+            }
+            val breadcrumbScrollState = rememberScrollState()
+            LaunchedEffect(currentFolder.path) {
+                breadcrumbScrollState.animateScrollTo(breadcrumbScrollState.maxValue)
+            }
+
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                    .padding(horizontal = 16.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                Icon(
-                    imageVector = Icons.Outlined.Info,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(14.dp),
-                )
+                Row(
+                    modifier = Modifier
+                        .weight(1f)
+                        .horizontalScroll(breadcrumbScrollState),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    breadcrumbs.forEachIndexed { index, (label, path) ->
+                        if (index > 0) {
+                            Icon(
+                                imageVector = Icons.Outlined.ChevronRight,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(16.dp),
+                            )
+                        }
+                        val isLast = index == breadcrumbs.lastIndex
+                        Text(
+                            text = label,
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = if (isLast) FontWeight.SemiBold else FontWeight.Normal,
+                            color = if (isLast) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                            maxLines = 1,
+                            modifier = Modifier
+                                .clip(CutCornerShape(4.dp))
+                                .clickable(enabled = !isLast) { onNavigateToFolder(path) }
+                                .padding(horizontal = 4.dp, vertical = 2.dp),
+                        )
+                    }
+                }
                 Text(
-                    text = "Bereinigte Ansicht ohne Über-/Unterordner",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    text = formatStorageBytes(currentFolder.totalBytes),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(start = 8.dp),
                 )
             }
-        }
-
-        itemsIndexed(folders, key = { _, item -> item.path }) { index, folder ->
-            FolderRow(
-                rank = index + 1,
-                folder = folder,
-                onClick = { onFolderClick(folder) },
-            )
             HorizontalDivider(
                 thickness = 0.5.dp,
                 color = MaterialTheme.colorScheme.outlineVariant,
             )
         }
+
+        if (visibleFolders.isEmpty() && visibleFiles.isEmpty()) {
+            val emptyMessage = if (currentFolder.directFolders.isEmpty() && currentFolder.directFiles.isEmpty()) {
+                "Dieser Ordner ist leer."
+            } else {
+                "Keine sichtbaren Einträge in diesem Ordner."
+            }
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = emptyMessage,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        } else {
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(bottom = 24.dp),
+            ) {
+                items(visibleFolders, key = { "dir:${it.path}" }) { folder ->
+                    StorageFolderExplorerRow(
+                        folder = folder,
+                        parentTotalBytes = currentFolder.totalBytes,
+                        isSelected = folder.path in selectedPaths,
+                        onClick = { onFolderClick(folder) },
+                        onLongClick = { onFolderLongClick(folder) },
+                    )
+                    HorizontalDivider(
+                        thickness = 0.5.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant,
+                    )
+                }
+                items(visibleFiles, key = { "file:${it.path}" }) { file ->
+                    StorageDirectFileExplorerRow(
+                        file = file,
+                        parentTotalBytes = currentFolder.totalBytes,
+                        isSelected = file.path in selectedPaths,
+                        nowMs = nowMs,
+                        onClick = { onFileClick(file) },
+                        onLongClick = { onFileLongClick(file) },
+                    )
+                    HorizontalDivider(
+                        thickness = 0.5.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant,
+                    )
+                }
+            }
+        }
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun FolderRow(
-    rank: Int,
-    folder: AnalyzedFolderItem,
+private fun StorageFolderExplorerRow(
+    folder: StorageFolderNode,
+    parentTotalBytes: Long,
+    isSelected: Boolean,
     onClick: () -> Unit,
+    onLongClick: () -> Unit,
 ) {
-    Column(
+    val fraction = computeShareFraction(folder.totalBytes, parentTotalBytes)
+    val percentLabel = formatSharePercent(folder.totalBytes, parentTotalBytes)
+    val filesLabel = if (folder.fileCount == 1) "1 Datei" else "${folder.fileCount} Dateien"
+    val subtitle = if (folder.subfolderCount > 0) {
+        "${folder.subfolderCount} Ordner · $filesLabel"
+    } else {
+        filesLabel
+    }
+
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Surface(
-                shape = CutCornerShape(5.dp),
-                color = if (rank <= 3) {
-                    MaterialTheme.colorScheme.primaryContainer
+            .then(
+                if (isSelected) {
+                    Modifier.background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f))
                 } else {
-                    MaterialTheme.colorScheme.surfaceContainerHighest
+                    Modifier
                 },
-            ) {
-                Text(
-                    text = "#$rank",
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    color = if (rank <= 3) {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    },
-                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
-                )
-            }
-
-            Icon(
-                imageVector = Icons.Outlined.Folder,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(22.dp),
             )
-
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = folder.name,
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    text = folder.relativePath,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                val extText = folder.dominantExtensions.take(3).joinToString(" · ") {
-                    it.uppercase(Locale.ROOT)
-                }
-                val meta = if (extText.isNotEmpty()) {
-                    "${folder.fileCount} Dateien · $extText"
-                } else {
-                    "${folder.fileCount} Dateien"
-                }
-                Text(
-                    text = meta,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-
-            Column(horizontalAlignment = Alignment.End) {
-                Text(
-                    text = formatStorageBytes(folder.totalBytes),
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Text(
-                    text = String.format(Locale.GERMAN, "%.1f %%", folder.fractionOfScanned * 100f),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.primary,
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick,
+            ),
+    ) {
+        if (!isSelected && fraction > 0f) {
+            Box(modifier = Modifier.matchParentSize()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(fraction)
+                        .fillMaxHeight()
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)),
                 )
             }
         }
 
-        Box(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(3.dp)
-                .clip(CutCornerShape(2.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant),
+                .padding(horizontal = 16.dp, vertical = 11.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
-                modifier = Modifier
-                    .fillMaxWidth(folder.fractionOfScanned.coerceIn(0.01f, 1f))
-                    .fillMaxHeight()
-                    .background(MaterialTheme.colorScheme.primary),
+                modifier = Modifier.size(40.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = if (isSelected) Icons.Filled.CheckCircle else Icons.Outlined.Folder,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(24.dp),
+                )
+            }
+
+            Spacer(modifier = Modifier.width(16.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = folder.name,
+                        style = MaterialTheme.typography.bodyLarge,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = formatStorageBytes(folder.totalBytes),
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = percentLabel,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(4.dp)
+                        .clip(CutCornerShape(2.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                ) {
+                    if (folder.totalBytes > 0L) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth(fraction.coerceIn(0.015f, 1f))
+                                .fillMaxHeight()
+                                .background(MaterialTheme.colorScheme.primary),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun StorageDirectFileExplorerRow(
+    file: AnalyzedFileItem,
+    parentTotalBytes: Long,
+    isSelected: Boolean,
+    nowMs: Long,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+) {
+    val fraction = computeShareFraction(file.sizeBytes, parentTotalBytes)
+    val percentLabel = formatSharePercent(file.sizeBytes, parentTotalBytes)
+    val ageText = formatAgeDays(file.lastModifiedMs, nowMs)
+    val node = remember(file.path, file.lastModifiedMs, file.sizeBytes) {
+        VfsNode(
+            id = file.path,
+            name = file.name,
+            path = file.path,
+            parentPath = file.path.substringBeforeLast('/', ""),
+            locationType = LocationType.LOCAL,
+            isDirectory = false,
+            sizeBytes = file.sizeBytes,
+            lastModifiedMs = file.lastModifiedMs,
+            mimeType = file.mimeType,
+            category = file.category,
+        )
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(
+                if (isSelected) {
+                    Modifier.background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f))
+                } else {
+                    Modifier
+                },
             )
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick,
+            ),
+    ) {
+        if (!isSelected && fraction > 0f) {
+            Box(modifier = Modifier.matchParentSize()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(fraction)
+                        .fillMaxHeight()
+                        .background(MaterialTheme.colorScheme.secondary.copy(alpha = 0.06f)),
+                )
+            }
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 11.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (isSelected) {
+                Box(
+                    modifier = Modifier.size(40.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.CheckCircle,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(24.dp),
+                    )
+                }
+            } else {
+                FileThumbnail(
+                    node = node,
+                    fallbackIcon = categoryIcon(file.category),
+                )
+            }
+
+            Spacer(modifier = Modifier.width(16.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = file.name,
+                        style = MaterialTheme.typography.bodyLarge,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = formatStorageBytes(file.sizeBytes),
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        if (ageText != null) {
+                            Text(
+                                text = ageText,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                        if (file.isDuplicateCandidate) {
+                            Surface(
+                                shape = CutCornerShape(4.dp),
+                                color = MaterialTheme.colorScheme.primaryContainer,
+                            ) {
+                                Text(
+                                    text = "Duplikat",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp),
+                                )
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = percentLabel,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.secondary,
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(3.dp)
+                        .clip(CutCornerShape(2.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                ) {
+                    if (file.sizeBytes > 0L) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth(fraction.coerceIn(0.015f, 1f))
+                                .fillMaxHeight()
+                                .background(MaterialTheme.colorScheme.secondary),
+                        )
+                    }
+                }
+            }
         }
     }
 }
@@ -1586,33 +1695,16 @@ private fun FolderRow(
 @Composable
 private fun FilesBreakdownTab(
     scan: StorageScanResult,
+    filteredFiles: List<AnalyzedFileItem>,
     activeFilter: FileFilter,
     selectedPaths: Set<String>,
+    nowMs: Long,
     onFilterChange: (FileFilter) -> Unit,
     onToggleSelection: (String) -> Unit,
+    onLongPressSelection: (String) -> Unit,
     onSelectPaths: (List<String>, Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val nowMs = remember(scan) { System.currentTimeMillis() }
-    val filteredFiles = remember(scan, activeFilter, nowMs) {
-        when (activeFilter) {
-            FileFilter.ALL -> scan.largestFiles
-            FileFilter.DUPLICATES -> emptyList()
-            FileFilter.VIDEOS -> scan.largestFiles.filter { it.category == FileCategory.VIDEO }
-            FileFilter.IMAGES -> scan.largestFiles.filter { it.category == FileCategory.IMAGE }
-            FileFilter.AUDIO -> scan.largestFiles.filter { it.category == FileCategory.AUDIO }
-            FileFilter.ARCHIVES -> scan.largestFiles.filter { it.category == FileCategory.ARCHIVE }
-            FileFilter.APKS -> scan.largestFiles.filter { it.category == FileCategory.APK }
-            FileFilter.DOCUMENTS -> scan.largestFiles.filter {
-                it.category == FileCategory.DOCUMENT || it.category == FileCategory.TEXT
-            }
-            FileFilter.OLD_FILES -> scan.largestFiles.filter {
-                it.lastModifiedMs > 0L && (nowMs - it.lastModifiedMs) > SIX_MONTHS_MS
-            }
-            FileFilter.OTHER -> scan.largestFiles.filter { it.category == FileCategory.OTHER }
-        }
-    }
-
     val visibleChips = remember(activeFilter) {
         if (activeFilter == FileFilter.OTHER) {
             STANDARD_FILE_FILTERS + FileFilter.OTHER
@@ -1660,7 +1752,7 @@ private fun FilesBreakdownTab(
             } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(bottom = if (selectedPaths.isNotEmpty()) 84.dp else 24.dp),
+                    contentPadding = PaddingValues(bottom = 24.dp),
                 ) {
                     items(scan.duplicateGroups, key = { it.key }) { group ->
                         DuplicateGroupCard(
@@ -1668,6 +1760,7 @@ private fun FilesBreakdownTab(
                             selectedPaths = selectedPaths,
                             nowMs = nowMs,
                             onToggleSelection = onToggleSelection,
+                            onLongPressSelection = onLongPressSelection,
                             onSelectCopies = {
                                 val copies = group.files.drop(1).map { it.path }
                                 val allCopiesSelected = copies.isNotEmpty() && copies.all { it in selectedPaths }
@@ -1689,38 +1782,16 @@ private fun FilesBreakdownTab(
                 )
             }
         } else {
-            val allVisiblePaths = remember(filteredFiles) { filteredFiles.map { it.path } }
-            val allSelected = allVisiblePaths.isNotEmpty() && allVisiblePaths.all { it in selectedPaths }
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 2.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                Text(
-                    text = "${filteredFiles.size} größte Dateien",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                TextButton(
-                    onClick = { onSelectPaths(allVisiblePaths, !allSelected) },
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                ) {
-                    Icon(
-                        imageVector = Icons.Outlined.SelectAll,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp),
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(if (allSelected) "Keine" else "Alle wählen")
-                }
-            }
+            Text(
+                text = "${filteredFiles.size} größte Dateien",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+            )
 
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(bottom = if (selectedPaths.isNotEmpty()) 84.dp else 24.dp),
+                contentPadding = PaddingValues(bottom = 24.dp),
             ) {
                 items(filteredFiles, key = { it.path }) { item ->
                     AnalyzedFileRow(
@@ -1728,6 +1799,7 @@ private fun FilesBreakdownTab(
                         isSelected = item.path in selectedPaths,
                         nowMs = nowMs,
                         onToggle = { onToggleSelection(item.path) },
+                        onLongClick = { onLongPressSelection(item.path) },
                     )
                     HorizontalDivider(
                         thickness = 0.5.dp,
@@ -1745,6 +1817,7 @@ private fun DuplicateGroupCard(
     selectedPaths: Set<String>,
     nowMs: Long,
     onToggleSelection: (String) -> Unit,
+    onLongPressSelection: (String) -> Unit,
     onSelectCopies: () -> Unit,
 ) {
     Surface(
@@ -1788,6 +1861,7 @@ private fun DuplicateGroupCard(
                     nowMs = nowMs,
                     badgeOverride = if (idx == 0) "Original/Neueste" else "Kopie",
                     onToggle = { onToggleSelection(file.path) },
+                    onLongClick = { onLongPressSelection(file.path) },
                 )
                 if (idx < group.files.lastIndex) {
                     HorizontalDivider(
@@ -1800,15 +1874,17 @@ private fun DuplicateGroupCard(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun AnalyzedFileRow(
     item: AnalyzedFileItem,
     isSelected: Boolean,
     nowMs: Long,
     onToggle: () -> Unit,
+    onLongClick: () -> Unit,
     badgeOverride: String? = null,
 ) {
-    val node = remember(item) {
+    val node = remember(item.path, item.lastModifiedMs, item.sizeBytes) {
         VfsNode(
             id = item.path,
             name = item.name,
@@ -1833,7 +1909,10 @@ private fun AnalyzedFileRow(
                     Modifier
                 },
             )
-            .clickable(onClick = onToggle)
+            .combinedClickable(
+                onClick = onToggle,
+                onLongClick = onLongClick,
+            )
             .padding(start = 6.dp, end = 14.dp, top = 8.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -1893,411 +1972,28 @@ private fun AnalyzedFileRow(
     }
 }
 
-@Composable
-private fun StorageSelectionActionBar(
-    count: Int,
-    totalBytes: Long,
-    enabled: Boolean,
-    onClear: () -> Unit,
-    onPack: () -> Unit,
-    onDelete: () -> Unit,
-) {
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .navigationBarsPadding(),
-        color = MaterialTheme.colorScheme.surfaceContainerHighest,
-        tonalElevation = 6.dp,
-    ) {
-        Column {
-            HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                IconButton(onClick = onClear, enabled = enabled) {
-                    Icon(Icons.Default.Close, contentDescription = "Auswahl aufheben")
-                }
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "$count ausgewählt",
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    Text(
-                        text = formatStorageBytes(totalBytes),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                }
-                OutlinedButton(
-                    onClick = onPack,
-                    enabled = enabled,
-                    shape = LocalMonolithButtonShape.current,
-                ) {
-                    Text("Packen")
-                }
-                Button(
-                    onClick = onDelete,
-                    enabled = enabled,
-                    shape = LocalMonolithButtonShape.current,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.error,
-                        contentColor = MaterialTheme.colorScheme.onError,
-                    ),
-                ) {
-                    Text("Löschen")
-                }
-            }
-        }
-    }
+private fun isSameOrDescendant(path: String, root: String): Boolean {
+    val normRoot = root.trimEnd('/')
+    val normPath = path.trimEnd('/')
+    if (normRoot.isEmpty()) return normPath.startsWith('/')
+    return normPath == normRoot || normPath.startsWith("$normRoot/")
 }
 
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun StorageAiTab(
-    scan: StorageScanResult,
-    apiKeyPresent: Boolean,
-    activeModelId: String,
-    selectedPreset: StorageAiPreset?,
-    customQuestion: String,
-    onCustomQuestionChange: (String) -> Unit,
-    aiResponseText: String,
-    aiErrorText: String?,
-    isStreaming: Boolean,
-    onRunPreset: (StorageAiPreset) -> Unit,
-    onSendCustom: () -> Unit,
-    onStopStreaming: () -> Unit,
-    onOpenApiKeyManager: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val (_, estimatedTokens) = remember(scan) { StorageAiAdvisor.buildCompactDigest(scan) }
-
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .navigationBarsPadding()
-            .imePadding(),
-    ) {
-        Column(
-            modifier = Modifier
-                .weight(1f)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            // Compact token estimate badge
-            Surface(
-                shape = CutCornerShape(6.dp),
-                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f),
-                border = BorderStroke(0.8.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Icon(
-                        imageVector = Icons.Outlined.AutoAwesome,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(16.dp),
-                    )
-                    Text(
-                        text = "~$estimatedTokens Input-Tokens · Kompakt-Digest (ohne Tool-Schleifen)",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.weight(1f),
-                    )
-                    Text(
-                        text = activeModelId.removePrefix("gemini-"),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                }
-            }
-
-            // 3 preset action chips
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                StorageAiPreset.entries.forEach { preset ->
-                    val chipLabel = when (preset) {
-                        StorageAiPreset.CLEANUP_RECOMMENDATIONS -> "Aufräum-Tipps"
-                        StorageAiPreset.EXPLAIN_FOLDERS -> "Ordner erklären"
-                        StorageAiPreset.ARCHIVE_SUGGESTIONS -> "Archiv-Potenzial"
-                    }
-                    FilterChip(
-                        selected = selectedPreset == preset,
-                        enabled = !isStreaming,
-                        shape = LocalMonolithButtonShape.current,
-                        onClick = { onRunPreset(preset) },
-                        label = { Text(chipLabel) },
-                    )
-                }
-            }
-
-            if (!apiKeyPresent) {
-                Surface(
-                    shape = MaterialTheme.shapes.medium,
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Column(
-                        modifier = Modifier.padding(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        Text(
-                            text = "Gemini-API-Key erforderlich",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                        Text(
-                            text = "Hinterlege einen Gemini-API-Key, um personalisierte Speicher-Empfehlungen auf Basis des Kompakt-Digests abzurufen.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        OutlinedButton(
-                            onClick = onOpenApiKeyManager,
-                            shape = LocalMonolithButtonShape.current,
-                        ) {
-                            Text("API-Verwaltung öffnen")
-                        }
-                    }
-                }
-            }
-
-            if (aiErrorText != null) {
-                Surface(
-                    shape = MaterialTheme.shapes.medium,
-                    color = MaterialTheme.colorScheme.errorContainer,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text(
-                        text = aiErrorText,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onErrorContainer,
-                        modifier = Modifier.padding(12.dp),
-                    )
-                }
-            }
-
-            if (isStreaming && aiResponseText.isBlank()) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    modifier = Modifier.padding(vertical = 8.dp),
-                ) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(18.dp),
-                        strokeWidth = 2.dp,
-                    )
-                    Text(
-                        text = "Analysiere Kompakt-Digest…",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-
-            if (aiResponseText.isNotEmpty()) {
-                Surface(
-                    shape = MaterialTheme.shapes.medium,
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    SelectionContainer {
-                        Column(
-                            modifier = Modifier.padding(14.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            MarkdownText(
-                                text = aiResponseText,
-                                color = MaterialTheme.colorScheme.onSurface,
-                            )
-                            if (isStreaming) {
-                                LinearProgressIndicator(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(2.dp),
-                                )
-                            }
-                        }
-                    }
-                }
-            } else if (!isStreaming && apiKeyPresent && aiErrorText == null) {
-                Text(
-                    text = "Wähle einen Schnell-Chip oben oder stelle unten eine kurze Frage zu deinem Speicher.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+private fun resolveBestExistingPath(desiredPath: String, result: StorageScanResult): String {
+    var cursor: String? = desiredPath
+    val rootPath = result.rootFolder.path
+    while (!cursor.isNullOrBlank()) {
+        if (result.folderByPath.containsKey(cursor)) {
+            return cursor
         }
-
-        // Compact custom question bar
-        HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            OutlinedTextField(
-                value = customQuestion,
-                onValueChange = onCustomQuestionChange,
-                placeholder = { Text("Frage zum Speicher…") },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                keyboardActions = KeyboardActions(
-                    onSend = { if (!isStreaming) onSendCustom() },
-                ),
-                modifier = Modifier.weight(1f),
-            )
-            if (isStreaming) {
-                FilledIconButton(
-                    onClick = onStopStreaming,
-                    shape = LocalMonolithButtonShape.current,
-                    modifier = Modifier.size(44.dp),
-                    colors = IconButtonDefaults.filledIconButtonColors(
-                        containerColor = MaterialTheme.colorScheme.primaryContainer,
-                        contentColor = MaterialTheme.colorScheme.primary,
-                    ),
-                ) {
-                    Icon(Icons.Outlined.Stop, contentDescription = "Abbrechen")
-                }
-            } else {
-                FilledIconButton(
-                    onClick = onSendCustom,
-                    enabled = customQuestion.isNotBlank(),
-                    shape = LocalMonolithButtonShape.current,
-                    modifier = Modifier.size(44.dp),
-                    colors = IconButtonDefaults.filledIconButtonColors(
-                        containerColor = MaterialTheme.colorScheme.primary,
-                        contentColor = MaterialTheme.colorScheme.onPrimary,
-                    ),
-                ) {
-                    Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Senden")
-                }
-            }
+        if (cursor == rootPath) break
+        val parent = File(cursor).parentFile?.absolutePath
+        if (parent == null || parent == cursor || !isSameOrDescendant(parent, rootPath)) {
+            break
         }
+        cursor = parent
     }
-}
-
-@Composable
-private fun SubfolderPickerDialog(
-    initialDir: String,
-    rootFloorPath: String,
-    onDismiss: () -> Unit,
-    onSelectFolder: (String) -> Unit,
-) {
-    var browseDir by remember(initialDir) { mutableStateOf(initialDir) }
-    var subdirs by remember { mutableStateOf<List<File>>(emptyList()) }
-
-    LaunchedEffect(browseDir) {
-        subdirs = withContext(Dispatchers.IO) {
-            val dir = File(browseDir)
-            dir.listFiles()
-                ?.filter { it.isDirectory && !it.name.startsWith(".") }
-                ?.sortedBy { it.name.lowercase(Locale.ROOT) }
-                .orEmpty()
-        }
-    }
-
-    val canGoUp = browseDir != rootFloorPath && browseDir.startsWith("$rootFloorPath/")
-
-    MonolithDialog(
-        onDismissRequest = onDismiss,
-        title = "Unterordner wählen",
-        wide = true,
-        dismissLabel = "Abbrechen",
-        onDismissClick = onDismiss,
-        confirmLabel = "Analysieren",
-        onConfirmClick = { onSelectFolder(browseDir) },
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            if (canGoUp) {
-                IconButton(
-                    onClick = {
-                        val parent = File(browseDir).parentFile?.absolutePath ?: rootFloorPath
-                        browseDir = if (parent.length >= rootFloorPath.length) parent else rootFloorPath
-                    },
-                    modifier = Modifier.size(32.dp),
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "Nach oben",
-                        modifier = Modifier.size(18.dp),
-                    )
-                }
-            }
-            Text(
-                text = browseDir,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.primary,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
-            )
-        }
-
-        HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
-
-        if (subdirs.isEmpty()) {
-            Text(
-                text = "Keine weiteren Unterordner.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        } else {
-            subdirs.forEach { folder ->
-                Surface(
-                    shape = CutCornerShape(6.dp),
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    border = BorderStroke(0.8.dp, MaterialTheme.colorScheme.outlineVariant),
-                    onClick = { browseDir = folder.absolutePath },
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 9.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                        Icon(
-                            imageVector = Icons.Outlined.Folder,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(18.dp),
-                        )
-                        Text(
-                            text = folder.name,
-                            style = MaterialTheme.typography.bodyMedium,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f),
-                        )
-                        Icon(
-                            imageVector = Icons.Outlined.ChevronRight,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(18.dp),
-                        )
-                    }
-                }
-            }
-        }
-    }
+    return rootPath
 }
 
 private fun fileFilterForCategory(category: FileCategory): FileFilter = when (category) {
@@ -2342,10 +2038,4 @@ private fun formatAgeDays(lastModifiedMs: Long, nowMs: Long): String? {
         days < 365L -> "vor ${days / 30L} Mon."
         else -> "vor ${days / 365L} J."
     }
-}
-
-private fun maskStorageApiKey(key: String): String {
-    val trimmed = key.trim()
-    if (trimmed.length <= 10) return "••••••••"
-    return "${trimmed.take(6)}••••${trimmed.takeLast(4)}"
 }

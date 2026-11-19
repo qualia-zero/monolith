@@ -11,7 +11,6 @@ import java.io.File
 import java.io.RandomAccessFile
 import java.security.MessageDigest
 import java.util.EnumMap
-import java.util.IdentityHashMap
 import java.util.Locale
 import java.util.PriorityQueue
 
@@ -25,29 +24,24 @@ internal data class DirNode(
     var totalFileCount: Int = 0,
     var totalSubfolderCount: Int = 0,
     val children: MutableList<DirNode> = mutableListOf(),
-    val extensionBytes: MutableMap<String, Long> = mutableMapOf(),
+    val directFiles: MutableList<AnalyzedFileItem> = mutableListOf(),
 )
 
 /**
- * Pure-Kotlin storage scanner and folder antichain analyzer.
+ * Pure-Kotlin hierarchical storage scanner and folder size analyzer.
  * Uses only JVM/stdlib + [MimeNormalizer] (and `runCatching`-guarded `StatFs`)
  * so both Android runtime and JVM unit tests execute reliably.
  */
 object StorageAnalyzer {
 
-    private const val LARGE_FILE_THRESHOLD_BYTES = 100L * 1024L * 1024L
     private const val DUPLICATE_MIN_SIZE_BYTES = 512L * 1024L
     private const val PARTIAL_HASH_WINDOW_BYTES = 4096
     private const val PROGRESS_FILE_INTERVAL = 100
     private const val PROGRESS_TIME_INTERVAL_NS = 75_000_000L
 
-    private val TEMP_EXTENSIONS = setOf("tmp", "temp", "bak", "log", "cache")
-    private val TEMP_FOLDER_NAMES = setOf("cache", "tmp", "temp", ".cache", "code_cache")
-
     private data class ScanStackItem(
         val dir: File,
         val node: DirNode,
-        val inTempOrCacheDir: Boolean,
     )
 
     suspend fun scanStorage(
@@ -82,13 +76,7 @@ object StorageAnalyzer {
         visitedCanonicalDirs.add(canonicalPathOf(rootFile))
 
         val stack = ArrayDeque<ScanStackItem>()
-        stack.addLast(
-            ScanStackItem(
-                dir = rootFile,
-                node = rootNode,
-                inTempOrCacheDir = isTempOrCacheFolderName(rootFile.name),
-            ),
-        )
+        stack.addLast(ScanStackItem(dir = rootFile, node = rootNode))
         val postOrderNodes = ArrayList<DirNode>(256)
 
         var scannedBytes = 0L
@@ -96,12 +84,6 @@ object StorageAnalyzer {
         var totalFoldersCount = 0
         val categoryBytes = EnumMap<FileCategory, Long>(FileCategory::class.java)
         val categoryCounts = EnumMap<FileCategory, Int>(FileCategory::class.java)
-        var largeFilesOver100MbBytes = 0L
-        var largeFilesOver100MbCount = 0
-        var archiveAndApkBytes = 0L
-        var archiveAndApkCount = 0
-        var tempAndCacheBytes = 0L
-        var tempAndCacheCount = 0
 
         val largestHeap = if (effectiveMaxResults > 0) {
             PriorityQueue(
@@ -137,13 +119,11 @@ object StorageAnalyzer {
                         name = entry.name,
                     )
                     item.node.children.add(childNode)
-                    val childInTemp = item.inTempOrCacheDir || isTempOrCacheFolderName(entry.name)
-                    stack.addLast(ScanStackItem(entry, childNode, childInTemp))
+                    stack.addLast(ScanStackItem(dir = entry, node = childNode))
                 } else if (runCatching { entry.isFile }.getOrDefault(false)) {
                     val size = runCatching { entry.length() }.getOrDefault(0L).coerceAtLeast(0L)
                     val lastMod = runCatching { entry.lastModified() }.getOrDefault(0L).coerceAtLeast(0L)
                     val name = entry.name
-                    val ext = MimeNormalizer.extensionOf(name)
                     val mime = MimeNormalizer.normalizeMime(name)
                     val category = MimeNormalizer.categorize(name, isDirectory = false, mimeType = mime)
                     val rel = buildRelativePath(item.node.relativePath, name)
@@ -152,25 +132,9 @@ object StorageAnalyzer {
                     scannedBytes += size
                     item.node.ownFilesBytes += size
                     item.node.ownFilesCount++
-                    if (ext.isNotEmpty() && size > 0L) {
-                        item.node.extensionBytes[ext] = (item.node.extensionBytes[ext] ?: 0L) + size
-                    }
 
                     categoryBytes[category] = (categoryBytes[category] ?: 0L) + size
                     categoryCounts[category] = (categoryCounts[category] ?: 0) + 1
-
-                    if (size > LARGE_FILE_THRESHOLD_BYTES) {
-                        largeFilesOver100MbBytes += size
-                        largeFilesOver100MbCount++
-                    }
-                    if (category == FileCategory.ARCHIVE || category == FileCategory.APK) {
-                        archiveAndApkBytes += size
-                        archiveAndApkCount++
-                    }
-                    if (item.inTempOrCacheDir || ext in TEMP_EXTENSIONS) {
-                        tempAndCacheBytes += size
-                        tempAndCacheCount++
-                    }
 
                     val fileItem = AnalyzedFileItem(
                         path = entry.absolutePath,
@@ -182,6 +146,7 @@ object StorageAnalyzer {
                         mimeType = mime,
                         isDuplicateCandidate = false,
                     )
+                    item.node.directFiles.add(fileItem)
 
                     if (largestHeap != null) {
                         if (largestHeap.size < effectiveMaxResults) {
@@ -221,22 +186,10 @@ object StorageAnalyzer {
                 sumBytes += child.totalBytes
                 sumFiles += child.totalFileCount
                 sumSubfolders += child.totalSubfolderCount
-                for ((ext, extBytes) in child.extensionBytes) {
-                    node.extensionBytes[ext] = (node.extensionBytes[ext] ?: 0L) + extBytes
-                }
             }
             node.totalBytes = sumBytes
             node.totalFileCount = sumFiles
             node.totalSubfolderCount = sumSubfolders
-            if (node.extensionBytes.size > 24) {
-                val top = node.extensionBytes.entries
-                    .sortedByDescending { it.value }
-                    .take(16)
-                node.extensionBytes.clear()
-                for ((k, v) in top) {
-                    node.extensionBytes[k] = v
-                }
-            }
         }
 
         // Duplicate detection via size collisions + partial SHA-256 (first 4 KB + last 4 KB + size).
@@ -294,8 +247,41 @@ object StorageAnalyzer {
                 )
             }
 
-        val folderLimit = if (effectiveMaxResults == 0) 0 else minOf(35, effectiveMaxResults)
-        val disjointTopFolders = computeDisjointTopFolders(rootNode, maxCount = folderLimit)
+        // Iterative bottom-up conversion to immutable StorageFolderNode tree + O(1) lookup map.
+        val folderByPath = LinkedHashMap<String, StorageFolderNode>(postOrderNodes.size)
+        for (i in postOrderNodes.indices.reversed()) {
+            val node = postOrderNodes[i]
+            val directFolders = node.children
+                .mapNotNull { folderByPath[it.path] }
+                .sortedWith(
+                    compareByDescending<StorageFolderNode> { it.totalBytes }
+                        .thenBy { it.name.lowercase(Locale.ROOT) },
+                )
+            val directFiles = node.directFiles
+                .map { fileItem ->
+                    if (fileItem.path in duplicatePaths) {
+                        fileItem.copy(isDuplicateCandidate = true)
+                    } else {
+                        fileItem
+                    }
+                }
+                .sortedWith(
+                    compareByDescending<AnalyzedFileItem> { it.sizeBytes }
+                        .thenBy { it.name.lowercase(Locale.ROOT) },
+                )
+            folderByPath[node.path] = StorageFolderNode(
+                path = node.path,
+                relativePath = node.relativePath,
+                name = node.name,
+                totalBytes = node.totalBytes,
+                ownFilesBytes = node.ownFilesBytes,
+                fileCount = node.totalFileCount,
+                subfolderCount = node.totalSubfolderCount,
+                directFolders = directFolders,
+                directFiles = directFiles,
+            )
+        }
+        val rootFolder = folderByPath.getValue(rootNode.path)
 
         val largestFiles = largestHeap
             ?.toList()
@@ -317,137 +303,12 @@ object StorageAnalyzer {
             totalFilesCount = totalFilesCount,
             totalFoldersCount = totalFoldersCount,
             categoryBreakdowns = categoryBreakdowns,
-            disjointTopFolders = disjointTopFolders,
+            rootFolder = rootFolder,
+            folderByPath = folderByPath,
             largestFiles = largestFiles,
             duplicateGroups = duplicateGroups,
-            largeFilesOver100MbBytes = largeFilesOver100MbBytes,
-            largeFilesOver100MbCount = largeFilesOver100MbCount,
-            archiveAndApkBytes = archiveAndApkBytes,
-            archiveAndApkCount = archiveAndApkCount,
-            tempAndCacheBytes = tempAndCacheBytes,
-            tempAndCacheCount = tempAndCacheCount,
             reclaimableDuplicatesBytes = reclaimableDuplicatesBytes,
         )
-    }
-
-    /**
-     * Computes a strict directory antichain of the largest disjoint folders below [root],
-     * unwrapping pass-through wrapper directories (e.g. `Android -> media -> com.whatsapp`)
-     * and large multi-branch containers (e.g. `DCIM -> Camera + Screenshots`) without ever
-     * returning both an ancestor and a descendant in the final list.
-     */
-    internal fun computeDisjointTopFolders(
-        root: DirNode,
-        maxCount: Int = 35,
-    ): List<AnalyzedFolderItem> {
-        if (maxCount <= 0) return emptyList()
-        val effectiveRootBytes = if (root.totalBytes > 0L) {
-            root.totalBytes
-        } else {
-            root.ownFilesBytes + root.children.sumOf { it.totalBytes }
-        }
-        if (effectiveRootBytes <= 0L) return emptyList()
-
-        val frontier = root.children
-            .filter { it.totalBytes > 0L }
-            .toMutableList()
-        if (frontier.isEmpty()) return emptyList()
-
-        // Use IdentityHashMap so data-class hashCode/equals never walks subtrees.
-        val settled = IdentityHashMap<DirNode, Boolean>()
-        val maxFrontierSize = (maxCount * 3).coerceAtLeast(12)
-
-        while (frontier.size < maxFrontierSize) {
-            var candidateIdx = -1
-            var candidateBytes = -1L
-            for (idx in frontier.indices) {
-                val node = frontier[idx]
-                if (!settled.containsKey(node) && node.totalBytes > candidateBytes) {
-                    candidateBytes = node.totalBytes
-                    candidateIdx = idx
-                }
-            }
-            if (candidateIdx < 0) break
-
-            val candidate = frontier[candidateIdx]
-            val nonEmptyChildren = candidate.children.filter { it.totalBytes > 0L }
-            if (nonEmptyChildren.isEmpty()) {
-                settled[candidate] = true
-                continue
-            }
-
-            val subdirsBytes = nonEmptyChildren.sumOf { it.totalBytes }
-            val maxChildBytes = nonEmptyChildren.maxOfOrNull { it.totalBytes } ?: 0L
-            val dominantWrapper =
-                maxChildBytes >= (candidate.totalBytes * 0.65).toLong() &&
-                    candidate.ownFilesBytes <= (candidate.totalBytes * 0.35).toLong()
-            val multiBranchContainer =
-                subdirsBytes >= (candidate.totalBytes * 0.65).toLong() &&
-                    maxChildBytes >= maxOf(effectiveRootBytes / 50L, 15L * 1024L * 1024L) &&
-                    nonEmptyChildren.count { it.totalBytes >= 5L * 1024L * 1024L } <= 10
-
-            if (dominantWrapper || multiBranchContainer) {
-                frontier.removeAt(candidateIdx)
-                frontier.addAll(nonEmptyChildren)
-            } else {
-                settled[candidate] = true
-            }
-        }
-
-        val sortedItems = frontier
-            .sortedWith(
-                compareByDescending<DirNode> { it.totalBytes }
-                    .thenBy { it.relativePath }
-                    .thenBy { it.path },
-            )
-            .map { node ->
-                val rel = node.relativePath.ifBlank {
-                    node.path.removePrefix(root.path).trimStart('/', '\\').ifBlank { node.name }
-                }
-                val topExtensions = node.extensionBytes.entries
-                    .sortedByDescending { it.value }
-                    .map { it.key }
-                    .filter { it.isNotBlank() }
-                    .take(3)
-                AnalyzedFolderItem(
-                    path = node.path,
-                    relativePath = rel,
-                    name = node.name,
-                    totalBytes = node.totalBytes,
-                    ownFilesBytes = node.ownFilesBytes,
-                    fileCount = maxOf(node.totalFileCount, node.ownFilesCount),
-                    subfolderCount = maxOf(node.totalSubfolderCount, node.children.size),
-                    dominantExtensions = topExtensions,
-                    fractionOfScanned = (node.totalBytes.toDouble() / effectiveRootBytes.toDouble())
-                        .toFloat()
-                        .coerceIn(0f, 1f),
-                )
-            }
-
-        return enforceDisjointAntichain(sortedItems).take(maxCount)
-    }
-
-    private fun enforceDisjointAntichain(items: List<AnalyzedFolderItem>): List<AnalyzedFolderItem> {
-        val result = ArrayList<AnalyzedFolderItem>(items.size)
-        val acceptedPrefixes = ArrayList<String>(items.size)
-        for (candidate in items) {
-            val candPrefix = normalizedDirPrefix(candidate.path)
-            val conflicts = acceptedPrefixes.any { existingPrefix ->
-                candPrefix == existingPrefix ||
-                    candPrefix.startsWith(existingPrefix) ||
-                    existingPrefix.startsWith(candPrefix)
-            }
-            if (!conflicts) {
-                result.add(candidate)
-                acceptedPrefixes.add(candPrefix)
-            }
-        }
-        return result
-    }
-
-    private fun normalizedDirPrefix(path: String): String {
-        val trimmed = path.replace('\\', '/').trimEnd('/')
-        return if (trimmed.isEmpty()) "/" else "$trimmed/"
     }
 
     private fun readStatFsSafely(path: String): Triple<Long, Long, Long>? = runCatching {
@@ -463,9 +324,6 @@ object StorageAnalyzer {
 
     private fun buildRelativePath(parentRel: String, name: String): String =
         if (parentRel.isEmpty()) name else "$parentRel/$name"
-
-    private fun isTempOrCacheFolderName(name: String): Boolean =
-        name.lowercase(Locale.ROOT) in TEMP_FOLDER_NAMES
 
     private fun computePartialSha256(file: File, expectedSize: Long): String? = runCatching {
         val digest = MessageDigest.getInstance("SHA-256")
@@ -516,25 +374,49 @@ object StorageAnalyzer {
         FileCategory.OTHER -> "Sonstige"
     }
 
-    private fun emptyResult(rootPath: String, volumeStats: StorageVolumeStats): StorageScanResult =
-        StorageScanResult(
+    private fun emptyResult(rootPath: String, volumeStats: StorageVolumeStats): StorageScanResult {
+        val rootName = File(rootPath).name.ifBlank { volumeStats.label }
+        val emptyRoot = StorageFolderNode(
+            path = rootPath,
+            relativePath = "",
+            name = rootName,
+            totalBytes = 0L,
+            ownFilesBytes = 0L,
+            fileCount = 0,
+            subfolderCount = 0,
+            directFolders = emptyList(),
+            directFiles = emptyList(),
+        )
+        return StorageScanResult(
             rootPath = rootPath,
             volumeStats = volumeStats,
             scannedBytes = 0L,
             totalFilesCount = 0,
             totalFoldersCount = 0,
             categoryBreakdowns = emptyList(),
-            disjointTopFolders = emptyList(),
+            rootFolder = emptyRoot,
+            folderByPath = mapOf(rootPath to emptyRoot),
             largestFiles = emptyList(),
             duplicateGroups = emptyList(),
-            largeFilesOver100MbBytes = 0L,
-            largeFilesOver100MbCount = 0,
-            archiveAndApkBytes = 0L,
-            archiveAndApkCount = 0,
-            tempAndCacheBytes = 0L,
-            tempAndCacheCount = 0,
             reclaimableDuplicatesBytes = 0L,
         )
+    }
+}
+
+internal fun computeShareFraction(partBytes: Long, parentBytes: Long): Float {
+    if (parentBytes <= 0L || partBytes <= 0L) return 0f
+    return (partBytes.toDouble() / parentBytes.toDouble()).toFloat().coerceIn(0f, 1f)
+}
+
+internal fun formatSharePercent(
+    partBytes: Long,
+    parentBytes: Long,
+    locale: Locale = Locale.GERMAN,
+): String {
+    if (parentBytes <= 0L || partBytes <= 0L) return "0 %"
+    val pct = (partBytes.toDouble() / parentBytes.toDouble()) * 100.0
+    if (pct < 0.1) return "< 0,1 %"
+    return String.format(locale, "%.1f %%", pct.coerceAtMost(100.0))
 }
 
 internal fun formatStorageBytes(bytes: Long, locale: Locale = Locale.GERMAN): String {
