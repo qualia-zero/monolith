@@ -182,6 +182,7 @@ fun ArchiveToolScreen(
     onNavigateToFiles: () -> Unit,
     onNavigateToStorage: () -> Unit,
     onNavigateToDownloader: () -> Unit,
+    onNavigateToAi: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenExtractedFolder: (String) -> Unit,
     modifier: Modifier = Modifier,
@@ -1128,6 +1129,7 @@ fun ArchiveToolScreen(
             onSelectArchives = { starMenuExpanded = false },
             onSelectStorage = onNavigateToStorage,
             onSelectDownloader = onNavigateToDownloader,
+            onSelectAi = onNavigateToAi,
             onDismiss = { starMenuExpanded = false },
         )
 

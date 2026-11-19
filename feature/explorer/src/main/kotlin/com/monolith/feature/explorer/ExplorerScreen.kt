@@ -165,6 +165,7 @@ fun ExplorerScreen(
     onOpenMiniPlayer: () -> Unit = {},
     onOpenSettings: () -> Unit = {},
     onOpenDownloader: () -> Unit = {},
+    onOpenAiChat: (currentDirectory: String) -> Unit = {},
     onOpenArchiveTool: (initialArchivePath: String?, initialPackPaths: List<String>) -> Unit = { _, _ -> },
     onOpenStorageAnalysis: (rootPath: String) -> Unit = {},
     navState: ExplorerNavigationState = rememberExplorerNavigationState(),
@@ -1037,6 +1038,9 @@ fun ExplorerScreen(
             onOpenStorageAnalysis(activeLocalRootPath)
         },
         onSelectDownloader = onOpenDownloader,
+        onSelectAi = {
+            onOpenAiChat(localPath)
+        },
         onDismiss = { starMenuExpanded = false },
     )
 

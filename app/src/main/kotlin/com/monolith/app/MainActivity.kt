@@ -48,6 +48,7 @@ import com.monolith.feature.explorer.CloudCacheManager
 import com.monolith.feature.explorer.ExplorerScreen
 import com.monolith.feature.explorer.ExternalStorageDetector
 import com.monolith.feature.explorer.SettingsScreen
+import com.monolith.feature.explorer.ai.AiChatScreen
 import com.monolith.feature.explorer.archive.ArchiveToolScreen
 import com.monolith.feature.explorer.downloader.DownloaderScreen
 import com.monolith.feature.explorer.downloader.MediaDownloadService
@@ -65,6 +66,7 @@ private enum class MainDestination {
     ARCHIVE_TOOL,
     STORAGE_ANALYSIS,
     DOWNLOADER,
+    AI_CHAT,
     SETTINGS,
 }
 
@@ -98,6 +100,7 @@ class MainActivity : ComponentActivity() {
             val scope = rememberCoroutineScope()
             var activeDestination by remember { mutableStateOf(MainDestination.EXPLORER) }
             var settingsReturnDestination by remember { mutableStateOf(MainDestination.EXPLORER) }
+            var aiCurrentDirectory by remember { mutableStateOf("") }
             var archiveInitialFilePath by remember { mutableStateOf<String?>(null) }
             var archiveInitialPackPaths by remember { mutableStateOf<List<String>>(emptyList()) }
             var storageInitialRootPath by remember { mutableStateOf<String?>(null) }
@@ -354,6 +357,10 @@ class MainActivity : ComponentActivity() {
                             onNavigateToDownloader = {
                                 activeDestination = MainDestination.DOWNLOADER
                             },
+                            onNavigateToAi = {
+                                aiCurrentDirectory = explorerNavState.localPath
+                                activeDestination = MainDestination.AI_CHAT
+                            },
                             onOpenSettings = {
                                 settingsReturnDestination = MainDestination.ARCHIVE_TOOL
                                 activeDestination = MainDestination.SETTINGS
@@ -375,6 +382,10 @@ class MainActivity : ComponentActivity() {
                             onNavigateToDownloader = {
                                 activeDestination = MainDestination.DOWNLOADER
                             },
+                            onNavigateToAi = {
+                                aiCurrentDirectory = explorerNavState.localPath
+                                activeDestination = MainDestination.AI_CHAT
+                            },
                             onOpenSettings = {
                                 settingsReturnDestination = MainDestination.STORAGE_ANALYSIS
                                 activeDestination = MainDestination.SETTINGS
@@ -395,6 +406,10 @@ class MainActivity : ComponentActivity() {
                             onNavigateToStorage = {
                                 storageInitialRootPath = explorerNavState.activeLocalRootPath
                                 activeDestination = MainDestination.STORAGE_ANALYSIS
+                            },
+                            onNavigateToAi = {
+                                aiCurrentDirectory = explorerNavState.localPath
+                                activeDestination = MainDestination.AI_CHAT
                             },
                             onOpenSettings = {
                                 settingsReturnDestination = MainDestination.DOWNLOADER
@@ -427,6 +442,28 @@ class MainActivity : ComponentActivity() {
                             },
                         )
                     }
+                    MainDestination.AI_CHAT -> {
+                        AiChatScreen(
+                            currentDirectory = aiCurrentDirectory,
+                            onBack = { activeDestination = MainDestination.EXPLORER },
+                            onOpenArchives = {
+                                archiveInitialFilePath = null
+                                archiveInitialPackPaths = emptyList()
+                                activeDestination = MainDestination.ARCHIVE_TOOL
+                            },
+                            onOpenStorage = {
+                                storageInitialRootPath = explorerNavState.activeLocalRootPath
+                                activeDestination = MainDestination.STORAGE_ANALYSIS
+                            },
+                            onOpenDownloader = {
+                                activeDestination = MainDestination.DOWNLOADER
+                            },
+                            onOpenSettings = {
+                                settingsReturnDestination = MainDestination.AI_CHAT
+                                activeDestination = MainDestination.SETTINGS
+                            },
+                        )
+                    }
                     MainDestination.EXPLORER -> {
                         ExplorerScreen(
                             hasStoragePermission = hasStoragePermission,
@@ -447,6 +484,10 @@ class MainActivity : ComponentActivity() {
                             },
                             onOpenDownloader = {
                                 activeDestination = MainDestination.DOWNLOADER
+                            },
+                            onOpenAiChat = { currentDir ->
+                                aiCurrentDirectory = currentDir
+                                activeDestination = MainDestination.AI_CHAT
                             },
                             onOpenArchiveTool = { initialArchive, initialPack ->
                                 archiveInitialFilePath = initialArchive

@@ -165,6 +165,7 @@ fun StorageAnalysisScreen(
     onOpenFolderInExplorer: (String) -> Unit,
     onNavigateToArchives: (List<String>) -> Unit,
     onNavigateToDownloader: () -> Unit,
+    onNavigateToAi: () -> Unit,
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -794,6 +795,7 @@ fun StorageAnalysisScreen(
             onSelectArchives = { onNavigateToArchives(emptyList()) },
             onSelectStorage = { starMenuExpanded = false },
             onSelectDownloader = onNavigateToDownloader,
+            onSelectAi = onNavigateToAi,
             onDismiss = { starMenuExpanded = false },
         )
 

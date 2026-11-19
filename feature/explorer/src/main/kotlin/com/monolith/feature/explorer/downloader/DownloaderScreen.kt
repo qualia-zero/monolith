@@ -134,6 +134,7 @@ fun DownloaderScreen(
     onNavigateToFiles: () -> Unit,
     onNavigateToArchives: () -> Unit,
     onNavigateToStorage: () -> Unit,
+    onNavigateToAi: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenFolderInExplorer: (String) -> Unit,
     onOpenDownloadedFile: (String) -> Unit,
@@ -523,6 +524,7 @@ fun DownloaderScreen(
             onSelectArchives = onNavigateToArchives,
             onSelectStorage = onNavigateToStorage,
             onSelectDownloader = { starMenuExpanded = false },
+            onSelectAi = onNavigateToAi,
             onDismiss = { starMenuExpanded = false },
         )
 
