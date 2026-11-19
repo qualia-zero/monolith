@@ -57,11 +57,8 @@ import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.Usb
 import androidx.compose.material.icons.outlined.VideoFile
 import androidx.compose.material.icons.outlined.ViewInAr
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -167,7 +164,7 @@ fun ExplorerScreen(
     onOpenWith: (node: VfsNode, siblings: List<VfsNode>) -> Unit = { _, _ -> },
     onOpenMiniPlayer: () -> Unit = {},
     onOpenSettings: () -> Unit = {},
-    onOpenAiChat: (currentDirectory: String) -> Unit = {},
+    onOpenDownloader: () -> Unit = {},
     onOpenArchiveTool: (initialArchivePath: String?, initialPackPaths: List<String>) -> Unit = { _, _ -> },
     onOpenStorageAnalysis: (rootPath: String) -> Unit = {},
     navState: ExplorerNavigationState = rememberExplorerNavigationState(),
@@ -1039,9 +1036,7 @@ fun ExplorerScreen(
         onSelectStorage = {
             onOpenStorageAnalysis(activeLocalRootPath)
         },
-        onSelectAi = {
-            onOpenAiChat(localPath)
-        },
+        onSelectDownloader = onOpenDownloader,
         onDismiss = { starMenuExpanded = false },
     )
 

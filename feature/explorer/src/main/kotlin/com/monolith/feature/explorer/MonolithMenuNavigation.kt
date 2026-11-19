@@ -1,7 +1,7 @@
 package com.monolith.feature.explorer
 
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.FolderZip
 import androidx.compose.material.icons.outlined.PieChart
@@ -17,12 +17,12 @@ enum class MonolithToolDestination {
     FILES,
     ARCHIVES,
     STORAGE,
-    AI,
+    DOWNLOADER,
 }
 
 /**
  * Shared 4-item Monolith Menu overlay used across all top-level screens
- * (`Dateien`, `Archive`, `Speicherplatz`, `AI`).
+ * (`Dateien`, `Archive`, `Speicherplatz`, `Downloader`).
  */
 @Composable
 fun MonolithToolStarMenu(
@@ -32,7 +32,7 @@ fun MonolithToolStarMenu(
     onSelectFiles: () -> Unit,
     onSelectArchives: () -> Unit,
     onSelectStorage: () -> Unit,
-    onSelectAi: () -> Unit,
+    onSelectDownloader: () -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
     anchorIcon: ImageVector = Icons.Outlined.ViewInAr,
@@ -72,12 +72,12 @@ fun MonolithToolStarMenu(
                 },
             ),
             StarMenuItem(
-                id = "ai_chat",
-                label = "AI",
-                icon = Icons.Outlined.AutoAwesome,
-                isSelected = activeDestination == MonolithToolDestination.AI,
+                id = "downloader",
+                label = "Downloader",
+                icon = Icons.Outlined.Download,
+                isSelected = activeDestination == MonolithToolDestination.DOWNLOADER,
                 onClick = {
-                    if (activeDestination == MonolithToolDestination.AI) onDismiss() else onSelectAi()
+                    if (activeDestination == MonolithToolDestination.DOWNLOADER) onDismiss() else onSelectDownloader()
                 },
             ),
         ),

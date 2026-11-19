@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import com.monolith.core.common.AppSettingsStore
 import com.monolith.core.common.DefaultAppsStore
+import com.monolith.core.common.MimeNormalizer
 import com.monolith.core.media.MpvEngine
 import com.monolith.core.media.ThumbnailEngine
 import com.monolith.core.model.DefaultAppAssociation
@@ -47,8 +48,9 @@ import com.monolith.feature.explorer.CloudCacheManager
 import com.monolith.feature.explorer.ExplorerScreen
 import com.monolith.feature.explorer.ExternalStorageDetector
 import com.monolith.feature.explorer.SettingsScreen
-import com.monolith.feature.explorer.ai.AiChatScreen
 import com.monolith.feature.explorer.archive.ArchiveToolScreen
+import com.monolith.feature.explorer.downloader.DownloaderScreen
+import com.monolith.feature.explorer.downloader.MediaDownloadService
 import com.monolith.feature.explorer.rememberExplorerNavigationState
 import com.monolith.feature.explorer.storage.StorageAnalysisScreen
 import com.monolith.feature.player.PlayerActivity
@@ -62,7 +64,7 @@ private enum class MainDestination {
     EXPLORER,
     ARCHIVE_TOOL,
     STORAGE_ANALYSIS,
-    AI_CHAT,
+    DOWNLOADER,
     SETTINGS,
 }
 
@@ -75,6 +77,7 @@ class MainActivity : ComponentActivity() {
     private var hasStoragePermission by mutableStateOf(false)
     private var openTransferFromNotification by mutableStateOf(false)
     private var notificationTargetTaskId by mutableStateOf<Long?>(null)
+    private var openDownloaderFromNotification by mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -95,7 +98,6 @@ class MainActivity : ComponentActivity() {
             val scope = rememberCoroutineScope()
             var activeDestination by remember { mutableStateOf(MainDestination.EXPLORER) }
             var settingsReturnDestination by remember { mutableStateOf(MainDestination.EXPLORER) }
-            var aiCurrentDirectory by remember { mutableStateOf("") }
             var archiveInitialFilePath by remember { mutableStateOf<String?>(null) }
             var archiveInitialPackPaths by remember { mutableStateOf<List<String>>(emptyList()) }
             var storageInitialRootPath by remember { mutableStateOf<String?>(null) }
@@ -127,6 +129,13 @@ class MainActivity : ComponentActivity() {
                     if (transferTasks.isNotEmpty() || FileTransferService.progress.value != null) {
                         showTransferOverlay = true
                     }
+                }
+            }
+
+            LaunchedEffect(openDownloaderFromNotification) {
+                if (openDownloaderFromNotification) {
+                    openDownloaderFromNotification = false
+                    activeDestination = MainDestination.DOWNLOADER
                 }
             }
 
@@ -342,9 +351,8 @@ class MainActivity : ComponentActivity() {
                                 storageInitialRootPath = explorerNavState.activeLocalRootPath
                                 activeDestination = MainDestination.STORAGE_ANALYSIS
                             },
-                            onNavigateToAi = {
-                                aiCurrentDirectory = explorerNavState.localPath
-                                activeDestination = MainDestination.AI_CHAT
+                            onNavigateToDownloader = {
+                                activeDestination = MainDestination.DOWNLOADER
                             },
                             onOpenSettings = {
                                 settingsReturnDestination = MainDestination.ARCHIVE_TOOL
@@ -364,9 +372,8 @@ class MainActivity : ComponentActivity() {
                                 archiveInitialPackPaths = packPaths
                                 activeDestination = MainDestination.ARCHIVE_TOOL
                             },
-                            onNavigateToAi = {
-                                aiCurrentDirectory = explorerNavState.localPath
-                                activeDestination = MainDestination.AI_CHAT
+                            onNavigateToDownloader = {
+                                activeDestination = MainDestination.DOWNLOADER
                             },
                             onOpenSettings = {
                                 settingsReturnDestination = MainDestination.STORAGE_ANALYSIS
@@ -374,22 +381,49 @@ class MainActivity : ComponentActivity() {
                             },
                         )
                     }
-                    MainDestination.AI_CHAT -> {
-                        AiChatScreen(
-                            currentDirectory = aiCurrentDirectory,
+                    MainDestination.DOWNLOADER -> {
+                        DownloaderScreen(
+                            hasStoragePermission = hasStoragePermission,
+                            onRequestStoragePermission = ::requestAllFilesAccess,
                             onBack = { activeDestination = MainDestination.EXPLORER },
-                            onOpenArchives = {
+                            onNavigateToFiles = { activeDestination = MainDestination.EXPLORER },
+                            onNavigateToArchives = {
                                 archiveInitialFilePath = null
                                 archiveInitialPackPaths = emptyList()
                                 activeDestination = MainDestination.ARCHIVE_TOOL
                             },
-                            onOpenStorage = {
+                            onNavigateToStorage = {
                                 storageInitialRootPath = explorerNavState.activeLocalRootPath
                                 activeDestination = MainDestination.STORAGE_ANALYSIS
                             },
                             onOpenSettings = {
-                                settingsReturnDestination = MainDestination.AI_CHAT
+                                settingsReturnDestination = MainDestination.DOWNLOADER
                                 activeDestination = MainDestination.SETTINGS
+                            },
+                            onOpenFolderInExplorer = ::openLocalFolderInExplorer,
+                            onOpenDownloadedFile = { filePath ->
+                                val file = File(filePath)
+                                if (file.exists() && file.isFile) {
+                                    val mime = MimeNormalizer.normalizeMime(file.name)
+                                    val category = MimeNormalizer.categorize(
+                                        fileName = file.name,
+                                        isDirectory = false,
+                                        mimeType = mime,
+                                    )
+                                    val node = VfsNode(
+                                        id = file.absolutePath,
+                                        name = file.name,
+                                        path = file.absolutePath,
+                                        parentPath = file.parent,
+                                        locationType = LocationType.LOCAL,
+                                        isDirectory = false,
+                                        sizeBytes = file.length(),
+                                        lastModifiedMs = file.lastModified(),
+                                        mimeType = mime,
+                                        category = category,
+                                    )
+                                    handleOpenFile(node, listOf(node))
+                                }
                             },
                         )
                     }
@@ -411,9 +445,8 @@ class MainActivity : ComponentActivity() {
                                 settingsReturnDestination = MainDestination.EXPLORER
                                 activeDestination = MainDestination.SETTINGS
                             },
-                            onOpenAiChat = { currentDir ->
-                                aiCurrentDirectory = currentDir
-                                activeDestination = MainDestination.AI_CHAT
+                            onOpenDownloader = {
+                                activeDestination = MainDestination.DOWNLOADER
                             },
                             onOpenArchiveTool = { initialArchive, initialPack ->
                                 archiveInitialFilePath = initialArchive
@@ -521,6 +554,10 @@ class MainActivity : ComponentActivity() {
             intent.removeExtra(FileTransferService.EXTRA_TRANSFER_TASK_ID)
             notificationTargetTaskId = targetId
             openTransferFromNotification = true
+        }
+        if (intent?.getBooleanExtra(MediaDownloadService.EXTRA_OPEN_DOWNLOADER, false) == true) {
+            intent.removeExtra(MediaDownloadService.EXTRA_OPEN_DOWNLOADER)
+            openDownloaderFromNotification = true
         }
     }
 
