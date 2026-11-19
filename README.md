@@ -1,6 +1,6 @@
 # Monolith
 
-**Monolith** (`com.monolith.app`) is a native Android file manager, unified media suite, archive toolset, and media downloader built with **Kotlin**, **Jetpack Compose (Material 3)**, and a multi-module Gradle architecture.
+**Monolith** (`com.monolith.app`) is a native Android file manager, unified media suite, archive toolset, media downloader, and local-first AI workspace built with **Kotlin**, **Jetpack Compose (Material 3)**, and a multi-module Gradle architecture.
 
 > **Language Note:** The app UI is currently available in **German** only.
 
@@ -26,6 +26,8 @@
   - Powered by `libmpv` / FFmpeg (`arm64-v8a`) with hardware decoding, track/subtitle selection, speed control, optional double-tap gesture controls, 128 MiB stream caching, picture-in-picture, background playback, and `MediaPlaybackService` system controls with 480p `ARGB_8888` thumbnails.
 - **Built-in Viewers (`:feature:viewers`):**
   - Text editor and image viewer, plus "Open With" system app discovery and default-app associations.
+- **Integrated Gemini AI Chat (`:feature:explorer`):**
+  - Streaming responses, collapsible thinking & tool-call traces, Markdown rendering, multi-API-key management, customizable system prompt with quick-copy tool blocks, and read-only explorer tool calling (`list_directory`, `read_text_file`, `get_file_info`, `search_files`, `analyze_storage_summary`, `list_archive_contents`).
 - **Design & Tactile Polish (`:core:ui`):**
   - **Obsidian** (textured stone aesthetic, cut-corner geometry, unified `MonolithDialog` & `MonolithStarMenu`) and **Phosphor** themes with Day/Night modes and granular per-action haptic feedback settings.
 
@@ -37,7 +39,7 @@
 - `:core:ui` — Material 3 themes (`Obsidian`, `Phosphor`), `MonolithDialog`, `MonolithStarMenu`, `MonolithSwitch`, and `MonolithHaptics`
 - `:core:vfs` — Virtual filesystem abstraction (`VfsProvider`), `LocalVfsProvider`, `SafVfsProvider`, and `GoogleDriveVfsProvider`
 - `:core:media` — `libmpv` / FFmpeg (`arm64-v8a`) JNI bridge (`is.xyz.mpv.MPVLib`), `MpvEngine`, `MediaPlaybackService`, and `ThumbnailEngine`
-- `:feature:explorer` — File explorer UI, archive manager, hierarchical storage analyzer, `yt-dlp` media downloader, and settings & haptics customization
+- `:feature:explorer` — File explorer UI, archive manager, hierarchical storage analyzer, `yt-dlp` media downloader, Gemini AI chat, and settings & haptics customization
 - `:feature:viewers` — Built-in viewers (Text Editor, Image Viewer)
 - `:feature:player` — `libmpv` video & audio player UI
 
