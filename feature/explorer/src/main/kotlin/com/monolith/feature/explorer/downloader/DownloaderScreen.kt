@@ -129,6 +129,7 @@ fun DownloaderScreen(
     onOpenFolderInExplorer: (String) -> Unit,
     onOpenDownloadedFile: (String) -> Unit,
     modifier: Modifier = Modifier,
+    onSelectApps: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val view = LocalView.current
@@ -525,6 +526,7 @@ fun DownloaderScreen(
             onSelectArchives = onNavigateToArchives,
             onSelectStorage = onNavigateToStorage,
             onSelectDownloader = { starMenuExpanded = false },
+            onSelectApps = onSelectApps,
             onSelectAi = onNavigateToAi,
             onDismiss = { starMenuExpanded = false },
         )

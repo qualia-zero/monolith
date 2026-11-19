@@ -182,6 +182,7 @@ fun AiChatScreen(
     onOpenArchives: () -> Unit = {},
     onOpenStorage: () -> Unit = {},
     onOpenDownloader: () -> Unit = {},
+    onSelectApps: () -> Unit = {},
     onOpenSettings: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
@@ -593,6 +594,10 @@ fun AiChatScreen(
             onSelectDownloader = {
                 activeJob?.cancel()
                 onOpenDownloader()
+            },
+            onSelectApps = {
+                activeJob?.cancel()
+                onSelectApps()
             },
             onSelectAi = {
                 starMenuExpanded = false

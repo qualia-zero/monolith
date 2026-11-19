@@ -49,6 +49,7 @@ import com.monolith.feature.explorer.ExplorerScreen
 import com.monolith.feature.explorer.ExternalStorageDetector
 import com.monolith.feature.explorer.SettingsScreen
 import com.monolith.feature.explorer.ai.AiChatScreen
+import com.monolith.feature.explorer.apps.AppManagerScreen
 import com.monolith.feature.explorer.archive.ArchiveToolScreen
 import com.monolith.feature.explorer.downloader.DownloaderScreen
 import com.monolith.feature.explorer.downloader.MediaDownloadService
@@ -66,6 +67,7 @@ private enum class MainDestination {
     ARCHIVE_TOOL,
     STORAGE_ANALYSIS,
     DOWNLOADER,
+    APP_MANAGER,
     AI_CHAT,
     SETTINGS,
 }
@@ -357,6 +359,9 @@ class MainActivity : ComponentActivity() {
                             onNavigateToDownloader = {
                                 activeDestination = MainDestination.DOWNLOADER
                             },
+                            onSelectApps = {
+                                activeDestination = MainDestination.APP_MANAGER
+                            },
                             onNavigateToAi = {
                                 aiCurrentDirectory = explorerNavState.localPath
                                 activeDestination = MainDestination.AI_CHAT
@@ -382,6 +387,9 @@ class MainActivity : ComponentActivity() {
                             onNavigateToDownloader = {
                                 activeDestination = MainDestination.DOWNLOADER
                             },
+                            onSelectApps = {
+                                activeDestination = MainDestination.APP_MANAGER
+                            },
                             onNavigateToAi = {
                                 aiCurrentDirectory = explorerNavState.localPath
                                 activeDestination = MainDestination.AI_CHAT
@@ -406,6 +414,9 @@ class MainActivity : ComponentActivity() {
                             onNavigateToStorage = {
                                 storageInitialRootPath = explorerNavState.activeLocalRootPath
                                 activeDestination = MainDestination.STORAGE_ANALYSIS
+                            },
+                            onSelectApps = {
+                                activeDestination = MainDestination.APP_MANAGER
                             },
                             onNavigateToAi = {
                                 aiCurrentDirectory = explorerNavState.localPath
@@ -442,6 +453,32 @@ class MainActivity : ComponentActivity() {
                             },
                         )
                     }
+                    MainDestination.APP_MANAGER -> {
+                        AppManagerScreen(
+                            onNavigateToFiles = { activeDestination = MainDestination.EXPLORER },
+                            onNavigateToArchives = {
+                                archiveInitialFilePath = null
+                                archiveInitialPackPaths = emptyList()
+                                activeDestination = MainDestination.ARCHIVE_TOOL
+                            },
+                            onNavigateToStorage = {
+                                storageInitialRootPath = null
+                                activeDestination = MainDestination.STORAGE_ANALYSIS
+                            },
+                            onNavigateToDownloader = {
+                                activeDestination = MainDestination.DOWNLOADER
+                            },
+                            onNavigateToAi = {
+                                aiCurrentDirectory = explorerNavState.localPath
+                                activeDestination = MainDestination.AI_CHAT
+                            },
+                            onOpenSettings = {
+                                settingsReturnDestination = MainDestination.APP_MANAGER
+                                activeDestination = MainDestination.SETTINGS
+                            },
+                            onOpenFolderInExplorer = ::openLocalFolderInExplorer,
+                        )
+                    }
                     MainDestination.AI_CHAT -> {
                         AiChatScreen(
                             currentDirectory = aiCurrentDirectory,
@@ -457,6 +494,9 @@ class MainActivity : ComponentActivity() {
                             },
                             onOpenDownloader = {
                                 activeDestination = MainDestination.DOWNLOADER
+                            },
+                            onSelectApps = {
+                                activeDestination = MainDestination.APP_MANAGER
                             },
                             onOpenSettings = {
                                 settingsReturnDestination = MainDestination.AI_CHAT
@@ -497,6 +537,9 @@ class MainActivity : ComponentActivity() {
                             onOpenStorageAnalysis = { root ->
                                 storageInitialRootPath = root
                                 activeDestination = MainDestination.STORAGE_ANALYSIS
+                            },
+                            onSelectApps = {
+                                activeDestination = MainDestination.APP_MANAGER
                             },
                             navState = explorerNavState,
                         )

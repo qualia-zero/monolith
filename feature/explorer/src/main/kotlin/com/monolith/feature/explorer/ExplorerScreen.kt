@@ -168,6 +168,7 @@ fun ExplorerScreen(
     onOpenAiChat: (currentDirectory: String) -> Unit = {},
     onOpenArchiveTool: (initialArchivePath: String?, initialPackPaths: List<String>) -> Unit = { _, _ -> },
     onOpenStorageAnalysis: (rootPath: String) -> Unit = {},
+    onSelectApps: () -> Unit = {},
     navState: ExplorerNavigationState = rememberExplorerNavigationState(),
     modifier: Modifier = Modifier,
 ) {
@@ -1038,6 +1039,7 @@ fun ExplorerScreen(
             onOpenStorageAnalysis(activeLocalRootPath)
         },
         onSelectDownloader = onOpenDownloader,
+        onSelectApps = onSelectApps,
         onSelectAi = {
             onOpenAiChat(localPath)
         },

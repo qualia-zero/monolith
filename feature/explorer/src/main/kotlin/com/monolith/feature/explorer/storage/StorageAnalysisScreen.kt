@@ -168,6 +168,7 @@ fun StorageAnalysisScreen(
     onNavigateToAi: () -> Unit,
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
+    onSelectApps: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val view = LocalView.current
@@ -796,6 +797,7 @@ fun StorageAnalysisScreen(
             onSelectArchives = { onNavigateToArchives(emptyList()) },
             onSelectStorage = { starMenuExpanded = false },
             onSelectDownloader = onNavigateToDownloader,
+            onSelectApps = onSelectApps,
             onSelectAi = onNavigateToAi,
             onDismiss = { starMenuExpanded = false },
         )

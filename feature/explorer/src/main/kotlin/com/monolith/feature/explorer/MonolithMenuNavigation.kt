@@ -1,6 +1,7 @@
 package com.monolith.feature.explorer
 
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Apps
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.FolderZip
@@ -18,12 +19,13 @@ enum class MonolithToolDestination {
     ARCHIVES,
     STORAGE,
     DOWNLOADER,
+    APPS,
     AI,
 }
 
 /**
- * Shared 5-item Monolith Menu overlay used across all top-level screens
- * (`Dateien`, `Archivmanager`, `Speicherplatz`, `Downloader`, `Monolith`).
+ * Shared 6-item Monolith Menu overlay used across all top-level screens
+ * (`Dateien`, `Archivmanager`, `Speicherplatz`, `Downloader`, `App-Verwaltung`, `Monolith`).
  */
 @Composable
 fun MonolithToolStarMenu(
@@ -37,6 +39,7 @@ fun MonolithToolStarMenu(
     onSelectAi: () -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
+    onSelectApps: () -> Unit = {},
     anchorIcon: ImageVector = Icons.Outlined.ViewInAr,
     onAnchorClick: (() -> Unit)? = null,
 ) {
@@ -80,6 +83,15 @@ fun MonolithToolStarMenu(
                 isSelected = activeDestination == MonolithToolDestination.DOWNLOADER,
                 onClick = {
                     if (activeDestination == MonolithToolDestination.DOWNLOADER) onDismiss() else onSelectDownloader()
+                },
+            ),
+            StarMenuItem(
+                id = "apps",
+                label = "App-Verwaltung",
+                icon = Icons.Outlined.Apps,
+                isSelected = activeDestination == MonolithToolDestination.APPS,
+                onClick = {
+                    if (activeDestination == MonolithToolDestination.APPS) onDismiss() else onSelectApps()
                 },
             ),
             StarMenuItem(

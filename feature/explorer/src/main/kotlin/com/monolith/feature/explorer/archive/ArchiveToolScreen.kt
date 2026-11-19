@@ -186,6 +186,7 @@ fun ArchiveToolScreen(
     onOpenSettings: () -> Unit,
     onOpenExtractedFolder: (String) -> Unit,
     modifier: Modifier = Modifier,
+    onSelectApps: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val view = LocalView.current
@@ -1130,6 +1131,7 @@ fun ArchiveToolScreen(
             onSelectArchives = { starMenuExpanded = false },
             onSelectStorage = onNavigateToStorage,
             onSelectDownloader = onNavigateToDownloader,
+            onSelectApps = onSelectApps,
             onSelectAi = onNavigateToAi,
             onDismiss = { starMenuExpanded = false },
         )
