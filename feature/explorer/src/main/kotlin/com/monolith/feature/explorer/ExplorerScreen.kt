@@ -1066,13 +1066,6 @@ fun ExplorerScreen(
                 onClick = { showHidden = !showHidden },
             ),
         )
-        add(
-            CornerMenuItem(
-                id = "settings",
-                label = "Einstellungen",
-                onClick = onOpenSettings,
-            ),
-        )
         if (activeLocation == LocationType.GOOGLE_DRIVE && signedInEmail != null) {
             add(
                 CornerMenuItem(
@@ -1098,6 +1091,13 @@ fun ExplorerScreen(
                 ),
             )
         }
+        add(
+            CornerMenuItem(
+                id = "settings",
+                label = "App-Einstellungen",
+                onClick = onOpenSettings,
+            ),
+        )
     }
 
     MonolithCornerMenuOverlay(

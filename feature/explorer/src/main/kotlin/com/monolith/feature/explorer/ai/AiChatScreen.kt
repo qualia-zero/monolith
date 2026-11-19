@@ -632,6 +632,11 @@ fun AiChatScreen(
                         }
                     },
                 ),
+                CornerMenuItem(
+                    id = "settings",
+                    label = "App-Einstellungen",
+                    onClick = onOpenSettings,
+                ),
             ),
             onDismiss = { menuExpanded = false },
         )

@@ -1,7 +1,6 @@
 package com.monolith.feature.explorer
 
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.FolderZip
@@ -24,7 +23,7 @@ enum class MonolithToolDestination {
 
 /**
  * Shared 5-item Monolith Menu overlay used across all top-level screens
- * (`Dateien`, `Archivmanager`, `Speicherplatz`, `Downloader`, `AI`).
+ * (`Dateien`, `Archivmanager`, `Speicherplatz`, `Downloader`, `Monolith`).
  */
 @Composable
 fun MonolithToolStarMenu(
@@ -85,8 +84,8 @@ fun MonolithToolStarMenu(
             ),
             StarMenuItem(
                 id = "ai_chat",
-                label = "AI",
-                icon = Icons.Outlined.AutoAwesome,
+                label = "Monolith",
+                icon = Icons.Outlined.ViewInAr,
                 isSelected = activeDestination == MonolithToolDestination.AI,
                 onClick = {
                     if (activeDestination == MonolithToolDestination.AI) onDismiss() else onSelectAi()

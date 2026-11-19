@@ -1174,7 +1174,7 @@ fun ArchiveToolScreen(
             add(
                 CornerMenuItem(
                     id = "settings",
-                    label = "Einstellungen",
+                    label = "App-Einstellungen",
                     onClick = onOpenSettings,
                 ),
             )

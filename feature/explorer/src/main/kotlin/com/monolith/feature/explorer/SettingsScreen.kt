@@ -471,7 +471,7 @@ fun SettingsScreen(
                     },
                 ) {
                     Text(
-                        "Alle App- und Downloader-Einstellungen werden auf ihre Standardwerte zurückgesetzt. Gespeicherte Standard-Apps bleiben erhalten.",
+                        "Alle App-Einstellungen werden auf ihre Standardwerte zurückgesetzt. Gespeicherte Standard-Apps bleiben erhalten.",
                         style = MaterialTheme.typography.bodyMedium,
                     )
                 }
