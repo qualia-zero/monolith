@@ -8,12 +8,6 @@ enum class ThemeMode {
     OBSIDIAN,
 }
 
-data class GeminiApiKeyEntry(
-    val id: String,
-    val label: String,
-    val key: String,
-)
-
 data class AppSettings(
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
     val hapticsEnabled: Boolean = true,
@@ -24,18 +18,7 @@ data class AppSettings(
     val hapticDragLift: Boolean = true,
     val hapticLaunchItem: Boolean = false,
     val hapticPullRefresh: Boolean = true,
-    val geminiApiKey: String = "",
-    val geminiApiKeys: List<GeminiApiKeyEntry> = emptyList(),
-    val activeGeminiApiKeyId: String? = null,
-    val aiModelId: String = "gemini-4-hydrogen",
-    val aiThinkingLevel: String = "medium",
-    val aiSystemPrompt: String = "",
-) {
-    val activeGeminiApiKey: String
-        get() = geminiApiKeys.firstOrNull { it.id == activeGeminiApiKeyId }?.key
-            ?: geminiApiKeys.firstOrNull()?.key
-            ?: geminiApiKey
-}
+)
 
 data class DefaultAppAssociation(
     val extension: String,

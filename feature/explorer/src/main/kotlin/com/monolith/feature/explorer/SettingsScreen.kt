@@ -16,9 +16,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.DeleteOutline
-import androidx.compose.material.icons.outlined.Visibility
-import androidx.compose.material.icons.outlined.VisibilityOff
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
@@ -26,7 +23,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
@@ -45,8 +41,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.monolith.core.common.AppSettingsStore
 import com.monolith.core.common.DefaultAppsStore
@@ -301,49 +295,6 @@ fun SettingsScreen(
                     )
                 }
             }
-
-            HorizontalDivider(thickness = 0.5.dp)
-
-            Text(
-                text = "Gemini-API",
-                style = MaterialTheme.typography.titleMedium,
-            )
-
-            Text(
-                text = "Aktiver API-Key für alle Gemini-Funktionen (lokal gespeichert).",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-
-            var showGeminiApiKey by remember { mutableStateOf(false) }
-
-            OutlinedTextField(
-                value = appSettings.activeGeminiApiKey,
-                onValueChange = { newValue ->
-                    AppSettingsStore.setActiveGeminiApiKeyValue(newValue)
-                },
-                label = { Text("Gemini-API-Key") },
-                placeholder = { Text("AIza…") },
-                singleLine = true,
-                visualTransformation = if (showGeminiApiKey) {
-                    VisualTransformation.None
-                } else {
-                    PasswordVisualTransformation()
-                },
-                trailingIcon = {
-                    IconButton(onClick = { showGeminiApiKey = !showGeminiApiKey }) {
-                        Icon(
-                            imageVector = if (showGeminiApiKey) {
-                                Icons.Outlined.VisibilityOff
-                            } else {
-                                Icons.Outlined.Visibility
-                            },
-                            contentDescription = if (showGeminiApiKey) "Verbergen" else "Anzeigen",
-                        )
-                    }
-                },
-                modifier = Modifier.fillMaxWidth(),
-            )
 
             HorizontalDivider(thickness = 0.5.dp)
 
