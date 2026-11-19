@@ -48,6 +48,7 @@ import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Explore
 import androidx.compose.material.icons.outlined.Folder
+import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.FolderZip
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.MoreVert
@@ -56,7 +57,6 @@ import androidx.compose.material.icons.outlined.SelectAll
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.Usb
 import androidx.compose.material.icons.outlined.VideoFile
-import androidx.compose.material.icons.outlined.ViewInAr
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -572,7 +572,7 @@ fun ExplorerScreen(
                 TopAppBar(
                     title = {
                         val label = when {
-                            !canNavigateUp -> "Monolith"
+                            !canNavigateUp -> "Dateien"
                             activeLocation == LocationType.GOOGLE_DRIVE -> driveStack.last().second
                             else -> localPath.substringAfterLast('/')
                         }
@@ -602,7 +602,7 @@ fun ExplorerScreen(
                                         activeLocation == LocationType.GOOGLE_DRIVE -> Icons.Outlined.CloudQueue
                                         activeExternalVolume?.kind == ExternalVolumeKind.USB -> Icons.Outlined.Usb
                                         activeExternalVolume?.kind == ExternalVolumeKind.SD_CARD -> Icons.Outlined.SdStorage
-                                        else -> Icons.Outlined.ViewInAr
+                                        else -> Icons.Outlined.FolderOpen
                                     },
                                     contentDescription = "Monolith-Menü",
                                     tint = MaterialTheme.colorScheme.primary,
@@ -1020,7 +1020,7 @@ fun ExplorerScreen(
         activeLocation == LocationType.GOOGLE_DRIVE -> Icons.Outlined.CloudQueue
         activeExternalVolume?.kind == ExternalVolumeKind.USB -> Icons.Outlined.Usb
         activeExternalVolume?.kind == ExternalVolumeKind.SD_CARD -> Icons.Outlined.SdStorage
-        else -> Icons.Outlined.ViewInAr
+        else -> Icons.Outlined.FolderOpen
     }
 
     MonolithToolStarMenu(
