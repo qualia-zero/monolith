@@ -178,7 +178,7 @@ data class DownloaderSettings(
     val thumbnailEmbedMode: ThumbnailEmbedMode = ThumbnailEmbedMode.AUDIO_ONLY,
     val embedSubtitles: Boolean = false,
     val subtitleLanguages: String = "de,en",
-    val allowPlaylists: Boolean = true,
+    val allowPlaylists: Boolean = false,
     val outputTemplate: String = "%(title)s.%(ext)s",
     val outputDirectory: String = "",
     val updateChannel: YtDlpChannel = YtDlpChannel.NIGHTLY,

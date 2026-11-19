@@ -50,7 +50,6 @@ import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.SdStorage
 import androidx.compose.material.icons.outlined.Storage
-import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.Usb
 import androidx.compose.material.icons.outlined.VideoFile
 import androidx.compose.material.icons.outlined.WarningAmber
@@ -320,12 +319,10 @@ fun DownloaderScreen(
                     DownloaderInputCard(
                         activeMode = activeMode,
                         urlInput = urlInput,
-                        formatSummary = formatChipText,
                         hasStoragePermission = hasStoragePermission,
                         onModeSelect = { mode ->
                             DownloaderSettingsStore.update { it.copy(defaultMode = mode) }
                         },
-                        onOpenFormatSettings = { showDownloaderSettings = true },
                         onUrlInputChange = { urlInput = it },
                         onPasteClick = {
                             val clipboard = context.getSystemService(ClipboardManager::class.java)
@@ -570,10 +567,8 @@ fun DownloaderScreen(
 private fun DownloaderInputCard(
     activeMode: DownloadMode,
     urlInput: String,
-    formatSummary: String,
     hasStoragePermission: Boolean,
     onModeSelect: (DownloadMode) -> Unit,
-    onOpenFormatSettings: () -> Unit,
     onUrlInputChange: (String) -> Unit,
     onPasteClick: () -> Unit,
     onClearClick: () -> Unit,
@@ -623,32 +618,6 @@ private fun DownloaderInputCard(
                     },
                     label = { Text(DownloadMode.AUDIO.label) },
                 )
-                Spacer(Modifier.weight(1f))
-                Surface(
-                    shape = LocalMonolithButtonShape.current,
-                    color = MaterialTheme.colorScheme.surfaceContainerLow,
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                    onClick = onOpenFormatSettings,
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(5.dp),
-                    ) {
-                        Icon(
-                            imageVector = Icons.Outlined.Tune,
-                            contentDescription = "Format wählen",
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(15.dp),
-                        )
-                        Text(
-                            text = formatSummary,
-                            style = MaterialTheme.typography.labelMedium,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                }
             }
 
             OutlinedTextField(
@@ -1050,7 +1019,7 @@ private enum class DownloaderSettingsSubmenu(val title: String) {
     EMBEDDING("Einbettung"),
     SLEEP("Wartezeit (Sleep)"),
     OUTPUT("Zielordner & Name"),
-    ENGINE("yt-dlp Engine"),
+    ENGINE("yt-dlp-Engine"),
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
