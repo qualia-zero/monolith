@@ -40,5 +40,7 @@ dependencies {
     implementation(libs.commons.compress)
     implementation(libs.tukaani.xz)
     implementation(libs.junrar)
+    implementation(libs.youtubedl.android)
+    implementation(libs.youtubedl.ffmpeg)
     testImplementation(libs.junit)
 }
