@@ -429,7 +429,7 @@ fun MonolithCornerMenuOverlay(
                                     text = item.subtitle,
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 1,
+                                    maxLines = 3,
                                     overflow = TextOverflow.Ellipsis,
                                 )
                             }

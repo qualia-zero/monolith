@@ -122,6 +122,7 @@ import com.monolith.core.ui.theme.LocalMonolithThemeMode
 import com.monolith.feature.explorer.MonolithToolDestination
 import com.monolith.feature.explorer.MonolithToolStarMenu
 import com.monolith.feature.explorer.storage.formatStorageBytes
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -222,8 +223,13 @@ fun AppManagerScreen(
     }
 
     DisposableEffect(lifecycleOwner) {
+        var skipInitialResume = true
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
+                if (skipInitialResume) {
+                    skipInitialResume = false
+                    return@LifecycleEventObserver
+                }
                 val updatedUsage = AppManagerRepository.hasUsageStatsPermission(context)
                 if (updatedUsage != hasUsageStats) {
                     hasUsageStats = updatedUsage
@@ -238,8 +244,13 @@ fun AppManagerScreen(
     LaunchedEffect(reloadTrigger) {
         isLoading = true
         hasUsageStats = AppManagerRepository.hasUsageStatsPermission(context)
-        val loaded = runCatching { AppManagerRepository.loadInstalledApps(context) }
-            .getOrElse { emptyList() }
+        val loaded = try {
+            AppManagerRepository.loadInstalledApps(context)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Throwable) {
+            emptyList()
+        }
         allApps = loaded
         val validPackages = loaded.mapTo(HashSet()) { it.packageName }
         selectedPackages = selectedPackages.intersect(validPackages)
