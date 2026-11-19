@@ -48,7 +48,6 @@ import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.Notifications
-import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Security
 import androidx.compose.material.icons.outlined.SelectAll
@@ -77,6 +76,8 @@ import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -114,6 +115,7 @@ import com.monolith.core.model.ThemeMode
 import com.monolith.core.ui.components.CornerMenuItem
 import com.monolith.core.ui.components.MonolithCornerMenuOverlay
 import com.monolith.core.ui.components.MonolithDialog
+import com.monolith.core.ui.components.MonolithRefreshIndicator
 import com.monolith.core.ui.haptics.MonolithHaptics
 import com.monolith.core.ui.theme.LocalMonolithButtonShape
 import com.monolith.core.ui.theme.LocalMonolithThemeMode
@@ -121,6 +123,7 @@ import com.monolith.feature.explorer.MonolithToolDestination
 import com.monolith.feature.explorer.MonolithToolStarMenu
 import com.monolith.feature.explorer.storage.formatStorageBytes
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.text.DateFormat
@@ -178,9 +181,8 @@ fun AppManagerScreen(
     var showUninstallConfirm by remember { mutableStateOf<List<ManagedAppInfo>>(emptyList()) }
     var pendingUninstallQueue by remember { mutableStateOf<List<String>>(emptyList()) }
 
-    // Cache cleanup warning & sequential settings queue
+    // Cache cleanup warning dialog state
     var cacheWarningApps by remember { mutableStateOf<List<ManagedAppInfo>>(emptyList()) }
-    var pendingSettingsQueue by remember { mutableStateOf<List<String>>(emptyList()) }
 
     // Batch audit report
     var auditReport by remember { mutableStateOf<BatchAuditReport?>(null) }
@@ -190,16 +192,6 @@ fun AppManagerScreen(
     ) {
         val next = pendingUninstallQueue.drop(1)
         pendingUninstallQueue = next
-        if (next.isEmpty()) {
-            reloadTrigger++
-        }
-    }
-
-    val settingsFallbackLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.StartActivityForResult(),
-    ) {
-        val next = pendingSettingsQueue.drop(1)
-        pendingSettingsQueue = next
         if (next.isEmpty()) {
             reloadTrigger++
         }
@@ -224,25 +216,9 @@ fun AppManagerScreen(
         }
     }
 
-    LaunchedEffect(pendingSettingsQueue) {
-        val nextPkg = pendingSettingsQueue.firstOrNull() ?: return@LaunchedEffect
-        val intent = AppManagerRepository.buildAppStorageSettingsIntent(nextPkg)
-        runCatching {
-            settingsFallbackLauncher.launch(intent)
-        }.onFailure {
-            pendingSettingsQueue = pendingSettingsQueue.drop(1)
-            snackbarHostState.showSnackbar("App-Einstellungen für $nextPkg konnten nicht geöffnet werden")
-        }
-    }
-
     fun startUninstallQueue(packages: List<String>) {
         if (packages.isEmpty()) return
         pendingUninstallQueue = packages
-    }
-
-    fun startSettingsFallbackQueue(packages: List<String>) {
-        if (packages.isEmpty()) return
-        pendingSettingsQueue = packages
     }
 
     DisposableEffect(lifecycleOwner) {
@@ -517,14 +493,6 @@ fun AppManagerScreen(
                             }
                             IconButton(
                                 onClick = {
-                                    MonolithHaptics.refreshDetent(context, view)
-                                    reloadTrigger++
-                                },
-                            ) {
-                                Icon(Icons.Outlined.Refresh, contentDescription = "Aktualisieren")
-                            }
-                            IconButton(
-                                onClick = {
                                     MonolithHaptics.cornerMenuOpen(context, view)
                                     menuExpanded = !menuExpanded
                                 },
@@ -637,14 +605,60 @@ fun AppManagerScreen(
                         }
                     }
                     else -> {
-                        if (isLoading) {
-                            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                        var isPullRefreshing by remember { mutableStateOf(false) }
+                        val pullState = rememberPullToRefreshState()
+                        val pullThresholdReached = pullState.distanceFraction >= 1f
+                        val targetContentOffsetDp = if (isPullRefreshing) {
+                            68f
+                        } else {
+                            pullState.distanceFraction.coerceIn(0f, 1.2f) * 68f
                         }
-                        LazyColumn(
+                        val contentOffsetDp by animateFloatAsState(
+                            targetValue = targetContentOffsetDp,
+                            label = "appManagerPullRefreshContentOffset",
+                        )
+
+                        LaunchedEffect(pullThresholdReached) {
+                            if (pullThresholdReached && !isPullRefreshing) {
+                                MonolithHaptics.refreshDetent(context, view)
+                            }
+                        }
+
+                        PullToRefreshBox(
+                            isRefreshing = isPullRefreshing,
+                            onRefresh = {
+                                if (!isPullRefreshing) {
+                                    isPullRefreshing = true
+                                    reloadTrigger++
+                                    scope.launch {
+                                        delay(480L)
+                                        while (isLoading) {
+                                            delay(50L)
+                                        }
+                                        isPullRefreshing = false
+                                        MonolithHaptics.refreshComplete(context, view)
+                                    }
+                                }
+                            },
+                            state = pullState,
                             modifier = Modifier.fillMaxSize(),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                            indicator = {
+                                MonolithRefreshIndicator(
+                                    state = pullState,
+                                    isRefreshing = isPullRefreshing,
+                                    modifier = Modifier.align(Alignment.TopCenter),
+                                )
+                            },
                         ) {
+                            LazyColumn(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .graphicsLayer {
+                                        translationY = contentOffsetDp.dp.toPx()
+                                    },
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
                             items(
                                 items = filteredApps,
                                 key = { it.packageName },
@@ -699,6 +713,7 @@ fun AppManagerScreen(
                                 )
                             }
                         }
+                        }
                     }
                 }
             }
@@ -719,13 +734,6 @@ fun AppManagerScreen(
         )
 
         val cornerItems = buildList {
-            add(
-                CornerMenuItem(
-                    id = "refresh",
-                    label = "Aktualisieren",
-                    onClick = { reloadTrigger++ },
-                ),
-            )
             add(
                 CornerMenuItem(
                     id = "export_dir",
@@ -846,47 +854,43 @@ fun AppManagerScreen(
         }
     }
 
-    // Cache cleanup warning dialog: opens Settings sequentially or Android's global ACTION_CLEAR_APP_CACHE dialog
+    // Cache cleanup warning dialog: triggers Android's global ACTION_CLEAR_APP_CACHE dialog (Android 11+)
     if (cacheWarningApps.isNotEmpty()) {
         val targetApps = cacheWarningApps
         val clearAllIntent = remember { AppManagerRepository.buildClearAppCacheIntent() }
         MonolithDialog(
             onDismissRequest = { cacheWarningApps = emptyList() },
-            title = "Cache leeren (${targetApps.size})",
+            title = "App-Caches leeren",
             dismissLabel = "Abbrechen",
             onDismissClick = { cacheWarningApps = emptyList() },
-            confirmLabel = "Nacheinander öffnen (${targetApps.size})",
+            confirmLabel = if (clearAllIntent != null) "Alle App-Caches leeren" else "App-Info öffnen",
             onConfirmClick = {
-                val packages = targetApps.map { it.packageName }
+                val firstPkg = targetApps.firstOrNull()?.packageName
                 cacheWarningApps = emptyList()
                 selectedPackages = emptySet()
-                startSettingsFallbackQueue(packages)
+                if (clearAllIntent != null) {
+                    runCatching {
+                        systemClearCacheLauncher.launch(clearAllIntent)
+                    }.onFailure {
+                        scope.launch {
+                            snackbarHostState.showSnackbar("System-Cache-Dialog wird auf diesem Gerät nicht unterstützt")
+                        }
+                    }
+                } else if (firstPkg != null) {
+                    runCatching {
+                        context.startActivity(AppManagerRepository.buildAppDetailsIntent(firstPkg))
+                    }
+                }
             },
         ) {
             Text(
-                text = "Android erlaubt keinen direkten Zugriff auf den internen Cache anderer Apps. Nach Bestätigung werden die App-Einstellungen für alle ausgewählten Apps nacheinander geöffnet (mit Fokus auf „Speicher & Cache“) — sobald du zurückkehrst, folgt automatisch die nächste App.",
+                text = if (clearAllIntent != null) {
+                    "Android öffnet den System-Dialog zum Leeren temporärer Cache-Dateien aller installierten Apps auf einmal. Nutzerdaten bleiben erhalten."
+                } else {
+                    "Auf dieser Android-Version muss der Cache in den jeweiligen App-Einstellungen geleert werden."
+                },
                 style = MaterialTheme.typography.bodyMedium,
             )
-            if (clearAllIntent != null) {
-                Spacer(modifier = Modifier.height(10.dp))
-                OutlinedButton(
-                    onClick = {
-                        cacheWarningApps = emptyList()
-                        selectedPackages = emptySet()
-                        runCatching {
-                            systemClearCacheLauncher.launch(clearAllIntent)
-                        }.onFailure {
-                            scope.launch {
-                                snackbarHostState.showSnackbar("System-Cache-Dialog wird auf diesem Gerät nicht unterstützt")
-                            }
-                        }
-                    },
-                    shape = LocalMonolithButtonShape.current,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text("Alle App-Caches leeren (System-Dialog)")
-                }
-            }
         }
     }
 
