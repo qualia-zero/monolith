@@ -690,7 +690,7 @@ fun ArchiveToolScreen(
                     TopAppBar(
                         title = {
                             Text(
-                                text = "Archive",
+                                text = "Archivmanager",
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
@@ -706,7 +706,7 @@ fun ArchiveToolScreen(
                                 },
                             ) {
                                 Icon(
-                                    imageVector = Icons.Outlined.ViewInAr,
+                                    imageVector = Icons.Outlined.FolderZip,
                                     contentDescription = "Monolith-Menü",
                                     tint = MaterialTheme.colorScheme.primary,
                                     modifier = Modifier.size(22.dp),
@@ -1124,6 +1124,7 @@ fun ArchiveToolScreen(
         MonolithToolStarMenu(
             expanded = starMenuExpanded,
             anchorCenter = starAnchorCenter,
+            anchorIcon = Icons.Outlined.FolderZip,
             activeDestination = MonolithToolDestination.ARCHIVES,
             onSelectFiles = onNavigateToFiles,
             onSelectArchives = { starMenuExpanded = false },
@@ -1726,70 +1727,35 @@ private fun ManageArchiveContent(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             item {
-                Surface(
+                Row(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = MaterialTheme.shapes.medium,
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    Button(
+                        onClick = onPickArchiveToOpen,
+                        shape = LocalMonolithButtonShape.current,
+                        modifier = Modifier.weight(1f),
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        ) {
-                            Icon(
-                                imageVector = Icons.Outlined.FolderZip,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(32.dp),
-                            )
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "Archiv-Verwaltung",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.SemiBold,
-                                )
-                                Text(
-                                    text = "ZIP, 7z, RAR, TAR.GZ & TAR.XZ inkl. zusammenhängender Split-Archive.",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                        }
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        ) {
-                            Button(
-                                onClick = onPickArchiveToOpen,
-                                shape = LocalMonolithButtonShape.current,
-                                modifier = Modifier.weight(1f),
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Outlined.FolderOpen,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(18.dp),
-                                )
-                                Spacer(Modifier.width(6.dp))
-                                Text("Archiv öffnen…")
-                            }
-                            OutlinedButton(
-                                onClick = onSwitchToPack,
-                                shape = LocalMonolithButtonShape.current,
-                                modifier = Modifier.weight(1f),
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Outlined.Archive,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(18.dp),
-                                )
-                                Spacer(Modifier.width(6.dp))
-                                Text("Neu packen")
-                            }
-                        }
+                        Icon(
+                            imageVector = Icons.Outlined.FolderOpen,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text("Archiv öffnen…")
+                    }
+                    OutlinedButton(
+                        onClick = onSwitchToPack,
+                        shape = LocalMonolithButtonShape.current,
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Archive,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text("Neu packen")
                     }
                 }
             }
@@ -1831,7 +1797,7 @@ private fun ManageArchiveContent(
                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                     ) {
                         Text(
-                            text = "Keine Archive in den Hauptordnern gefunden. Tippe oben auf „Archiv öffnen…“, um beliebige Ordner zu durchsuchen.",
+                            text = "Keine Archive gefunden.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(16.dp),

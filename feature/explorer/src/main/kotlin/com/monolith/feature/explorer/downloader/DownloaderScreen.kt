@@ -52,7 +52,6 @@ import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.Usb
 import androidx.compose.material.icons.outlined.VideoFile
-import androidx.compose.material.icons.outlined.ViewInAr
 import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -116,15 +115,6 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.Locale
 
-private enum class ActiveDownloaderDialog {
-    FORMAT,
-    SPONSORBLOCK,
-    EMBEDDING,
-    SLEEP,
-    OUTPUT,
-    ENGINE,
-}
-
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun DownloaderScreen(
@@ -157,7 +147,7 @@ fun DownloaderScreen(
     }
 
     var urlInput by remember { mutableStateOf("") }
-    var activeDialog by remember { mutableStateOf<ActiveDownloaderDialog?>(null) }
+    var showDownloaderSettings by remember { mutableStateOf(false) }
 
     var starMenuExpanded by remember { mutableStateOf(false) }
     var menuExpanded by remember { mutableStateOf(false) }
@@ -178,39 +168,60 @@ fun DownloaderScreen(
         }
     }
 
-    BackHandler(enabled = starMenuExpanded || menuExpanded) {
+    BackHandler(enabled = showDownloaderSettings) {
+        MonolithHaptics.backNav(context, view)
+        showDownloaderSettings = false
+    }
+
+    BackHandler(enabled = !showDownloaderSettings && (starMenuExpanded || menuExpanded)) {
         starMenuExpanded = false
         menuExpanded = false
     }
 
-    BackHandler(enabled = !starMenuExpanded && !menuExpanded) {
+    BackHandler(enabled = !showDownloaderSettings && !starMenuExpanded && !menuExpanded) {
         MonolithHaptics.backNav(context, view)
         onBack()
     }
 
-    val folderDisplayName = remember(resolvedOutputDir) {
-        File(resolvedOutputDir).name.ifBlank { resolvedOutputDir }
+    if (showDownloaderSettings) {
+        DownloaderSettingsSubscreen(
+            settings = settings,
+            engineState = engineState,
+            snackbarHostState = snackbarHostState,
+            onUpdateNow = { channel ->
+                scope.launch {
+                    val result = DownloaderEngine.updateEngine(
+                        context = context,
+                        channel = channel,
+                        forceCheck = true,
+                    )
+                    result.onSuccess { status ->
+                        val msg = when (status) {
+                            com.yausername.youtubedl_android.YoutubeDL.UpdateStatus.DONE ->
+                                "yt-dlp (${channel.label}) aktualisiert."
+                            com.yausername.youtubedl_android.YoutubeDL.UpdateStatus.ALREADY_UP_TO_DATE ->
+                                "yt-dlp (${channel.label}) ist bereits aktuell."
+                            null -> "Update-Prüfung abgeschlossen."
+                        }
+                        snackbarHostState.showSnackbar(msg)
+                    }.onFailure { err ->
+                        snackbarHostState.showSnackbar(
+                            err.message ?: "yt-dlp konnte nicht aktualisiert werden.",
+                        )
+                    }
+                }
+            },
+            onBack = {
+                MonolithHaptics.backNav(context, view)
+                showDownloaderSettings = false
+            },
+            modifier = modifier,
+        )
+        return
     }
+
     val formatChipText = remember(activeMode, settings) {
         formatShortSummary(activeMode, settings)
-    }
-    val sponsorBlockSummary = remember(settings.sponsorBlockMode, settings.sponsorBlockCategories) {
-        when (settings.sponsorBlockMode) {
-            SponsorBlockMode.OFF -> "SponsorBlock: Aus"
-            SponsorBlockMode.REMOVE -> "SB: Entfernen (${settings.sponsorBlockCategories.size})"
-            SponsorBlockMode.MARK -> "SB: Markieren (${settings.sponsorBlockCategories.size})"
-        }
-    }
-    val sleepSummary = remember(
-        settings.sleepIntervalEnabled,
-        settings.minSleepIntervalSec,
-        settings.maxSleepIntervalSec,
-    ) {
-        if (settings.sleepIntervalEnabled && settings.maxSleepIntervalSec > 0) {
-            "Sleep: ${settings.minSleepIntervalSec}–${settings.maxSleepIntervalSec}s"
-        } else {
-            "Sleep: Aus"
-        }
     }
 
     Box(
@@ -272,7 +283,7 @@ fun DownloaderScreen(
                             },
                         ) {
                             Icon(
-                                imageVector = Icons.Outlined.ViewInAr,
+                                imageVector = Icons.Outlined.Download,
                                 contentDescription = "Monolith-Menü",
                                 tint = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.size(22.dp),
@@ -309,12 +320,11 @@ fun DownloaderScreen(
                         activeMode = activeMode,
                         urlInput = urlInput,
                         formatSummary = formatChipText,
-                        summaryLine = "Ziel: $folderDisplayName · $formatChipText · $sponsorBlockSummary · $sleepSummary · ${settings.updateChannel.label}",
                         hasStoragePermission = hasStoragePermission,
                         onModeSelect = { mode ->
                             DownloaderSettingsStore.update { it.copy(defaultMode = mode) }
                         },
-                        onOpenFormatDialog = { activeDialog = ActiveDownloaderDialog.FORMAT },
+                        onOpenFormatSettings = { showDownloaderSettings = true },
                         onUrlInputChange = { urlInput = it },
                         onPasteClick = {
                             val clipboard = context.getSystemService(ClipboardManager::class.java)
@@ -468,13 +478,9 @@ fun DownloaderScreen(
                                     modifier = Modifier.size(32.dp),
                                 )
                                 Text(
-                                    text = "Noch keine Downloads",
+                                    text = "Keine Downloads",
                                     style = MaterialTheme.typography.titleSmall,
                                     fontWeight = FontWeight.Medium,
-                                )
-                                Text(
-                                    text = "Füge oben eine oder mehrere URLs ein und starte den Download.",
-                                    style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
@@ -519,6 +525,7 @@ fun DownloaderScreen(
         MonolithToolStarMenu(
             expanded = starMenuExpanded,
             anchorCenter = starAnchorCenter,
+            anchorIcon = Icons.Outlined.Download,
             activeDestination = MonolithToolDestination.DOWNLOADER,
             onSelectFiles = onNavigateToFiles,
             onSelectArchives = onNavigateToArchives,
@@ -528,61 +535,17 @@ fun DownloaderScreen(
             onDismiss = { starMenuExpanded = false },
         )
 
-        val cornerItems = remember(settings, activeMode, folderDisplayName, engineState) {
+        val cornerItems = remember(activeMode, formatChipText, engineState.version, engineState.versionName, settings.updateChannel) {
             listOf(
                 CornerMenuItem(
-                    id = "format",
-                    label = "Format & Qualität",
-                    subtitle = "${activeMode.label}: ${formatShortSummary(activeMode, settings)}",
-                    onClick = { activeDialog = ActiveDownloaderDialog.FORMAT },
-                ),
-                CornerMenuItem(
-                    id = "sponsorblock",
-                    label = "SponsorBlock",
-                    subtitle = when (settings.sponsorBlockMode) {
-                        SponsorBlockMode.OFF -> "Aus"
-                        else -> "${settings.sponsorBlockMode.label} (${settings.sponsorBlockCategories.size})"
-                    },
-                    onClick = { activeDialog = ActiveDownloaderDialog.SPONSORBLOCK },
-                ),
-                CornerMenuItem(
-                    id = "embedding",
-                    label = "Einbettung",
-                    subtitle = buildEmbeddingSubtitle(settings),
-                    onClick = { activeDialog = ActiveDownloaderDialog.EMBEDDING },
-                ),
-                CornerMenuItem(
-                    id = "sleep",
-                    label = "Wartezeit (Sleep)",
-                    subtitle = if (settings.sleepIntervalEnabled && settings.maxSleepIntervalSec > 0) {
-                        "${settings.minSleepIntervalSec}–${settings.maxSleepIntervalSec} s"
-                    } else {
-                        "Aus"
-                    },
-                    onClick = { activeDialog = ActiveDownloaderDialog.SLEEP },
-                ),
-                CornerMenuItem(
-                    id = "output",
-                    label = "Zielordner & Name",
-                    subtitle = folderDisplayName,
-                    onClick = { activeDialog = ActiveDownloaderDialog.OUTPUT },
-                ),
-                CornerMenuItem(
-                    id = "engine",
-                    label = "yt-dlp Engine",
-                    subtitle = buildString {
-                        append(settings.updateChannel.label)
-                        val ver = engineState.version ?: engineState.versionName
-                        if (!ver.isNullOrBlank()) {
-                            append(" · ")
-                            append(ver)
-                        }
-                    },
-                    onClick = { activeDialog = ActiveDownloaderDialog.ENGINE },
+                    id = "downloader_settings",
+                    label = "Downloader-Einstellungen",
+                    subtitle = "${activeMode.label}: $formatChipText · ${settings.updateChannel.label}",
+                    onClick = { showDownloaderSettings = true },
                 ),
                 CornerMenuItem(
                     id = "settings",
-                    label = "Einstellungen",
+                    label = "App-Einstellungen",
                     onClick = onOpenSettings,
                 ),
             )
@@ -594,117 +557,6 @@ fun DownloaderScreen(
             items = cornerItems,
             onDismiss = { menuExpanded = false },
         )
-    }
-
-    when (activeDialog) {
-        ActiveDownloaderDialog.FORMAT -> FormatQualityDialog(
-            settings = settings,
-            onDismiss = { activeDialog = null },
-            onConfirm = { updated ->
-                DownloaderSettingsStore.update { updated }
-                activeDialog = null
-            },
-        )
-        ActiveDownloaderDialog.SPONSORBLOCK -> SponsorBlockDialog(
-            settings = settings,
-            onDismiss = { activeDialog = null },
-            onConfirm = { mode, categories ->
-                DownloaderSettingsStore.update {
-                    it.copy(sponsorBlockMode = mode, sponsorBlockCategories = categories)
-                }
-                activeDialog = null
-            },
-        )
-        ActiveDownloaderDialog.EMBEDDING -> EmbeddingDialog(
-            settings = settings,
-            onDismiss = { activeDialog = null },
-            onConfirm = { meta, chapters, thumbMode, subs, subLangs ->
-                DownloaderSettingsStore.update {
-                    it.copy(
-                        embedMetadata = meta,
-                        embedChapters = chapters,
-                        thumbnailEmbedMode = thumbMode,
-                        embedSubtitles = subs,
-                        subtitleLanguages = subLangs.trim().ifBlank { "de,en" },
-                    )
-                }
-                activeDialog = null
-            },
-        )
-        ActiveDownloaderDialog.SLEEP -> SleepIntervalDialog(
-            settings = settings,
-            onDismiss = { activeDialog = null },
-            onConfirm = { enabled, minSec, maxSec ->
-                DownloaderSettingsStore.update {
-                    it.copy(
-                        sleepIntervalEnabled = enabled,
-                        minSleepIntervalSec = minSec,
-                        maxSleepIntervalSec = maxSec,
-                    )
-                }
-                activeDialog = null
-            },
-        )
-        ActiveDownloaderDialog.OUTPUT -> OutputDirectoryDialog(
-            settings = settings,
-            onDismiss = { activeDialog = null },
-            onConfirm = { outputDir, template, allowPlaylists ->
-                DownloaderSettingsStore.update {
-                    it.copy(
-                        outputDirectory = outputDir,
-                        outputTemplate = template.trim().ifBlank { "%(title)s.%(ext)s" },
-                        allowPlaylists = allowPlaylists,
-                    )
-                }
-                activeDialog = null
-            },
-        )
-        ActiveDownloaderDialog.ENGINE -> YtDlpEngineDialog(
-            settings = settings,
-            engineState = engineState,
-            onUpdateNow = { channel ->
-                scope.launch {
-                    val result = DownloaderEngine.updateEngine(
-                        context = context,
-                        channel = channel,
-                        forceCheck = true,
-                    )
-                    result.onSuccess { status ->
-                        val msg = when (status) {
-                            com.yausername.youtubedl_android.YoutubeDL.UpdateStatus.DONE ->
-                                "yt-dlp (${channel.label}) aktualisiert."
-                            com.yausername.youtubedl_android.YoutubeDL.UpdateStatus.ALREADY_UP_TO_DATE ->
-                                "yt-dlp (${channel.label}) ist bereits aktuell."
-                            null -> "Update-Prüfung abgeschlossen."
-                        }
-                        snackbarHostState.showSnackbar(msg)
-                    }.onFailure { err ->
-                        snackbarHostState.showSnackbar(
-                            err.message ?: "yt-dlp konnte nicht aktualisiert werden.",
-                        )
-                    }
-                }
-            },
-            onResetDefaults = {
-                DownloaderSettingsStore.resetToDefaults()
-                activeDialog = null
-                scope.launch {
-                    snackbarHostState.showSnackbar("Standardeinstellungen wiederhergestellt.")
-                }
-            },
-            onDismiss = { activeDialog = null },
-            onConfirm = { channel, autoUpdate, extraArgs ->
-                DownloaderSettingsStore.update {
-                    it.copy(
-                        updateChannel = channel,
-                        autoUpdateEngine = autoUpdate,
-                        extraArgs = extraArgs,
-                    )
-                }
-                activeDialog = null
-            },
-        )
-        null -> Unit
     }
 }
 
@@ -718,10 +570,9 @@ private fun DownloaderInputCard(
     activeMode: DownloadMode,
     urlInput: String,
     formatSummary: String,
-    summaryLine: String,
     hasStoragePermission: Boolean,
     onModeSelect: (DownloadMode) -> Unit,
-    onOpenFormatDialog: () -> Unit,
+    onOpenFormatSettings: () -> Unit,
     onUrlInputChange: (String) -> Unit,
     onPasteClick: () -> Unit,
     onClearClick: () -> Unit,
@@ -776,7 +627,7 @@ private fun DownloaderInputCard(
                     shape = LocalMonolithButtonShape.current,
                     color = MaterialTheme.colorScheme.surfaceContainerLow,
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                    onClick = onOpenFormatDialog,
+                    onClick = onOpenFormatSettings,
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
@@ -822,14 +673,6 @@ private fun DownloaderInputCard(
                         }
                     }
                 },
-            )
-
-            Text(
-                text = summaryLine,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
             )
 
             if (!hasStoragePermission) {
@@ -1197,630 +1040,546 @@ private fun DownloadTaskCard(
 }
 
 // -----------------------------------------------------------------------------
-// Settings Dialogs
+// Unified Downloader Settings Subscreen
 // -----------------------------------------------------------------------------
 
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-private fun FormatQualityDialog(
+private fun DownloaderSettingsSubscreen(
     settings: DownloaderSettings,
-    onDismiss: () -> Unit,
-    onConfirm: (DownloaderSettings) -> Unit,
+    engineState: YtDlpEngineState,
+    snackbarHostState: SnackbarHostState,
+    onUpdateNow: (YtDlpChannel) -> Unit,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    var videoPreset by remember(settings) { mutableStateOf(settings.videoFormatPreset) }
-    var maxHeight by remember(settings) { mutableStateOf(settings.videoMaxHeight) }
-    var customVideo by remember(settings) { mutableStateOf(settings.customVideoFormat) }
-    var audioPreset by remember(settings) { mutableStateOf(settings.audioFormatPreset) }
-    var customAudio by remember(settings) { mutableStateOf(settings.customAudioFormat) }
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
 
-    MonolithDialog(
-        onDismissRequest = onDismiss,
-        title = "Format & Qualität",
-        wide = true,
-        dismissLabel = "Abbrechen",
-        onDismissClick = onDismiss,
-        confirmLabel = "Übernehmen",
-        onConfirmClick = {
-            onConfirm(
-                settings.copy(
-                    videoFormatPreset = videoPreset,
-                    videoMaxHeight = maxHeight,
-                    customVideoFormat = customVideo,
-                    audioFormatPreset = audioPreset,
-                    customAudioFormat = customAudio,
-                ),
+    var minSleepText by remember(settings.minSleepIntervalSec) {
+        mutableStateOf(settings.minSleepIntervalSec.toString())
+    }
+    var maxSleepText by remember(settings.maxSleepIntervalSec) {
+        mutableStateOf(settings.maxSleepIntervalSec.toString())
+    }
+    var showDirectoryPicker by remember { mutableStateOf(false) }
+    var showResetConfirm by remember { mutableStateOf(false) }
+
+    val displayedOutputDir = remember(settings.outputDirectory) {
+        DownloaderSettingsStore.resolveOutputDirectory(settings)
+    }
+    val versionDisplay = engineState.version
+        ?: engineState.versionName
+        ?: if (engineState.isInitializing) "Wird geladen…" else "Nicht initialisiert"
+
+    Scaffold(
+        modifier = modifier.fillMaxSize(),
+        containerColor = if (LocalMonolithThemeMode.current == ThemeMode.OBSIDIAN) {
+            Color.Transparent
+        } else {
+            MaterialTheme.colorScheme.background
+        },
+        contentColor = MaterialTheme.colorScheme.onBackground,
+        snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
+        topBar = {
+            TopAppBar(
+                title = { Text("Downloader-Einstellungen") },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Zurück",
+                        )
+                    }
+                },
             )
         },
-    ) {
-        Text(
-            text = "Video-Format",
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.primary,
-        )
-        VideoFormatPreset.entries.forEach { preset ->
-            MonolithDialogOption(
-                label = preset.label,
-                subtitle = preset.subtitle,
-                selected = videoPreset == preset,
-                onClick = { videoPreset = preset },
-            )
-        }
-        AnimatedVisibility(visible = videoPreset == VideoFormatPreset.CUSTOM) {
-            OutlinedTextField(
-                value = customVideo,
-                onValueChange = { customVideo = it },
-                label = { Text("Video-Format-Ausdruck (-f)") },
-                placeholder = { Text("bv*+ba/b") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-            )
-        }
-
-        Text(
-            text = "Maximale Auflösung",
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .imePadding()
+                .navigationBarsPadding()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            VIDEO_HEIGHT_OPTIONS.forEach { heightOpt ->
-                FilterChip(
-                    selected = maxHeight == heightOpt,
-                    shape = LocalMonolithButtonShape.current,
-                    onClick = { maxHeight = heightOpt },
-                    label = { Text(heightOpt?.let { "${it}p" } ?: "Bestmöglich") },
-                )
-            }
-        }
-
-        HorizontalDivider(
-            modifier = Modifier.padding(vertical = 4.dp),
-            thickness = 0.5.dp,
-            color = MaterialTheme.colorScheme.outlineVariant,
-        )
-
-        Text(
-            text = "Audio-Format",
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.primary,
-        )
-        AudioFormatPreset.entries.forEach { preset ->
-            MonolithDialogOption(
-                label = preset.label,
-                subtitle = preset.subtitle,
-                selected = audioPreset == preset,
-                onClick = { audioPreset = preset },
-            )
-        }
-        AnimatedVisibility(visible = audioPreset == AudioFormatPreset.CUSTOM) {
-            OutlinedTextField(
-                value = customAudio,
-                onValueChange = { customAudio = it },
-                label = { Text("Audio-Format-Ausdruck (-f)") },
-                placeholder = { Text("bestaudio/best") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-            )
-        }
-    }
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun SponsorBlockDialog(
-    settings: DownloaderSettings,
-    onDismiss: () -> Unit,
-    onConfirm: (SponsorBlockMode, Set<String>) -> Unit,
-) {
-    var mode by remember(settings) { mutableStateOf(settings.sponsorBlockMode) }
-    var categories by remember(settings) { mutableStateOf(settings.sponsorBlockCategories) }
-
-    val missingCategories = mode != SponsorBlockMode.OFF && categories.isEmpty()
-
-    MonolithDialog(
-        onDismissRequest = onDismiss,
-        title = "SponsorBlock",
-        dismissLabel = "Abbrechen",
-        onDismissClick = onDismiss,
-        confirmLabel = "Übernehmen",
-        confirmEnabled = !missingCategories,
-        onConfirmClick = { onConfirm(mode, categories) },
-    ) {
-        SponsorBlockMode.entries.forEach { entry ->
-            MonolithDialogOption(
-                label = entry.label,
-                subtitle = entry.subtitle,
-                selected = mode == entry,
-                onClick = { mode = entry },
-            )
-        }
-
-        if (mode != SponsorBlockMode.OFF) {
-            HorizontalDivider(
-                modifier = Modifier.padding(vertical = 4.dp),
-                thickness = 0.5.dp,
-                color = MaterialTheme.colorScheme.outlineVariant,
-            )
+            // 1. Format & Qualität
             Text(
-                text = "Kategorien",
+                text = "Format & Qualität",
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.primary,
+            )
+            Text(
+                text = "Video-Format",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            VideoFormatPreset.entries.forEach { preset ->
+                MonolithDialogOption(
+                    label = preset.label,
+                    subtitle = preset.subtitle,
+                    selected = settings.videoFormatPreset == preset,
+                    onClick = { DownloaderSettingsStore.update { it.copy(videoFormatPreset = preset) } },
+                )
+            }
+            AnimatedVisibility(visible = settings.videoFormatPreset == VideoFormatPreset.CUSTOM) {
+                OutlinedTextField(
+                    value = settings.customVideoFormat,
+                    onValueChange = { raw ->
+                        DownloaderSettingsStore.update { it.copy(customVideoFormat = raw) }
+                    },
+                    label = { Text("Video-Format-Ausdruck (-f)") },
+                    placeholder = { Text("bv*+ba/b") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+
+            Text(
+                text = "Maximale Auflösung",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                SPONSORBLOCK_CATEGORIES.forEach { cat ->
-                    val selected = cat.id in categories
+                VIDEO_HEIGHT_OPTIONS.forEach { heightOpt ->
                     FilterChip(
-                        selected = selected,
+                        selected = settings.videoMaxHeight == heightOpt,
                         shape = LocalMonolithButtonShape.current,
                         onClick = {
-                            categories = if (selected) {
-                                categories - cat.id
-                            } else {
-                                categories + cat.id
-                            }
+                            DownloaderSettingsStore.update { it.copy(videoMaxHeight = heightOpt) }
                         },
-                        label = { Text(cat.label) },
+                        label = { Text(heightOpt?.let { "${it}p" } ?: "Bestmöglich") },
                     )
                 }
             }
-            if (missingCategories) {
-                Text(
-                    text = "Bitte mindestens eine Kategorie auswählen.",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.error,
+
+            Text(
+                text = "Audio-Format",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            AudioFormatPreset.entries.forEach { preset ->
+                MonolithDialogOption(
+                    label = preset.label,
+                    subtitle = preset.subtitle,
+                    selected = settings.audioFormatPreset == preset,
+                    onClick = { DownloaderSettingsStore.update { it.copy(audioFormatPreset = preset) } },
                 )
             }
-        }
-    }
-}
+            AnimatedVisibility(visible = settings.audioFormatPreset == AudioFormatPreset.CUSTOM) {
+                OutlinedTextField(
+                    value = settings.customAudioFormat,
+                    onValueChange = { raw ->
+                        DownloaderSettingsStore.update { it.copy(customAudioFormat = raw) }
+                    },
+                    label = { Text("Audio-Format-Ausdruck (-f)") },
+                    placeholder = { Text("bestaudio/best") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
 
-@Composable
-private fun EmbeddingDialog(
-    settings: DownloaderSettings,
-    onDismiss: () -> Unit,
-    onConfirm: (Boolean, Boolean, ThumbnailEmbedMode, Boolean, String) -> Unit,
-) {
-    var embedMetadata by remember(settings) { mutableStateOf(settings.embedMetadata) }
-    var embedChapters by remember(settings) { mutableStateOf(settings.embedChapters) }
-    var thumbnailMode by remember(settings) { mutableStateOf(settings.thumbnailEmbedMode) }
-    var embedSubtitles by remember(settings) { mutableStateOf(settings.embedSubtitles) }
-    var subtitleLanguages by remember(settings) { mutableStateOf(settings.subtitleLanguages) }
+            HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
 
-    MonolithDialog(
-        onDismissRequest = onDismiss,
-        title = "Einbettung",
-        dismissLabel = "Abbrechen",
-        onDismissClick = onDismiss,
-        confirmLabel = "Übernehmen",
-        onConfirmClick = {
-            onConfirm(
-                embedMetadata,
-                embedChapters,
-                thumbnailMode,
-                embedSubtitles,
-                subtitleLanguages,
+            // 2. SponsorBlock
+            Text(
+                text = "SponsorBlock",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
             )
-        },
-    ) {
-        DialogSwitchRow(
-            title = "Metadaten einbetten",
-            subtitle = "Titel, Kanal, Datum und Beschreibung (--embed-metadata)",
-            checked = embedMetadata,
-            onCheckedChange = { embedMetadata = it },
-        )
-        DialogSwitchRow(
-            title = "Kapitel einbetten",
-            subtitle = "Video- und Podcast-Kapitelmarken (--embed-chapters)",
-            checked = embedChapters,
-            onCheckedChange = { embedChapters = it },
-        )
-        DialogSwitchRow(
-            title = "Untertitel einbetten",
-            subtitle = "Untertitel in Video-Container einbetten (--embed-subs)",
-            checked = embedSubtitles,
-            onCheckedChange = { embedSubtitles = it },
-        )
-        AnimatedVisibility(visible = embedSubtitles) {
+            SponsorBlockMode.entries.forEach { mode ->
+                MonolithDialogOption(
+                    label = mode.label,
+                    subtitle = mode.subtitle,
+                    selected = settings.sponsorBlockMode == mode,
+                    onClick = { DownloaderSettingsStore.update { it.copy(sponsorBlockMode = mode) } },
+                )
+            }
+            AnimatedVisibility(visible = settings.sponsorBlockMode != SponsorBlockMode.OFF) {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    SPONSORBLOCK_CATEGORIES.forEach { cat ->
+                        val selected = cat.id in settings.sponsorBlockCategories
+                        FilterChip(
+                            selected = selected,
+                            shape = LocalMonolithButtonShape.current,
+                            onClick = {
+                                val nextCategories = if (selected) {
+                                    (settings.sponsorBlockCategories - cat.id).ifEmpty { settings.sponsorBlockCategories }
+                                } else {
+                                    settings.sponsorBlockCategories + cat.id
+                                }
+                                DownloaderSettingsStore.update { it.copy(sponsorBlockCategories = nextCategories) }
+                            },
+                            label = { Text(cat.label) },
+                        )
+                    }
+                }
+            }
+
+            HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
+
+            // 3. Einbettung
+            Text(
+                text = "Einbettung",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            DialogSwitchRow(
+                title = "Metadaten einbetten",
+                subtitle = "Titel, Kanal, Datum und Beschreibung (--embed-metadata)",
+                checked = settings.embedMetadata,
+                onCheckedChange = { enabled ->
+                    DownloaderSettingsStore.update { it.copy(embedMetadata = enabled) }
+                },
+            )
+            DialogSwitchRow(
+                title = "Kapitel einbetten",
+                subtitle = "Video- und Podcast-Kapitelmarken (--embed-chapters)",
+                checked = settings.embedChapters,
+                onCheckedChange = { enabled ->
+                    DownloaderSettingsStore.update { it.copy(embedChapters = enabled) }
+                },
+            )
+            DialogSwitchRow(
+                title = "Untertitel einbetten",
+                subtitle = "Untertitel in Video-Container einbetten (--embed-subs)",
+                checked = settings.embedSubtitles,
+                onCheckedChange = { enabled ->
+                    DownloaderSettingsStore.update { it.copy(embedSubtitles = enabled) }
+                },
+            )
+            AnimatedVisibility(visible = settings.embedSubtitles) {
+                OutlinedTextField(
+                    value = settings.subtitleLanguages,
+                    onValueChange = { raw ->
+                        DownloaderSettingsStore.update { it.copy(subtitleLanguages = raw) }
+                    },
+                    label = { Text("Untertitel-Sprachen (--sub-langs)") },
+                    placeholder = { Text("de,en") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            Text(
+                text = "Vorschaubild (Thumbnail)",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            ThumbnailEmbedMode.entries.forEach { mode ->
+                MonolithDialogOption(
+                    label = mode.label,
+                    subtitle = mode.subtitle,
+                    selected = settings.thumbnailEmbedMode == mode,
+                    onClick = { DownloaderSettingsStore.update { it.copy(thumbnailEmbedMode = mode) } },
+                )
+            }
+
+            HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
+
+            // 4. Wartezeit (Sleep)
+            Text(
+                text = "Wartezeit (Sleep)",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            DialogSwitchRow(
+                title = "Sleep-Intervall aktiv",
+                subtitle = "Zufällige Pause zwischen Anfragen zum Schutz vor Rate-Limits",
+                checked = settings.sleepIntervalEnabled,
+                onCheckedChange = { enabled ->
+                    DownloaderSettingsStore.update { it.copy(sleepIntervalEnabled = enabled) }
+                },
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                OutlinedTextField(
+                    value = minSleepText,
+                    onValueChange = { raw ->
+                        val digits = raw.filter { it.isDigit() }.take(4)
+                        minSleepText = digits
+                        digits.toIntOrNull()?.let { v ->
+                            val clamped = v.coerceIn(0, 3600)
+                            DownloaderSettingsStore.update {
+                                it.copy(
+                                    minSleepIntervalSec = clamped,
+                                    maxSleepIntervalSec = it.maxSleepIntervalSec.coerceAtLeast(clamped),
+                                )
+                            }
+                        }
+                    },
+                    enabled = settings.sleepIntervalEnabled,
+                    label = { Text("Min. (Sek.)") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.weight(1f),
+                )
+                OutlinedTextField(
+                    value = maxSleepText,
+                    onValueChange = { raw ->
+                        val digits = raw.filter { it.isDigit() }.take(4)
+                        maxSleepText = digits
+                        digits.toIntOrNull()?.let { v ->
+                            val clamped = v.coerceIn(1, 3600)
+                            DownloaderSettingsStore.update {
+                                it.copy(maxSleepIntervalSec = clamped.coerceAtLeast(it.minSleepIntervalSec))
+                            }
+                        }
+                    },
+                    enabled = settings.sleepIntervalEnabled,
+                    label = { Text("Max. (Sek.)") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.weight(1f),
+                )
+            }
+
+            HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
+
+            // 5. Zielordner & Name
+            Text(
+                text = "Zielordner & Name",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = CutCornerShape(8.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerLow,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                onClick = { showDirectoryPicker = true },
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.FolderOpen,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = File(displayedOutputDir).name.ifBlank { displayedOutputDir },
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            text = displayedOutputDir,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                OutlinedButton(
+                    onClick = { showDirectoryPicker = true },
+                    shape = LocalMonolithButtonShape.current,
+                ) {
+                    Text("Ordner wählen…")
+                }
+                if (settings.outputDirectory.isNotBlank()) {
+                    TextButton(
+                        onClick = { DownloaderSettingsStore.update { it.copy(outputDirectory = "") } },
+                        shape = LocalMonolithButtonShape.current,
+                    ) {
+                        Text("Standard (Download)")
+                    }
+                }
+            }
             OutlinedTextField(
-                value = subtitleLanguages,
-                onValueChange = { subtitleLanguages = it },
-                label = { Text("Untertitel-Sprachen (--sub-langs)") },
-                placeholder = { Text("de,en") },
+                value = settings.outputTemplate,
+                onValueChange = { raw ->
+                    DownloaderSettingsStore.update { it.copy(outputTemplate = raw) }
+                },
+                label = { Text("Dateinamens-Vorlage (-o)") },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
-        }
-
-        HorizontalDivider(
-            modifier = Modifier.padding(vertical = 4.dp),
-            thickness = 0.5.dp,
-            color = MaterialTheme.colorScheme.outlineVariant,
-        )
-        Text(
-            text = "Vorschaubild (Thumbnail)",
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.primary,
-        )
-        ThumbnailEmbedMode.entries.forEach { mode ->
-            MonolithDialogOption(
-                label = mode.label,
-                subtitle = mode.subtitle,
-                selected = thumbnailMode == mode,
-                onClick = { thumbnailMode = mode },
-            )
-        }
-    }
-}
-
-@Composable
-private fun SleepIntervalDialog(
-    settings: DownloaderSettings,
-    onDismiss: () -> Unit,
-    onConfirm: (Boolean, Int, Int) -> Unit,
-) {
-    var enabled by remember(settings) { mutableStateOf(settings.sleepIntervalEnabled) }
-    var minText by remember(settings) { mutableStateOf(settings.minSleepIntervalSec.toString()) }
-    var maxText by remember(settings) { mutableStateOf(settings.maxSleepIntervalSec.toString()) }
-    var validationError by remember { mutableStateOf<String?>(null) }
-
-    MonolithDialog(
-        onDismissRequest = onDismiss,
-        title = "Wartezeit (Sleep)",
-        dismissLabel = "Abbrechen",
-        onDismissClick = onDismiss,
-        confirmLabel = "Übernehmen",
-        onConfirmClick = {
-            if (!enabled) {
-                onConfirm(false, settings.minSleepIntervalSec, settings.maxSleepIntervalSec)
-            } else {
-                val minVal = minText.trim().toIntOrNull()
-                val maxVal = maxText.trim().toIntOrNull()
-                when {
-                    minVal == null || maxVal == null -> {
-                        validationError = "Bitte gültige ganze Sekundenwerte eingeben."
-                    }
-                    minVal < 0 || maxVal <= 0 -> {
-                        validationError = "Maximalwert muss größer als 0 sein."
-                    }
-                    maxVal < minVal -> {
-                        validationError = "Maximalwert darf nicht kleiner als Minimalwert sein."
-                    }
-                    maxVal > 3600 -> {
-                        validationError = "Maximalwert darf höchstens 3600 Sekunden betragen."
-                    }
-                    else -> {
-                        onConfirm(true, minVal, maxVal)
-                    }
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                OUTPUT_TEMPLATE_PRESETS.forEach { (presetTemplate, label) ->
+                    FilterChip(
+                        selected = settings.outputTemplate.trim() == presetTemplate,
+                        shape = LocalMonolithButtonShape.current,
+                        onClick = {
+                            DownloaderSettingsStore.update { it.copy(outputTemplate = presetTemplate) }
+                        },
+                        label = { Text(label) },
+                    )
                 }
             }
-        },
-    ) {
-        DialogSwitchRow(
-            title = "Sleep-Intervall aktiv",
-            subtitle = "Zufällige Pause zwischen Anfragen zum Schutz vor Rate-Limits",
-            checked = enabled,
-            onCheckedChange = {
-                enabled = it
-                validationError = null
-            },
-        )
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            OutlinedTextField(
-                value = minText,
-                onValueChange = { raw ->
-                    minText = raw.filter { it.isDigit() }.take(4)
-                    validationError = null
+            DialogSwitchRow(
+                title = "Playlists herunterladen",
+                subtitle = "Bei Playlist-Links alle Titel herunterladen statt nur ein einzelnes Video",
+                checked = settings.allowPlaylists,
+                onCheckedChange = { enabled ->
+                    DownloaderSettingsStore.update { it.copy(allowPlaylists = enabled) }
                 },
-                enabled = enabled,
-                label = { Text("Min. (Sek.)") },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                modifier = Modifier.weight(1f),
             )
-            OutlinedTextField(
-                value = maxText,
-                onValueChange = { raw ->
-                    maxText = raw.filter { it.isDigit() }.take(4)
-                    validationError = null
-                },
-                enabled = enabled,
-                label = { Text("Max. (Sek.)") },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                modifier = Modifier.weight(1f),
-            )
-        }
-        if (validationError != null) {
+
+            HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
+
+            // 6. yt-dlp Engine
             Text(
-                text = validationError!!,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.error,
+                text = "yt-dlp Engine",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
             )
-        }
-    }
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun OutputDirectoryDialog(
-    settings: DownloaderSettings,
-    onDismiss: () -> Unit,
-    onConfirm: (String, String, Boolean) -> Unit,
-) {
-    var draftOutputDir by remember { mutableStateOf(settings.outputDirectory) }
-    var template by remember { mutableStateOf(settings.outputTemplate) }
-    var allowPlaylists by remember { mutableStateOf(settings.allowPlaylists) }
-    var showDirectoryPicker by remember { mutableStateOf(false) }
-
-    val displayedPath = remember(draftOutputDir) {
-        draftOutputDir.trim().ifBlank {
-            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS).absolutePath
-        }
-    }
-
-    MonolithDialog(
-        onDismissRequest = onDismiss,
-        title = "Zielordner & Name",
-        wide = true,
-        dismissLabel = "Abbrechen",
-        onDismissClick = onDismiss,
-        confirmLabel = "Übernehmen",
-        onConfirmClick = {
-            onConfirm(
-                draftOutputDir.trim(),
-                template,
-                allowPlaylists,
-            )
-        },
-    ) {
-        Text(
-            text = "Zielordner",
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.primary,
-        )
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = CutCornerShape(8.dp),
-            color = MaterialTheme.colorScheme.surfaceContainerLow,
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-            onClick = { showDirectoryPicker = true },
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = CutCornerShape(8.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerLow,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
             ) {
-                Icon(
-                    imageVector = Icons.Outlined.FolderOpen,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                )
-                Column(modifier = Modifier.weight(1f)) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
                     Text(
-                        text = File(displayedPath).name.ifBlank { displayedPath },
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Medium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        text = displayedPath,
+                        text = "Installierte Version",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
                     )
+                    Text(
+                        text = versionDisplay,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    if (!engineState.lastUpdateMessage.isNullOrBlank()) {
+                        Text(
+                            text = engineState.lastUpdateMessage,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    if (!engineState.errorMessage.isNullOrBlank()) {
+                        Text(
+                            text = engineState.errorMessage,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
                 }
             }
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            OutlinedButton(
-                onClick = { showDirectoryPicker = true },
-                shape = LocalMonolithButtonShape.current,
-            ) {
-                Text("Ordner wählen…")
-            }
-            if (draftOutputDir.isNotBlank()) {
-                TextButton(
-                    onClick = { draftOutputDir = "" },
-                    shape = LocalMonolithButtonShape.current,
-                ) {
-                    Text("Standard (Download)")
-                }
-            }
-        }
-
-        HorizontalDivider(
-            modifier = Modifier.padding(vertical = 4.dp),
-            thickness = 0.5.dp,
-            color = MaterialTheme.colorScheme.outlineVariant,
-        )
-
-        OutlinedTextField(
-            value = template,
-            onValueChange = { template = it },
-            label = { Text("Dateinamens-Vorlage (-o)") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            OUTPUT_TEMPLATE_PRESETS.forEach { (presetTemplate, label) ->
-                FilterChip(
-                    selected = template.trim() == presetTemplate,
-                    shape = LocalMonolithButtonShape.current,
-                    onClick = { template = presetTemplate },
-                    label = { Text(label) },
+            YtDlpChannel.entries.forEach { ch ->
+                MonolithDialogOption(
+                    label = ch.label,
+                    subtitle = ch.subtitle,
+                    selected = settings.updateChannel == ch,
+                    onClick = { DownloaderSettingsStore.update { it.copy(updateChannel = ch) } },
                 )
             }
+            DialogSwitchRow(
+                title = "Beim Start aktualisieren",
+                subtitle = "Prüft beim Öffnen des Downloaders auf neue yt-dlp-Releases",
+                checked = settings.autoUpdateEngine,
+                onCheckedChange = { enabled ->
+                    DownloaderSettingsStore.update { it.copy(autoUpdateEngine = enabled) }
+                },
+            )
+            OutlinedButton(
+                onClick = { onUpdateNow(settings.updateChannel) },
+                enabled = !engineState.isUpdating && !engineState.isInitializing,
+                shape = LocalMonolithButtonShape.current,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                if (engineState.isUpdating) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        strokeWidth = 2.dp,
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text("Aktualisiere…")
+                } else {
+                    Icon(
+                        imageVector = Icons.Outlined.Refresh,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text("Jetzt aktualisieren")
+                }
+            }
+            OutlinedTextField(
+                value = settings.extraArgs,
+                onValueChange = { raw ->
+                    DownloaderSettingsStore.update { it.copy(extraArgs = raw) }
+                },
+                label = { Text("Zusätzliche Argumente") },
+                placeholder = { Text("z. B. --proxy http://127.0.0.1:8080") },
+                maxLines = 2,
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
+
+            // 7. Reset Downloader Settings
+            OutlinedButton(
+                onClick = { showResetConfirm = true },
+                shape = LocalMonolithButtonShape.current,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("Downloader-Einstellungen zurücksetzen")
+            }
         }
-
-        HorizontalDivider(
-            modifier = Modifier.padding(vertical = 4.dp),
-            thickness = 0.5.dp,
-            color = MaterialTheme.colorScheme.outlineVariant,
-        )
-
-        DialogSwitchRow(
-            title = "Playlists herunterladen",
-            subtitle = "Bei Playlist-Links alle Titel herunterladen statt nur ein einzelnes Video",
-            checked = allowPlaylists,
-            onCheckedChange = { allowPlaylists = it },
-        )
     }
 
     if (showDirectoryPicker) {
         TargetDirectoryPickerDialog(
-            initialDirectory = displayedPath,
+            initialDirectory = displayedOutputDir,
             onDismiss = { showDirectoryPicker = false },
             onSelectDirectory = { pickedPath ->
-                draftOutputDir = pickedPath
+                DownloaderSettingsStore.update { it.copy(outputDirectory = pickedPath) }
                 showDirectoryPicker = false
             },
         )
     }
-}
 
-@Composable
-private fun YtDlpEngineDialog(
-    settings: DownloaderSettings,
-    engineState: YtDlpEngineState,
-    onUpdateNow: (YtDlpChannel) -> Unit,
-    onResetDefaults: () -> Unit,
-    onDismiss: () -> Unit,
-    onConfirm: (YtDlpChannel, Boolean, String) -> Unit,
-) {
-    var channel by remember(settings) { mutableStateOf(settings.updateChannel) }
-    var autoUpdate by remember(settings) { mutableStateOf(settings.autoUpdateEngine) }
-    var extraArgs by remember(settings) { mutableStateOf(settings.extraArgs) }
-
-    val versionDisplay = engineState.version
-        ?: engineState.versionName
-        ?: if (engineState.isInitializing) "Wird geladen…" else "Nicht initialisiert"
-
-    MonolithDialog(
-        onDismissRequest = onDismiss,
-        title = "yt-dlp Engine",
-        wide = true,
-        dismissLabel = "Abbrechen",
-        onDismissClick = onDismiss,
-        confirmLabel = "Übernehmen",
-        onConfirmClick = { onConfirm(channel, autoUpdate, extraArgs) },
-    ) {
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = CutCornerShape(8.dp),
-            color = MaterialTheme.colorScheme.surfaceContainerLow,
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+    if (showResetConfirm) {
+        MonolithDialog(
+            onDismissRequest = { showResetConfirm = false },
+            title = "Downloader zurücksetzen",
+            dismissLabel = "Abbrechen",
+            onDismissClick = { showResetConfirm = false },
+            confirmLabel = "Zurücksetzen",
+            onConfirmClick = {
+                showResetConfirm = false
+                DownloaderSettingsStore.resetToDefaults()
+                scope.launch {
+                    snackbarHostState.showSnackbar("Downloader-Einstellungen zurückgesetzt.")
+                }
+            },
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(12.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                Text(
-                    text = "Installierte Version",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Text(
-                    text = versionDisplay,
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-                if (!engineState.lastUpdateMessage.isNullOrBlank()) {
-                    Text(
-                        text = engineState.lastUpdateMessage,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                if (!engineState.errorMessage.isNullOrBlank()) {
-                    Text(
-                        text = engineState.errorMessage,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
-                    )
-                }
-            }
-        }
-
-        Text(
-            text = "Update-Kanal",
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.primary,
-        )
-        YtDlpChannel.entries.forEach { ch ->
-            MonolithDialogOption(
-                label = ch.label,
-                subtitle = ch.subtitle,
-                selected = channel == ch,
-                onClick = { channel = ch },
+            Text(
+                "Alle Downloader-Einstellungen werden auf ihre Standardwerte zurückgesetzt.",
+                style = MaterialTheme.typography.bodyMedium,
             )
-        }
-
-        DialogSwitchRow(
-            title = "Beim Start aktualisieren",
-            subtitle = "Prüft beim Öffnen des Downloaders auf neue yt-dlp-Releases",
-            checked = autoUpdate,
-            onCheckedChange = { autoUpdate = it },
-        )
-
-        OutlinedButton(
-            onClick = { onUpdateNow(channel) },
-            enabled = !engineState.isUpdating && !engineState.isInitializing,
-            shape = LocalMonolithButtonShape.current,
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            if (engineState.isUpdating) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(16.dp),
-                    strokeWidth = 2.dp,
-                )
-                Spacer(Modifier.width(8.dp))
-                Text("Aktualisiere…")
-            } else {
-                Icon(
-                    imageVector = Icons.Outlined.Refresh,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp),
-                )
-                Spacer(Modifier.width(8.dp))
-                Text("Jetzt aktualisieren")
-            }
-        }
-
-        OutlinedTextField(
-            value = extraArgs,
-            onValueChange = { extraArgs = it },
-            label = { Text("Zusätzliche Argumente") },
-            placeholder = { Text("z. B. --proxy http://127.0.0.1:8080") },
-            maxLines = 2,
-            modifier = Modifier.fillMaxWidth(),
-        )
-
-        TextButton(
-            onClick = onResetDefaults,
-            shape = LocalMonolithButtonShape.current,
-        ) {
-            Text("Standard wiederherstellen")
         }
     }
 }
@@ -2108,20 +1867,6 @@ private fun formatShortSummary(mode: DownloadMode, settings: DownloaderSettings)
             }
         }
     }
-}
-
-private fun buildEmbeddingSubtitle(settings: DownloaderSettings): String {
-    val parts = buildList {
-        if (settings.embedMetadata) add("Meta")
-        if (settings.embedChapters) add("Kapitel")
-        when (settings.thumbnailEmbedMode) {
-            ThumbnailEmbedMode.AUDIO_ONLY -> add("Cover (Audio)")
-            ThumbnailEmbedMode.ALWAYS -> add("Cover (Immer)")
-            ThumbnailEmbedMode.NEVER -> Unit
-        }
-        if (settings.embedSubtitles) add("Untertitel")
-    }
-    return if (parts.isEmpty()) "Aus" else parts.joinToString(", ")
 }
 
 private fun extractHostOrLabel(url: String): String {

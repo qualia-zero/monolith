@@ -46,12 +46,12 @@ import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.FolderZip
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.MoreVert
+import androidx.compose.material.icons.outlined.PieChart
 import androidx.compose.material.icons.outlined.SdStorage
 import androidx.compose.material.icons.outlined.SelectAll
 import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material.icons.outlined.Usb
 import androidx.compose.material.icons.outlined.VideoFile
-import androidx.compose.material.icons.outlined.ViewInAr
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
@@ -576,7 +576,7 @@ fun StorageAnalysisScreen(
                                     },
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Outlined.ViewInAr,
+                                        imageVector = Icons.Outlined.PieChart,
                                         contentDescription = "Monolith-Menü",
                                         tint = MaterialTheme.colorScheme.primary,
                                         modifier = Modifier.size(22.dp),
@@ -790,6 +790,7 @@ fun StorageAnalysisScreen(
         MonolithToolStarMenu(
             expanded = starMenuExpanded,
             anchorCenter = starAnchorCenter,
+            anchorIcon = Icons.Outlined.PieChart,
             activeDestination = MonolithToolDestination.STORAGE,
             onSelectFiles = onNavigateToFiles,
             onSelectArchives = { onNavigateToArchives(emptyList()) },

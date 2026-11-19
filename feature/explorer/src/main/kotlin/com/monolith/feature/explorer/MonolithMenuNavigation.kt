@@ -24,7 +24,7 @@ enum class MonolithToolDestination {
 
 /**
  * Shared 5-item Monolith Menu overlay used across all top-level screens
- * (`Dateien`, `Archive`, `Speicherplatz`, `Downloader`, `AI`).
+ * (`Dateien`, `Archivmanager`, `Speicherplatz`, `Downloader`, `AI`).
  */
 @Composable
 fun MonolithToolStarMenu(
@@ -58,7 +58,7 @@ fun MonolithToolStarMenu(
             ),
             StarMenuItem(
                 id = "archives",
-                label = "Archive",
+                label = "Archivmanager",
                 icon = Icons.Outlined.FolderZip,
                 isSelected = activeDestination == MonolithToolDestination.ARCHIVES,
                 onClick = {

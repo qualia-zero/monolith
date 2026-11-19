@@ -60,6 +60,7 @@ import com.monolith.core.ui.components.MonolithDialog
 import com.monolith.core.ui.components.MonolithSwitch
 import com.monolith.core.ui.haptics.MonolithHaptics
 import com.monolith.core.ui.theme.LocalMonolithButtonShape
+import com.monolith.feature.explorer.downloader.DownloaderSettingsStore
 import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -465,10 +466,12 @@ fun SettingsScreen(
                         val defaultPlayer = PlayerSettings()
                         PlayerSettingsStore.update { defaultPlayer }
                         MpvEngine.setSubtitleSize(defaultPlayer.subtitleSize)
+                        DownloaderSettingsStore.init(context)
+                        DownloaderSettingsStore.resetToDefaults()
                     },
                 ) {
                     Text(
-                        "Alle App-Einstellungen werden auf ihre Standardwerte zurückgesetzt. Gespeicherte Standard-Apps bleiben erhalten.",
+                        "Alle App- und Downloader-Einstellungen werden auf ihre Standardwerte zurückgesetzt. Gespeicherte Standard-Apps bleiben erhalten.",
                         style = MaterialTheme.typography.bodyMedium,
                     )
                 }
