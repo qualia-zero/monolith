@@ -6,9 +6,6 @@ import android.os.Environment
 import android.webkit.MimeTypeMap
 import com.monolith.feature.explorer.archive.ArchiveEngine
 import com.monolith.feature.explorer.archive.formatArchiveBytes
-import com.monolith.feature.explorer.storage.StorageAnalyzer
-import com.monolith.feature.explorer.storage.formatSharePercent
-import com.monolith.feature.explorer.storage.formatStorageBytes
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -171,35 +168,6 @@ object ExplorerAiTools {
             put(
                 JSONObject().apply {
                     put("type", "function")
-                    put("name", "analyze_storage_summary")
-                    put(
-                        "description",
-                        "Scans a local directory and returns a compact storage summary " +
-                            "(capacity, category totals, top direct subfolders, largest files, and duplicates).",
-                    )
-                    put(
-                        "parameters",
-                        JSONObject().apply {
-                            put("type", "object")
-                            put(
-                                "properties",
-                                JSONObject().apply {
-                                    put(
-                                        "path",
-                                        JSONObject().apply {
-                                            put("type", "string")
-                                            put("description", "Directory path to analyze. Leave empty for the current directory.")
-                                        },
-                                    )
-                                },
-                            )
-                        },
-                    )
-                },
-            )
-            put(
-                JSONObject().apply {
-                    put("type", "function")
                     put("name", "list_archive_contents")
                     put(
                         "description",
@@ -269,11 +237,6 @@ object ExplorerAiTools {
                     val rawDir = arguments.optString("directory").trim()
                     val dir = resolvePath(rawDir, defaultDir)
                     searchFiles(query, dir)
-                }
-                "analyze_storage_summary" -> {
-                    val rawPath = arguments.optString("path").trim()
-                    val path = resolvePath(rawPath, defaultDir)
-                    analyzeStorageSummary(path)
                 }
                 "list_archive_contents" -> {
                     val rawPath = arguments.optString("path").trim()
@@ -466,74 +429,6 @@ object ExplorerAiTools {
             put("query", query)
             put("count", matches.length())
             put("results", matches)
-        }.toString()
-    }
-
-    private suspend fun analyzeStorageSummary(path: String): String {
-        val dir = File(path)
-        if (!dir.exists() || !dir.isDirectory) {
-            return JSONObject().put("error", "Directory not found: $path").toString()
-        }
-        val scan = StorageAnalyzer.scanStorage(
-            rootPath = dir.absolutePath,
-            volumeLabel = dir.name.ifBlank { "Speicher" },
-            maxResults = 40,
-        )
-        val digest = buildString {
-            val stats = scan.volumeStats
-            if (stats.totalCapacityBytes > 0L) {
-                appendLine(
-                    "Volume ${stats.label}: ${formatStorageBytes(stats.usedCapacityBytes)} / " +
-                        "${formatStorageBytes(stats.totalCapacityBytes)} used " +
-                        "(${formatStorageBytes(stats.freeCapacityBytes)} free)",
-                )
-            }
-            appendLine(
-                "Scanned ${scan.rootPath}: ${formatStorageBytes(scan.scannedBytes)} across " +
-                    "${scan.totalFilesCount} files in ${scan.totalFoldersCount} folders",
-            )
-            if (scan.categoryBreakdowns.isNotEmpty()) {
-                append("Categories: ")
-                appendLine(
-                    scan.categoryBreakdowns.joinToString(", ") {
-                        "${it.label} ${formatStorageBytes(it.totalBytes)}"
-                    },
-                )
-            }
-            val topFolders = scan.rootFolder.directFolders.take(15)
-            if (topFolders.isNotEmpty()) {
-                appendLine("Top direct folders:")
-                topFolders.forEach { folder ->
-                    val pct = formatSharePercent(folder.totalBytes, scan.rootFolder.totalBytes, Locale.US)
-                    appendLine(
-                        "- ${folder.name}/: ${formatStorageBytes(folder.totalBytes)} ($pct, ${folder.fileCount} files)",
-                    )
-                }
-            }
-            val topFiles = scan.largestFiles.take(10)
-            if (topFiles.isNotEmpty()) {
-                appendLine("Largest files:")
-                topFiles.forEach { file ->
-                    appendLine("- ${file.relativePath}: ${formatStorageBytes(file.sizeBytes)}")
-                }
-            }
-            if (scan.duplicateGroups.isNotEmpty()) {
-                appendLine(
-                    "Duplicates (${scan.duplicateGroups.size} groups, " +
-                        "${formatStorageBytes(scan.reclaimableDuplicatesBytes)} reclaimable):",
-                )
-                scan.duplicateGroups.take(5).forEach { grp ->
-                    appendLine(
-                        "- ${grp.fileName}: ${grp.files.size}x ${formatStorageBytes(grp.eachSizeBytes)} " +
-                            "(${formatStorageBytes(grp.reclaimableBytes)} reclaimable)",
-                    )
-                }
-            }
-        }.trim()
-        return JSONObject().apply {
-            put("root", scan.rootPath)
-            put("scanned_bytes", scan.scannedBytes)
-            put("summary", digest)
         }.toString()
     }
 

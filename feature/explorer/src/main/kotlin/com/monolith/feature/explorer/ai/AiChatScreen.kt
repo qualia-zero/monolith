@@ -734,7 +734,6 @@ fun AiChatScreen(
                 """read_text_file({"path": "{current_dir}/notes.txt", "max_chars": 12000})""" to "UTF-8-Textdatei lesen (Beispiel)",
                 """get_file_info({"path": "{current_dir}/song.mp3"})""" to "Datei-/Media-Metadaten (Beispiel)",
                 """search_files({"query": "rechnung", "directory": "{current_dir}"})""" to "Rekursive Dateisuche bis Tiefe 4 (Beispiel)",
-                """analyze_storage_summary({"path": "{current_dir}"})""" to "Kompakte Speicheranalyse (Beispiel)",
                 """list_archive_contents({"path": "{current_dir}/backup.zip"})""" to "Archivinhalt auflisten (Beispiel)",
             )
         }
