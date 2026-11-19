@@ -220,10 +220,6 @@ fun DownloaderScreen(
         return
     }
 
-    val formatChipText = remember(activeMode, settings) {
-        formatShortSummary(activeMode, settings)
-    }
-
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -533,12 +529,11 @@ fun DownloaderScreen(
             onDismiss = { starMenuExpanded = false },
         )
 
-        val cornerItems = remember(activeMode, formatChipText, engineState.version, engineState.versionName, settings.updateChannel) {
+        val cornerItems = remember {
             listOf(
                 CornerMenuItem(
                     id = "downloader_settings",
                     label = "Downloader-Einstellungen",
-                    subtitle = "${activeMode.label}: $formatChipText · ${settings.updateChannel.label}",
                     onClick = { showDownloaderSettings = true },
                 ),
                 CornerMenuItem(

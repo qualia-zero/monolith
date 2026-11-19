@@ -421,7 +421,7 @@ fun MonolithCornerMenuOverlay(
                                 text = item.label,
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.Medium,
-                                maxLines = 1,
+                                maxLines = 2,
                                 overflow = TextOverflow.Ellipsis,
                             )
                             if (!item.subtitle.isNullOrBlank()) {
