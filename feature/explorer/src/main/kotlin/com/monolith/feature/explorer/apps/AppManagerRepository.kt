@@ -440,6 +440,18 @@ object AppManagerRepository {
         Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", packageName, null))
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
 
+    fun buildAppStorageSettingsIntent(packageName: String): Intent =
+        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", packageName, null)).apply {
+            putExtra(":settings:fragment_args_key", "storage_settings")
+        }
+
+    fun buildClearAppCacheIntent(): Intent? =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            Intent(StorageManager.ACTION_CLEAR_APP_CACHE)
+        } else {
+            null
+        }
+
     fun buildNotificationSettingsIntent(packageName: String): Intent =
         Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
             .putExtra(Settings.EXTRA_APP_PACKAGE, packageName)

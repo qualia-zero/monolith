@@ -178,8 +178,8 @@ fun AppManagerScreen(
     var showUninstallConfirm by remember { mutableStateOf<List<ManagedAppInfo>>(emptyList()) }
     var pendingUninstallQueue by remember { mutableStateOf<List<String>>(emptyList()) }
 
-    // Temp cleanup result & sequential settings fallback queue
-    var tempCleanupResult by remember { mutableStateOf<TempCleanupResult?>(null) }
+    // Cache cleanup warning & sequential settings queue
+    var cacheWarningApps by remember { mutableStateOf<List<ManagedAppInfo>>(emptyList()) }
     var pendingSettingsQueue by remember { mutableStateOf<List<String>>(emptyList()) }
 
     // Batch audit report
@@ -205,6 +205,12 @@ fun AppManagerScreen(
         }
     }
 
+    val systemClearCacheLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult(),
+    ) {
+        reloadTrigger++
+    }
+
     LaunchedEffect(pendingUninstallQueue) {
         val nextPkg = pendingUninstallQueue.firstOrNull() ?: return@LaunchedEffect
         val intent = Intent(AppManagerRepository.buildUninstallIntent(nextPkg)).apply {
@@ -220,9 +226,7 @@ fun AppManagerScreen(
 
     LaunchedEffect(pendingSettingsQueue) {
         val nextPkg = pendingSettingsQueue.firstOrNull() ?: return@LaunchedEffect
-        val intent = Intent(AppManagerRepository.buildAppDetailsIntent(nextPkg)).apply {
-            flags = flags and Intent.FLAG_ACTIVITY_NEW_TASK.inv()
-        }
+        val intent = AppManagerRepository.buildAppStorageSettingsIntent(nextPkg)
         runCatching {
             settingsFallbackLauncher.launch(intent)
         }.onFailure {
@@ -326,22 +330,7 @@ fun AppManagerScreen(
 
     fun runTempCleanup(appsToClean: List<ManagedAppInfo>) {
         if (appsToClean.isEmpty()) return
-        scope.launch {
-            batchBusyLabel = "Bereinige Temp/Cache…"
-            batchProgress = null
-            val result = AppManagerRepository.clearAccessibleTempFiles(context, appsToClean)
-            batchBusyLabel = null
-            selectedPackages = emptySet()
-            if (result.systemSettingsFallbackPackages.isEmpty() && result.cleanedPackages.isNotEmpty()) {
-                snackbarHostState.showSnackbar(
-                    "${formatStorageBytes(result.freedBytes)} Temp/Cache freigegeben",
-                )
-                reloadTrigger++
-            } else {
-                tempCleanupResult = result
-                reloadTrigger++
-            }
-        }
+        cacheWarningApps = appsToClean
     }
 
     fun runBatchAudit(appsToAudit: List<ManagedAppInfo>) {
@@ -857,40 +846,46 @@ fun AppManagerScreen(
         }
     }
 
-    // Temp Cleanup Result Dialog (with optional Settings fallback queue)
-    tempCleanupResult?.let { result ->
-        val fallbackCount = result.systemSettingsFallbackPackages.size
+    // Cache cleanup warning dialog: opens Settings sequentially or Android's global ACTION_CLEAR_APP_CACHE dialog
+    if (cacheWarningApps.isNotEmpty()) {
+        val targetApps = cacheWarningApps
+        val clearAllIntent = remember { AppManagerRepository.buildClearAppCacheIntent() }
         MonolithDialog(
-            onDismissRequest = { tempCleanupResult = null },
-            title = "Temp/Cache-Bereinigung",
-            dismissLabel = "Schließen",
-            onDismissClick = { tempCleanupResult = null },
-            confirmLabel = if (fallbackCount > 0) {
-                "System-Cache-Einstellungen öffnen ($fallbackCount)"
-            } else {
-                null
-            },
-            onConfirmClick = if (fallbackCount > 0) {
-                {
-                    val packages = result.systemSettingsFallbackPackages
-                    tempCleanupResult = null
-                    startSettingsFallbackQueue(packages)
-                }
-            } else {
-                null
+            onDismissRequest = { cacheWarningApps = emptyList() },
+            title = "Cache leeren (${targetApps.size})",
+            dismissLabel = "Abbrechen",
+            onDismissClick = { cacheWarningApps = emptyList() },
+            confirmLabel = "Nacheinander öffnen (${targetApps.size})",
+            onConfirmClick = {
+                val packages = targetApps.map { it.packageName }
+                cacheWarningApps = emptyList()
+                selectedPackages = emptySet()
+                startSettingsFallbackQueue(packages)
             },
         ) {
             Text(
-                text = "Direkt freigegeben: ${formatStorageBytes(result.freedBytes)} (${result.cleanedPackages.size} App(s)).",
+                text = "Android erlaubt keinen direkten Zugriff auf den internen Cache anderer Apps. Nach Bestätigung werden die App-Einstellungen für alle ausgewählten Apps nacheinander geöffnet (mit Fokus auf „Speicher & Cache“) — sobald du zurückkehrst, folgt automatisch die nächste App.",
                 style = MaterialTheme.typography.bodyMedium,
             )
-            if (fallbackCount > 0) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "Für $fallbackCount geschützte App(s) verhindert Android den direkten Cache-Zugriff. Du kannst die App-Einstellungen nacheinander öffnen und dort auf „Cache leeren“ tippen.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+            if (clearAllIntent != null) {
+                Spacer(modifier = Modifier.height(10.dp))
+                OutlinedButton(
+                    onClick = {
+                        cacheWarningApps = emptyList()
+                        selectedPackages = emptySet()
+                        runCatching {
+                            systemClearCacheLauncher.launch(clearAllIntent)
+                        }.onFailure {
+                            scope.launch {
+                                snackbarHostState.showSnackbar("System-Cache-Dialog wird auf diesem Gerät nicht unterstützt")
+                            }
+                        }
+                    },
+                    shape = LocalMonolithButtonShape.current,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("Alle App-Caches leeren (System-Dialog)")
+                }
             }
         }
     }
