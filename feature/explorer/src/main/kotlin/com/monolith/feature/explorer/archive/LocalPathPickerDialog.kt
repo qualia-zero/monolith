@@ -395,6 +395,7 @@ fun LocalPathPickerDialog(
                     selected = activeDriveEmail == null && activeRoot == defaultRootDir,
                     shape = LocalMonolithButtonShape.current,
                     onClick = {
+                        MonolithHaptics.pathChipNav(context, view)
                         activeDriveEmail = null
                         driveStack = emptyList()
                         activeRoot = defaultRootDir
@@ -407,6 +408,7 @@ fun LocalPathPickerDialog(
                         selected = activeDriveEmail == null && activeRoot == vol.rootPath,
                         shape = LocalMonolithButtonShape.current,
                         onClick = {
+                            MonolithHaptics.pathChipNav(context, view)
                             activeDriveEmail = null
                             driveStack = emptyList()
                             activeRoot = vol.rootPath
@@ -421,6 +423,7 @@ fun LocalPathPickerDialog(
                         selected = activeDriveEmail == email,
                         shape = LocalMonolithButtonShape.current,
                         onClick = {
+                            MonolithHaptics.pathChipNav(context, view)
                             GoogleDriveAuthManager.setActiveEmail(context, email)
                             activeDriveEmail = email
                             driveStack = listOf("gdrive://root" to accountLabel)

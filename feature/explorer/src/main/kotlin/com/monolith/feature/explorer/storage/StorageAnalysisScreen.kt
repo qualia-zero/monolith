@@ -392,6 +392,7 @@ fun StorageAnalysisScreen(
 
     fun switchVolume(newVolumeRoot: String) {
         if (newVolumeRoot == activeVolumeRoot) return
+        MonolithHaptics.pathChipNav(context, view)
         userSelectedVolume = true
         selectedPaths = emptySet()
         pendingTargetPath = null

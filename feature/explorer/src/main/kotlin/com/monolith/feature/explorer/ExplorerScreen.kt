@@ -788,6 +788,7 @@ fun ExplorerScreen(
                     selected = activeLocation == LocationType.LOCAL && activeLocalRootPath == rootPath,
                     shape = LocalMonolithButtonShape.current,
                     onClick = {
+                        MonolithHaptics.pathChipNav(context, view)
                         activeLocation = LocationType.LOCAL
                         activeLocalRootPath = rootPath
                         localPath = rootPath
@@ -800,6 +801,7 @@ fun ExplorerScreen(
                         selected = activeLocation == LocationType.LOCAL && activeLocalRootPath == volume.rootPath,
                         shape = LocalMonolithButtonShape.current,
                         onClick = {
+                            MonolithHaptics.pathChipNav(context, view)
                             activeLocation = LocationType.LOCAL
                             activeLocalRootPath = volume.rootPath
                             localPath = volume.rootPath
@@ -897,6 +899,7 @@ fun ExplorerScreen(
                                 selected = activeLocation == LocationType.GOOGLE_DRIVE && signedInEmail == email,
                                 shape = LocalMonolithButtonShape.current,
                                 onClick = {
+                                    MonolithHaptics.pathChipNav(context, view)
                                     if (signedInEmail != email) {
                                         GoogleDriveAuthManager.setActiveEmail(context, email)
                                         signedInEmail = email

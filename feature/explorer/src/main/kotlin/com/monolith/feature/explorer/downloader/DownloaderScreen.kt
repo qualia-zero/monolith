@@ -1717,6 +1717,7 @@ private fun TargetDirectoryPickerDialog(
     onSelectDirectory: (String) -> Unit,
 ) {
     val context = LocalContext.current
+    val view = LocalView.current
     val defaultRootDir = remember { Environment.getExternalStorageDirectory().absolutePath }
     val externalVolumes = rememberExternalStorageVolumes(context)
 
@@ -1773,6 +1774,7 @@ private fun TargetDirectoryPickerDialog(
                 selected = activeRoot == defaultRootDir,
                 shape = LocalMonolithButtonShape.current,
                 onClick = {
+                    MonolithHaptics.pathChipNav(context, view)
                     activeRoot = defaultRootDir
                     currentDir = defaultRootDir
                 },
@@ -1790,6 +1792,7 @@ private fun TargetDirectoryPickerDialog(
                     selected = activeRoot == vol.rootPath,
                     shape = LocalMonolithButtonShape.current,
                     onClick = {
+                        MonolithHaptics.pathChipNav(context, view)
                         activeRoot = vol.rootPath
                         currentDir = vol.rootPath
                     },
