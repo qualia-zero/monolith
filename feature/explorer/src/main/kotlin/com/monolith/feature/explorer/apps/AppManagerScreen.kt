@@ -115,6 +115,7 @@ import com.monolith.core.model.ThemeMode
 import com.monolith.core.ui.components.CornerMenuItem
 import com.monolith.core.ui.components.MonolithCornerMenuOverlay
 import com.monolith.core.ui.components.MonolithDialog
+import com.monolith.core.ui.components.monolithMenuBackdrop
 import com.monolith.core.ui.components.MonolithRefreshIndicator
 import com.monolith.core.ui.haptics.MonolithHaptics
 import com.monolith.core.ui.theme.LocalMonolithButtonShape
@@ -349,6 +350,10 @@ fun AppManagerScreen(
         targetValue = if (starMenuExpanded) 1f else 0f,
         label = "appsStarMenuRecede",
     )
+    val cornerMenuRecedeState = animateFloatAsState(
+        targetValue = if (menuExpanded) 1f else 0f,
+        label = "appsCornerMenuRecede",
+    )
 
     Box(
         modifier = modifier
@@ -358,14 +363,7 @@ fun AppManagerScreen(
         Scaffold(
             modifier = Modifier
                 .fillMaxSize()
-                .graphicsLayer {
-                    val starP = backgroundRecedeState.value
-                    if (starP > 0.001f) {
-                        val s = 1f - 0.022f * starP
-                        scaleX = s
-                        scaleY = s
-                    }
-                },
+                .monolithMenuBackdrop(backgroundRecedeState, cornerMenuRecedeState),
             containerColor = if (LocalMonolithThemeMode.current == ThemeMode.OBSIDIAN) {
                 Color.Transparent
             } else {

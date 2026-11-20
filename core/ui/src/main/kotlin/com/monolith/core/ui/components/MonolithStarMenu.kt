@@ -1,5 +1,8 @@
 package com.monolith.core.ui.components
 
+import android.graphics.RenderEffect
+import android.graphics.Shader
+import android.os.Build
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
@@ -31,6 +34,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.State
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -43,6 +47,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -53,6 +58,25 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
+
+fun Modifier.monolithMenuBackdrop(
+    starProgress: State<Float>,
+    cornerProgress: State<Float>,
+): Modifier = graphicsLayer {
+    val starP = starProgress.value.coerceIn(0f, 1f)
+    val cornerP = cornerProgress.value.coerceIn(0f, 1f)
+    val radiusDp = maxOf(10f * starP, 4f * cornerP)
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && radiusDp > 0.25f) {
+        val radiusPx = radiusDp.dp.toPx()
+        renderEffect = RenderEffect.createBlurEffect(
+            radiusPx,
+            radiusPx,
+            Shader.TileMode.CLAMP,
+        ).asComposeRenderEffect()
+    } else {
+        renderEffect = null
+    }
+}
 
 @Immutable
 data class StarMenuItem(
@@ -80,9 +104,9 @@ fun MonolithStarMenuOverlay(
     val expandProgressState = animateFloatAsState(
         targetValue = if (expanded) 1f else 0f,
         animationSpec = if (expanded) {
-            tween(durationMillis = 210, easing = FastOutSlowInEasing)
+            spring(dampingRatio = 0.78f, stiffness = Spring.StiffnessMedium)
         } else {
-            tween(durationMillis = 150, easing = FastOutSlowInEasing)
+            tween(durationMillis = 160, easing = FastOutSlowInEasing)
         },
         label = "monolithMenuExpand",
     )
@@ -230,7 +254,7 @@ fun MonolithStarMenuOverlay(
             color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.97f),
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
             tonalElevation = 6.dp,
-            shadowElevation = 0.dp,
+            shadowElevation = 10.dp,
         ) {
             Column(
                 modifier = Modifier
@@ -406,7 +430,7 @@ fun MonolithCornerMenuOverlay(
             color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.97f),
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
             tonalElevation = 6.dp,
-            shadowElevation = 0.dp,
+            shadowElevation = 10.dp,
         ) {
             Column(
                 modifier = Modifier

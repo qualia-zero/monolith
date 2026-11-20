@@ -100,6 +100,8 @@ import com.monolith.core.model.ThemeMode
 import com.monolith.core.ui.components.CornerMenuItem
 import com.monolith.core.ui.components.MonolithCornerMenuOverlay
 import com.monolith.core.ui.components.MonolithDialog
+import com.monolith.core.ui.components.monolithMenuBackdrop
+import com.monolith.core.ui.components.MonolithDialog
 import com.monolith.core.ui.components.MonolithDialogOption
 import com.monolith.core.ui.components.MonolithSwitch
 import com.monolith.core.ui.haptics.MonolithHaptics
@@ -227,18 +229,15 @@ fun DownloaderScreen(
             targetValue = if (starMenuExpanded) 1f else 0f,
             label = "downloaderStarMenuRecede",
         )
+        val cornerMenuRecedeState = animateFloatAsState(
+            targetValue = if (menuExpanded) 1f else 0f,
+            label = "downloaderCornerMenuRecede",
+        )
 
         Scaffold(
             modifier = Modifier
                 .fillMaxSize()
-                .graphicsLayer {
-                    val starP = backgroundRecedeState.value
-                    if (starP > 0.001f) {
-                        val s = 1f - 0.022f * starP
-                        scaleX = s
-                        scaleY = s
-                    }
-                },
+                .monolithMenuBackdrop(backgroundRecedeState, cornerMenuRecedeState),
             containerColor = if (LocalMonolithThemeMode.current == ThemeMode.OBSIDIAN) {
                 Color.Transparent
             } else {

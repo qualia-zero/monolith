@@ -125,6 +125,8 @@ import com.monolith.core.model.VfsNode
 import com.monolith.core.ui.components.CornerMenuItem
 import com.monolith.core.ui.components.MonolithCornerMenuOverlay
 import com.monolith.core.ui.components.MonolithDialog
+import com.monolith.core.ui.components.monolithMenuBackdrop
+import com.monolith.core.ui.components.MonolithDialog
 import com.monolith.core.ui.components.MonolithDialogOption
 import com.monolith.core.ui.components.MonolithLoadingSpinner
 import com.monolith.core.ui.components.MonolithRefreshIndicator
@@ -427,20 +429,16 @@ fun ExplorerScreen(
     ) {
         val backgroundRecedeState = animateFloatAsState(
             targetValue = if (starMenuExpanded) 1f else 0f,
-            animationSpec = androidx.compose.animation.core.tween(
-                durationMillis = if (starMenuExpanded) 210 else 150,
-                easing = androidx.compose.animation.core.FastOutSlowInEasing,
-            ),
             label = "starMenuBackgroundRecede",
+        )
+        val cornerMenuRecedeState = animateFloatAsState(
+            targetValue = if (menuExpanded) 1f else 0f,
+            label = "cornerMenuBackgroundRecede",
         )
     Scaffold(
         modifier = Modifier
             .fillMaxSize()
-            .graphicsLayer {
-                val s = 1f - 0.022f * backgroundRecedeState.value
-                scaleX = s
-                scaleY = s
-            },
+            .monolithMenuBackdrop(backgroundRecedeState, cornerMenuRecedeState),
         containerColor = if (LocalMonolithThemeMode.current == ThemeMode.OBSIDIAN) {
             androidx.compose.ui.graphics.Color.Transparent
         } else {
