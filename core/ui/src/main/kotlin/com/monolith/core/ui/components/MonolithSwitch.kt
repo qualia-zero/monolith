@@ -17,10 +17,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import com.monolith.core.ui.haptics.MonolithHaptics
 
 private val SwitchWidth = 52.dp
 private val SwitchHeight = 28.dp
@@ -56,6 +59,8 @@ private fun CustomMonolithSwitch(
     enabled: Boolean = true,
 ) {
     val colorScheme = MaterialTheme.colorScheme
+    val context = LocalContext.current
+    val view = LocalView.current
     val trackColor by animateColorAsState(
         targetValue = if (checked) colorScheme.primaryContainer else colorScheme.surfaceContainerHighest,
         label = "monolithSwitchTrackColor",
@@ -82,7 +87,10 @@ private fun CustomMonolithSwitch(
             value = checked,
             enabled = enabled,
             role = Role.Switch,
-            onValueChange = onCheckedChange,
+            onValueChange = { newValue ->
+                onCheckedChange(newValue)
+                MonolithHaptics.switchToggle(context, view)
+            },
         )
     } else {
         Modifier

@@ -681,6 +681,13 @@ private fun HapticsSubmenuScreen(
                     if (enabled) MonolithHaptics.refreshDetent(context, view)
                 },
             )
+            HapticToggleRow(
+                title = "Schalter / Hebel",
+                checked = appSettings.hapticSwitchToggle,
+                onCheckedChange = { enabled ->
+                    AppSettingsStore.update { it.copy(hapticSwitchToggle = enabled) }
+                },
+            )
         }
     }
 }

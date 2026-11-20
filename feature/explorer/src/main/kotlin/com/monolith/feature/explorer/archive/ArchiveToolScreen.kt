@@ -126,6 +126,16 @@ fun ArchiveToolScreen(
     val snackbarHostState = remember { SnackbarHostState() }
 
     val defaultRootDir = state.defaultRootDir
+    val downloadsDirPath = remember {
+        Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS).absolutePath
+    }
+    fun nonDownloadsInitialDir(path: String): String {
+        return if (path == downloadsDirPath || path.startsWith("$downloadsDirPath/")) {
+            defaultRootDir
+        } else {
+            path
+        }
+    }
     val externalVolumes = rememberExternalStorageVolumes(context)
     val driveProvider = remember(context) { GoogleDriveVfsProvider(context.applicationContext) }
 
@@ -393,7 +403,7 @@ fun ArchiveToolScreen(
         activePickerRequest = LocalPickerRequest(
             mode = LocalPickerMode.FILES_AND_FOLDERS_MULTI,
             title = "Dateien & Ordner hinzufügen",
-            initialDirectory = group.primaryFile.parent ?: defaultRootDir,
+            initialDirectory = nonDownloadsInitialDir(group.primaryFile.parent ?: defaultRootDir),
             onConfirm = { paths ->
                 if (paths.isEmpty()) return@LocalPickerRequest
                 fun runAdd(pwd: String?) {
@@ -797,7 +807,7 @@ fun ArchiveToolScreen(
                                 activePickerRequest = LocalPickerRequest(
                                     mode = LocalPickerMode.FILES_AND_FOLDERS_MULTI,
                                     title = "Dateien & Ordner wählen",
-                                    initialDirectory = state.packOutputDir,
+                                    initialDirectory = nonDownloadsInitialDir(state.packOutputDir),
                                     onConfirm = { picked ->
                                         state.applyPackSources(state.packSourcePaths + picked)
                                     },
@@ -813,7 +823,7 @@ fun ArchiveToolScreen(
                                 activePickerRequest = LocalPickerRequest(
                                     mode = LocalPickerMode.SINGLE_DIRECTORY,
                                     title = "Zielordner wählen",
-                                    initialDirectory = state.packOutputDir,
+                                    initialDirectory = nonDownloadsInitialDir(state.packOutputDir),
                                     onConfirm = { dirs -> dirs.firstOrNull()?.let { state.packOutputDir = it } },
                                 )
                             },
@@ -1100,7 +1110,7 @@ fun ArchiveToolScreen(
                     activePickerRequest = LocalPickerRequest(
                         mode = LocalPickerMode.SINGLE_DIRECTORY,
                         title = "Zielordner wählen",
-                        initialDirectory = state.extractTargetDir,
+                        initialDirectory = nonDownloadsInitialDir(state.extractTargetDir),
                         onConfirm = { dirs -> dirs.firstOrNull()?.let { state.extractTargetDir = it } },
                     )
                 },
@@ -1308,7 +1318,7 @@ fun ArchiveToolScreen(
                     selected = false,
                     onClick = {
                         entryActionTarget = null
-                        val initialDir = summary.group.primaryFile.parent ?: defaultRootDir
+                        val initialDir = nonDownloadsInitialDir(summary.group.primaryFile.parent ?: defaultRootDir)
                         activePickerRequest = LocalPickerRequest(
                             mode = LocalPickerMode.SINGLE_DIRECTORY,
                             title = "Zielordner wählen",

@@ -121,7 +121,7 @@ fun LocalPathPickerDialog(
     }
 
     var children by remember { mutableStateOf<List<PickerItem>>(emptyList()) }
-    var isLoadingChildren by remember { mutableStateOf(false) }
+    var isLoadingChildren by remember(request) { mutableStateOf(true) }
     var hasLoadedOnce by remember(request) { mutableStateOf(false) }
     var showLoadingOverlay by remember { mutableStateOf(false) }
     var isDownloadingDrive by remember { mutableStateOf(false) }
@@ -135,7 +135,8 @@ fun LocalPathPickerDialog(
 
     LaunchedEffect(currentDir, activeDriveEmail, driveStack, archivesOnlyFilter, reloadTick, request.mode) {
         isLoadingChildren = true
-        children = withContext(Dispatchers.IO) {
+        try {
+            children = withContext(Dispatchers.IO) {
             if (activeDriveEmail != null) {
                 val targetPath = driveStack.lastOrNull()?.first ?: "gdrive://root"
                 val nodes = runCatching { driveProvider.list(targetPath, showHidden = false) }
@@ -195,9 +196,11 @@ fun LocalPathPickerDialog(
                     ?.toList()
                     ?: emptyList()
             }
+            }
+        } finally {
+            isLoadingChildren = false
+            hasLoadedOnce = true
         }
-        isLoadingChildren = false
-        hasLoadedOnce = true
     }
 
     LaunchedEffect(isLoadingChildren) {

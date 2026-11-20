@@ -73,6 +73,12 @@ object MonolithHaptics {
         triggerClick(context, view)
     }
 
+    fun switchToggle(context: Context, view: View) {
+        val settings = AppSettingsStore.settings.value
+        if (!settings.hapticsEnabled || !settings.hapticSwitchToggle) return
+        triggerClick(context, view)
+    }
+
     private fun triggerClick(context: Context, view: View) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val clicked = vibratePredefined(context, VibrationEffect.EFFECT_CLICK)

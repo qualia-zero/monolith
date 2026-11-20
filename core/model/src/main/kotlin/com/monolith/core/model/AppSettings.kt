@@ -25,6 +25,7 @@ data class AppSettings(
     val hapticDragLift: Boolean = true,
     val hapticLaunchItem: Boolean = false,
     val hapticPullRefresh: Boolean = true,
+    val hapticSwitchToggle: Boolean = true,
     val geminiApiKey: String = "",
     val geminiApiKeys: List<GeminiApiKeyEntry> = emptyList(),
     val activeGeminiApiKeyId: String? = null,
