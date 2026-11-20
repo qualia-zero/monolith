@@ -540,7 +540,6 @@ fun SettingsScreen(
 
             val defaultApps by DefaultAppsStore.associations.collectAsState()
             var showResetAllDefaultAppsConfirm by remember { mutableStateOf(false) }
-            var pendingRemoveDefaultApp by remember { mutableStateOf<Pair<String, String>?>(null) }
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -599,9 +598,7 @@ fun SettingsScreen(
                             )
                         }
                         IconButton(
-                            onClick = {
-                                pendingRemoveDefaultApp = assoc.extension to assoc.handlerLabel
-                            },
+                            onClick = { DefaultAppsStore.removeForExtension(assoc.extension) },
                         ) {
                             Icon(
                                 imageVector = Icons.Outlined.DeleteOutline,
@@ -632,25 +629,6 @@ fun SettingsScreen(
                     }
                     Text(
                         text = "$countText Beim nächsten Öffnen wird wieder nachgefragt.",
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                }
-            }
-
-            pendingRemoveDefaultApp?.let { (ext, handlerLabel) ->
-                MonolithDialog(
-                    onDismissRequest = { pendingRemoveDefaultApp = null },
-                    title = "Standard-App entfernen",
-                    dismissLabel = "Abbrechen",
-                    onDismissClick = { pendingRemoveDefaultApp = null },
-                    confirmLabel = "Entfernen",
-                    onConfirmClick = {
-                        pendingRemoveDefaultApp = null
-                        DefaultAppsStore.removeForExtension(ext)
-                    },
-                ) {
-                    Text(
-                        text = "Soll die Zuordnung von .${ext.uppercase()} zu „$handlerLabel“ wirklich entfernt werden?",
                         style = MaterialTheme.typography.bodyMedium,
                     )
                 }
