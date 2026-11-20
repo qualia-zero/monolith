@@ -59,6 +59,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -67,6 +68,7 @@ import com.monolith.core.model.LocationType
 import com.monolith.core.model.VfsNode
 import com.monolith.core.ui.components.MonolithDialog
 import com.monolith.core.ui.components.MonolithLoadingSpinner
+import com.monolith.core.ui.haptics.MonolithHaptics
 import com.monolith.core.ui.theme.LocalMonolithButtonShape
 import com.monolith.core.vfs.GoogleDriveAuthManager
 import com.monolith.core.vfs.GoogleDriveVfsProvider
@@ -96,6 +98,7 @@ fun LocalPathPickerDialog(
     onDismiss: () -> Unit,
 ) {
     val context = LocalContext.current
+    val view = LocalView.current
     val scope = rememberCoroutineScope()
     val externalVolumes = rememberExternalStorageVolumes(context)
     val signedInAccounts = remember(request) { GoogleDriveAuthManager.getSignedInAccounts(context) }
@@ -315,11 +318,18 @@ fun LocalPathPickerDialog(
         } else {
             localBreadcrumbs.isNotEmpty()
         }
-        FlowRow(
-            modifier = Modifier.fillMaxWidth(),
+        val chipScrollState = rememberScrollState()
+        LaunchedEffect(currentDir, driveStack, activeDriveEmail, activeRoot) {
+            if (isInsideSubfolder) {
+                chipScrollState.animateScrollTo(chipScrollState.maxValue)
+            }
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(chipScrollState),
             horizontalArrangement = Arrangement.spacedBy(4.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-            itemVerticalAlignment = Alignment.CenterVertically,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             if (isInsideSubfolder) {
                 if (activeDriveEmail != null) {
@@ -327,7 +337,10 @@ fun LocalPathPickerDialog(
                     FilterChip(
                         selected = false,
                         shape = LocalMonolithButtonShape.current,
-                        onClick = { driveStack = driveStack.take(1) },
+                        onClick = {
+                            MonolithHaptics.pathChipNav(context, view)
+                            driveStack = driveStack.take(1)
+                        },
                         label = { Text(accountLabel, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                     )
                     val subStack = driveStack.drop(1)
@@ -341,7 +354,10 @@ fun LocalPathPickerDialog(
                         FilterChip(
                             selected = idx == subStack.lastIndex,
                             shape = LocalMonolithButtonShape.current,
-                            onClick = { driveStack = driveStack.take(idx + 2) },
+                            onClick = {
+                                MonolithHaptics.pathChipNav(context, view)
+                                driveStack = driveStack.take(idx + 2)
+                            },
                             label = { Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                         )
                     }
@@ -350,7 +366,10 @@ fun LocalPathPickerDialog(
                     FilterChip(
                         selected = false,
                         shape = LocalMonolithButtonShape.current,
-                        onClick = { currentDir = activeRoot },
+                        onClick = {
+                            MonolithHaptics.pathChipNav(context, view)
+                            currentDir = activeRoot
+                        },
                         label = { Text(rootChipLabel, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                     )
                     localBreadcrumbs.forEachIndexed { index, (label, path) ->
@@ -363,7 +382,10 @@ fun LocalPathPickerDialog(
                         FilterChip(
                             selected = index == localBreadcrumbs.lastIndex,
                             shape = LocalMonolithButtonShape.current,
-                            onClick = { currentDir = path },
+                            onClick = {
+                                MonolithHaptics.pathChipNav(context, view)
+                                currentDir = path
+                            },
                             label = { Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                         )
                     }

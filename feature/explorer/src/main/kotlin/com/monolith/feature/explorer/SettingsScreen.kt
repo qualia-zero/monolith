@@ -634,11 +634,11 @@ private fun HapticsSubmenuScreen(
                 },
             )
             HapticToggleRow(
-                title = "Zurückgehen",
-                checked = appSettings.hapticBackNav,
+                title = "Pfad-Navigation",
+                checked = appSettings.hapticPathChipNav,
                 onCheckedChange = { enabled ->
-                    AppSettingsStore.update { it.copy(hapticBackNav = enabled) }
-                    if (enabled) MonolithHaptics.backNav(context, view)
+                    AppSettingsStore.update { it.copy(hapticPathChipNav = enabled) }
+                    if (enabled) MonolithHaptics.pathChipNav(context, view)
                 },
             )
             HapticToggleRow(

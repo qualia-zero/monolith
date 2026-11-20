@@ -700,13 +700,20 @@ fun ExplorerScreen(
             val isInsideDriveSubfolder = activeLocation == LocationType.GOOGLE_DRIVE && driveStack.size > 1
             val isInsideSubfolder = isInsideLocalSubfolder || isInsideDriveSubfolder
 
-            FlowRow(
+            val chipScrollState = rememberScrollState()
+            LaunchedEffect(localPath, driveStack, activeLocation, activeLocalRootPath) {
+                if (isInsideSubfolder) {
+                    chipScrollState.animateScrollTo(chipScrollState.maxValue)
+                }
+            }
+
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .horizontalScroll(chipScrollState)
                     .padding(horizontal = 16.dp, vertical = 4.dp),
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-                itemVerticalAlignment = Alignment.CenterVertically,
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 if (isInsideSubfolder) {
                     if (activeLocation == LocationType.LOCAL) {
@@ -715,6 +722,7 @@ fun ExplorerScreen(
                             selected = false,
                             shape = LocalMonolithButtonShape.current,
                             onClick = {
+                                MonolithHaptics.pathChipNav(context, view)
                                 localPath = activeLocalRootPath
                                 selectedPaths = emptySet()
                             },
@@ -736,6 +744,7 @@ fun ExplorerScreen(
                                 selected = idx == segments.lastIndex,
                                 shape = LocalMonolithButtonShape.current,
                                 onClick = {
+                                    MonolithHaptics.pathChipNav(context, view)
                                     localPath = target
                                     selectedPaths = emptySet()
                                 },
@@ -748,6 +757,7 @@ fun ExplorerScreen(
                             selected = false,
                             shape = LocalMonolithButtonShape.current,
                             onClick = {
+                                MonolithHaptics.pathChipNav(context, view)
                                 driveStack = driveStack.take(1)
                                 selectedPaths = emptySet()
                             },
@@ -765,6 +775,7 @@ fun ExplorerScreen(
                                 selected = idx == subStack.lastIndex,
                                 shape = LocalMonolithButtonShape.current,
                                 onClick = {
+                                    MonolithHaptics.pathChipNav(context, view)
                                     driveStack = driveStack.take(idx + 2)
                                     selectedPaths = emptySet()
                                 },

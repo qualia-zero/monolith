@@ -19,6 +19,7 @@ data class AppSettings(
     val hapticsEnabled: Boolean = true,
     val hapticFolderOpen: Boolean = true,
     val hapticBackNav: Boolean = false,
+    val hapticPathChipNav: Boolean = false,
     val hapticMonolithMenuOpen: Boolean = true,
     val hapticCornerMenuOpen: Boolean = false,
     val hapticDragLift: Boolean = true,

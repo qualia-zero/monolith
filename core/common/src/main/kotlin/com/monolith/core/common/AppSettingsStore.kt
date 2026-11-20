@@ -18,6 +18,7 @@ object AppSettingsStore {
     private const val KEY_HAPTICS_ENABLED = "haptics_enabled"
     private const val KEY_HAPTIC_FOLDER_OPEN = "haptic_folder_open"
     private const val KEY_HAPTIC_BACK_NAV = "haptic_back_nav"
+    private const val KEY_HAPTIC_PATH_CHIP_NAV = "haptic_path_chip_nav"
     private const val KEY_HAPTIC_MONOLITH_MENU = "haptic_monolith_menu_open"
     private const val KEY_HAPTIC_CORNER_MENU = "haptic_corner_menu_open"
     private const val KEY_HAPTIC_DRAG = "haptic_drag_lift"
@@ -155,6 +156,7 @@ object AppSettingsStore {
             hapticsEnabled = sp.getBoolean(KEY_HAPTICS_ENABLED, defaults.hapticsEnabled),
             hapticFolderOpen = sp.getBoolean(KEY_HAPTIC_FOLDER_OPEN, defaults.hapticFolderOpen),
             hapticBackNav = sp.getBoolean(KEY_HAPTIC_BACK_NAV, defaults.hapticBackNav),
+            hapticPathChipNav = sp.getBoolean(KEY_HAPTIC_PATH_CHIP_NAV, defaults.hapticPathChipNav),
             hapticMonolithMenuOpen = sp.getBoolean(KEY_HAPTIC_MONOLITH_MENU, defaults.hapticMonolithMenuOpen),
             hapticCornerMenuOpen = sp.getBoolean(KEY_HAPTIC_CORNER_MENU, defaults.hapticCornerMenuOpen),
             hapticDragLift = sp.getBoolean(KEY_HAPTIC_DRAG, defaults.hapticDragLift),
@@ -188,6 +190,7 @@ object AppSettingsStore {
             ?.putBoolean(KEY_HAPTICS_ENABLED, value.hapticsEnabled)
             ?.putBoolean(KEY_HAPTIC_FOLDER_OPEN, value.hapticFolderOpen)
             ?.putBoolean(KEY_HAPTIC_BACK_NAV, value.hapticBackNav)
+            ?.putBoolean(KEY_HAPTIC_PATH_CHIP_NAV, value.hapticPathChipNav)
             ?.putBoolean(KEY_HAPTIC_MONOLITH_MENU, value.hapticMonolithMenuOpen)
             ?.putBoolean(KEY_HAPTIC_CORNER_MENU, value.hapticCornerMenuOpen)
             ?.putBoolean(KEY_HAPTIC_DRAG, value.hapticDragLift)
