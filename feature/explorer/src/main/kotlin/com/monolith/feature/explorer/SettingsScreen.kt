@@ -682,7 +682,7 @@ private fun HapticsSubmenuScreen(
                 },
             )
             HapticToggleRow(
-                title = "Schalter / Hebel",
+                title = "Schalter umlegen",
                 checked = appSettings.hapticSwitchToggle,
                 onCheckedChange = { enabled ->
                     AppSettingsStore.update { it.copy(hapticSwitchToggle = enabled) }
