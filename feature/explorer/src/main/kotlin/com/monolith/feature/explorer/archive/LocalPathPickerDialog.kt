@@ -8,6 +8,8 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -86,6 +88,7 @@ private data class PickerItem(
     val isDrive: Boolean,
 )
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun LocalPathPickerDialog(
     request: LocalPickerRequest,
@@ -312,12 +315,11 @@ fun LocalPathPickerDialog(
         } else {
             localBreadcrumbs.isNotEmpty()
         }
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+            itemVerticalAlignment = Alignment.CenterVertically,
         ) {
             if (isInsideSubfolder) {
                 if (activeDriveEmail != null) {

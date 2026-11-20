@@ -1724,7 +1724,7 @@ fun ArchiveToolScreen(
             confirmLabel = when {
                 done.openArchivePath != null -> "Archiv öffnen"
                 done.openFolderPath != null -> "Zielordner öffnen"
-                else -> "OK"
+                else -> "Schließen"
             },
             onConfirmClick = {
                 completionDialog = null

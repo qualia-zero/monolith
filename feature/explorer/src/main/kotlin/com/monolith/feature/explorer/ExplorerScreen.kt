@@ -19,6 +19,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -157,7 +159,7 @@ fun rememberExplorerNavigationState(
     return remember(rootPath) { ExplorerNavigationState(rootPath) }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun ExplorerScreen(
     hasStoragePermission: Boolean,
@@ -595,44 +597,33 @@ fun ExplorerScreen(
             } else {
                 TopAppBar(
                     title = {
-                        val label = when {
-                            !canNavigateUp -> "Dateien"
-                            activeLocation == LocationType.GOOGLE_DRIVE -> driveStack.last().second
-                            else -> localPath.substringAfterLast('/')
-                        }
                         Text(
-                            text = label,
+                            text = "Dateien",
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
                     },
                     navigationIcon = {
-                        if (canNavigateUp) {
-                            IconButton(onClick = { navigateUp() }) {
-                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Zurück")
-                            }
-                        } else {
-                            IconButton(
-                                onClick = {
-                                    MonolithHaptics.monolithMenuOpen(context, view)
-                                    starMenuExpanded = !starMenuExpanded
+                        IconButton(
+                            onClick = {
+                                MonolithHaptics.monolithMenuOpen(context, view)
+                                starMenuExpanded = !starMenuExpanded
+                            },
+                            modifier = Modifier.onGloballyPositioned { coords ->
+                                starAnchorCenter = coords.boundsInRoot().center - rootOrigin
+                            },
+                        ) {
+                            Icon(
+                                imageVector = when {
+                                    activeLocation == LocationType.GOOGLE_DRIVE -> Icons.Outlined.CloudQueue
+                                    activeExternalVolume?.kind == ExternalVolumeKind.USB -> Icons.Outlined.Usb
+                                    activeExternalVolume?.kind == ExternalVolumeKind.SD_CARD -> Icons.Outlined.SdStorage
+                                    else -> Icons.Outlined.FolderOpen
                                 },
-                                modifier = Modifier.onGloballyPositioned { coords ->
-                                    starAnchorCenter = coords.boundsInRoot().center - rootOrigin
-                                },
-                            ) {
-                                Icon(
-                                    imageVector = when {
-                                        activeLocation == LocationType.GOOGLE_DRIVE -> Icons.Outlined.CloudQueue
-                                        activeExternalVolume?.kind == ExternalVolumeKind.USB -> Icons.Outlined.Usb
-                                        activeExternalVolume?.kind == ExternalVolumeKind.SD_CARD -> Icons.Outlined.SdStorage
-                                        else -> Icons.Outlined.FolderOpen
-                                    },
-                                    contentDescription = "Monolith-Menü",
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(22.dp),
-                                )
-                            }
+                                contentDescription = "Monolith-Menü",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(22.dp),
+                            )
                         }
                     },
                     actions = {
@@ -709,13 +700,13 @@ fun ExplorerScreen(
             val isInsideDriveSubfolder = activeLocation == LocationType.GOOGLE_DRIVE && driveStack.size > 1
             val isInsideSubfolder = isInsideLocalSubfolder || isInsideDriveSubfolder
 
-            Row(
+            FlowRow(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState())
                     .padding(horizontal = 16.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+                itemVerticalAlignment = Alignment.CenterVertically,
             ) {
                 if (isInsideSubfolder) {
                     if (activeLocation == LocationType.LOCAL) {
