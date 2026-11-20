@@ -756,7 +756,7 @@ fun AiChatScreen(
             OutlinedTextField(
                 value = promptDraft,
                 onValueChange = { promptDraft = it },
-                label = { Text("1. Rolle & Verhalten (eigener Teil)") },
+                label = { Text("Eigene Anweisungen") },
                 minLines = 4,
                 maxLines = 8,
                 modifier = Modifier.fillMaxWidth(),
@@ -771,7 +771,7 @@ fun AiChatScreen(
             }
 
             Text(
-                text = "2. Umgebung & Werkzeuge (automatisch nach Einstellung, markierbar):",
+                text = "Basisprompt (Umgebung & Werkzeuge)",
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.primary,
             )
@@ -808,7 +808,7 @@ fun AiChatScreen(
                     AppSettingsStore.update { it.copy(aiSystemPrompt = "") }
                 },
             ) {
-                Text("Möchtest du deinen eigenen Prompt-Teil wirklich auf den Standard zurücksetzen?")
+                Text("Möchtest du den Systemprompt wirklich auf den Standard zurücksetzen?")
             }
         }
     }

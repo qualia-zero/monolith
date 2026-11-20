@@ -360,7 +360,7 @@ internal fun PackArchiveContent(
                         singleLine = true,
                         isError = passwordConfirm.isNotEmpty() && password != passwordConfirm,
                         supportingText = if (passwordConfirm.isNotEmpty() && password != passwordConfirm) {
-                            { Text("Passwörter stimmen nicht überein") }
+                            { Text("Passwörter stimmen nicht überein.") }
                         } else {
                             null
                         },
@@ -380,7 +380,7 @@ internal fun PackArchiveContent(
                                     fontWeight = FontWeight.Medium,
                                 )
                                 Text(
-                                    text = "Verbirgt Dateinamen und Ordnerstruktur bis zur Passworteingabe",
+                                    text = "Verbirgt Dateinamen und Ordnerstruktur bis zur Passworteingabe.",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )

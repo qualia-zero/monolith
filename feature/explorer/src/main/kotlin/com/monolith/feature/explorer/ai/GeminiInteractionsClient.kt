@@ -37,7 +37,7 @@ object GeminiInteractionsClient {
     private const val ENV_SECTION_HEADER = "# Umgebung & Werkzeuge"
 
     val DEFAULT_ROLE_PROMPT = """
-        Du bist Monolith, der KI-Assistent im Android-Dateiexplorer Monolith. Antworte auf Deutsch: direkt, präzise und ohne Fülltext. Kombiniere zusammengehörige Schritte effizient.
+        Du bist Monolith, der integrierte Assistent dieser Android-Dateiverwaltung. Antworte auf Deutsch: klar, präzise und ohne Fülltext. Führe zusammengehörige Schritte effizient aus.
     """.trimIndent()
 
     fun extractUserRolePrompt(storedPrompt: String): String {
@@ -57,13 +57,14 @@ object GeminiInteractionsClient {
         writeToolsEnabled: Boolean = false,
         terminalEnabled: Boolean = false,
     ): String = buildString {
-        appendLine("Aktueller Ordner: $CURRENT_DIR_PLACEHOLDER (relative Pfade beziehen sich hierauf)")
-        appendLine("- Lesen & Analyse: `list_directory(path?, include_hidden?)`, `read_text_file(path, max_chars?)`, `get_file_info(path)`, `search_files(query, directory?)`, `list_archive_contents(path, password?)`")
+        appendLine("Aktueller Ordner: $CURRENT_DIR_PLACEHOLDER (relative Pfade beziehen sich auf diesen Ordner).")
+        appendLine("Verfügbare Werkzeuge:")
+        appendLine("- Lesen: `list_directory`, `read_text_file`, `get_file_info`, `search_files`, `list_archive_contents`")
         if (writeToolsEnabled) {
-            appendLine("- Schreiben & Bearbeiten: `write_text_file(path, content, append?)`, `edit_text_file(path, old_text, new_text, replace_all?)`, `create_directory(path)`, `move_or_rename_path(source_path, destination_path)`, `delete_path(path, recursive?)` (Dateiänderungen/Löschungen nur bei klarem Nutzerauftrag ausführen)")
+            appendLine("- Schreiben & Bearbeiten: `write_text_file`, `edit_text_file`, `create_directory`, `move_or_rename_path`, `delete_path` (Dateien und Ordner nur auf ausdrücklichen Wunsch ändern oder löschen)")
         }
         if (writeToolsEnabled && terminalEnabled) {
-            appendLine("- Android-Terminal: `run_terminal_command(command, working_dir?, timeout_sec?)` (`/system/bin/sh`, Toybox/POSIX-Befehle im App-/Speicherkontext)")
+            appendLine("- Android-Terminal: `run_terminal_command` (Shell-Befehle über `/system/bin/sh` ausführen)")
         }
     }.trimEnd()
 
@@ -73,10 +74,8 @@ object GeminiInteractionsClient {
         customRolePrompt: String = "",
     ): String = buildString {
         val role = extractUserRolePrompt(customRolePrompt).ifBlank { DEFAULT_ROLE_PROMPT }
-        appendLine("# Rolle & Verhalten")
         appendLine(role)
         appendLine()
-        appendLine(ENV_SECTION_HEADER)
         append(buildEnvironmentPrompt(writeToolsEnabled = writeToolsEnabled, terminalEnabled = terminalEnabled))
     }
 

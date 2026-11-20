@@ -307,7 +307,7 @@ fun SettingsScreen(
             )
 
             Text(
-                text = "Aktiver API-Key für alle Gemini-Funktionen (lokal gespeichert).",
+                text = "Aktiver API-Key für alle Gemini-Funktionen (lokal gespeichert)",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -349,11 +349,11 @@ fun SettingsScreen(
             ) {
                 Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
                     Text(
-                        text = "Experimentelle KI-Tools",
+                        text = "Experimenteller Schreibzugriff",
                         style = MaterialTheme.typography.bodyLarge,
                     )
                     Text(
-                        text = "Schreib-, Bearbeitungs- und Datei-Tools für die KI freigeben",
+                        text = "Erlaubt der KI das Erstellen, Bearbeiten, Verschieben und Löschen von Dateien und Ordnern.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -379,11 +379,11 @@ fun SettingsScreen(
                 ) {
                     Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
                         Text(
-                            text = "Android-Terminalzugriff",
+                            text = "Android-Terminal",
                             style = MaterialTheme.typography.bodyLarge,
                         )
                         Text(
-                            text = "Der KI direkten Shell-Zugriff (/system/bin/sh) gewähren",
+                            text = "Erlaubt der KI das Ausführen von Shell-Befehlen (/system/bin/sh).",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -415,7 +415,7 @@ fun SettingsScreen(
                     style = MaterialTheme.typography.titleMedium,
                 )
                 Text(
-                    text = "Heruntergeladene Cloud-Dateien und Cloud-Ordnerlisten (${formatCacheSize(cachedBytes)}).",
+                    text = "Heruntergeladene Cloud-Dateien und Cloud-Ordnerlisten (${formatCacheSize(cachedBytes)})",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -462,7 +462,7 @@ fun SettingsScreen(
                     style = MaterialTheme.typography.titleMedium,
                 )
                 Text(
-                    text = "Zwischengespeicherte Vorschaubilder (${formatCacheSize(thumbBytes)}).",
+                    text = "Zwischengespeicherte Vorschaubilder (${formatCacheSize(thumbBytes)})",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

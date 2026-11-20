@@ -167,7 +167,7 @@ fun TextEditorScreen(
             largeFileSizeBytes = decoded.sizeBytes
             isLargeFileWarning = decoded.sizeBytes > LARGE_FILE_WARNING_BYTES
         } catch (e: Exception) {
-            loadError = e.localizedMessage ?: "Datei konnte nicht geladen werden"
+            loadError = e.localizedMessage ?: "Datei konnte nicht geladen werden."
         } finally {
             isLoading = false
         }

@@ -1567,7 +1567,7 @@ private fun DownloaderSettingsSubscreen(
                     }
                     DialogSwitchRow(
                         title = "Beim Start aktualisieren",
-                        subtitle = "Prüft beim Öffnen des Downloaders auf neue yt-dlp-Releases",
+                        subtitle = "Prüft beim Öffnen des Downloaders auf neue yt-dlp-Releases.",
                         checked = settings.autoUpdateEngine,
                         onCheckedChange = { enabled ->
                             DownloaderSettingsStore.update { it.copy(autoUpdateEngine = enabled) }

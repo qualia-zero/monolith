@@ -308,7 +308,7 @@ private fun ZoomableImagePage(
                         )
                         Spacer(modifier = Modifier.size(12.dp))
                         Text(
-                            text = "Bild konnte nicht geladen werden",
+                            text = "Bild konnte nicht geladen werden.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = Color.White.copy(alpha = 0.8f),
                         )
