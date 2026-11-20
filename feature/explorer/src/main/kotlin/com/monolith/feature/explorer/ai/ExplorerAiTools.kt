@@ -12,9 +12,11 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.TimeUnit
+import kotlin.concurrent.thread
 
 /**
- * Read-only local file explorer tools exposed to Gemini via function calling.
+ * Local file explorer and optional write/edit/terminal tools exposed to Gemini via function calling.
  */
 object ExplorerAiTools {
 
@@ -23,7 +25,10 @@ object ExplorerAiTools {
     private const val MAX_READ_CHARS = 24_000
     private const val MAX_SEARCH_DEPTH = 4
 
-    fun toolDeclarationsJson(): JSONArray {
+    fun toolDeclarationsJson(
+        writeToolsEnabled: Boolean = false,
+        terminalEnabled: Boolean = false,
+    ): JSONArray {
         return JSONArray().apply {
             put(
                 JSONObject().apply {
@@ -202,6 +207,238 @@ object ExplorerAiTools {
                     )
                 },
             )
+            if (writeToolsEnabled) {
+                put(
+                    JSONObject().apply {
+                        put("type", "function")
+                        put("name", "write_text_file")
+                        put(
+                            "description",
+                            "Creates, overwrites, or appends to a local UTF-8 text file (creating parent directories if needed).",
+                        )
+                        put(
+                            "parameters",
+                            JSONObject().apply {
+                                put("type", "object")
+                                put(
+                                    "properties",
+                                    JSONObject().apply {
+                                        put(
+                                            "path",
+                                            JSONObject().apply {
+                                                put("type", "string")
+                                                put("description", "Absolute or relative file path.")
+                                            },
+                                        )
+                                        put(
+                                            "content",
+                                            JSONObject().apply {
+                                                put("type", "string")
+                                                put("description", "UTF-8 text content to write.")
+                                            },
+                                        )
+                                        put(
+                                            "append",
+                                            JSONObject().apply {
+                                                put("type", "boolean")
+                                                put("description", "If true, appends to the file instead of overwriting.")
+                                            },
+                                        )
+                                    },
+                                )
+                                put("required", JSONArray().put("path").put("content"))
+                            },
+                        )
+                    },
+                )
+                put(
+                    JSONObject().apply {
+                        put("type", "function")
+                        put("name", "edit_text_file")
+                        put(
+                            "description",
+                            "Replaces old_text with new_text inside an existing local UTF-8 text file.",
+                        )
+                        put(
+                            "parameters",
+                            JSONObject().apply {
+                                put("type", "object")
+                                put(
+                                    "properties",
+                                    JSONObject().apply {
+                                        put(
+                                            "path",
+                                            JSONObject().apply {
+                                                put("type", "string")
+                                                put("description", "Absolute or relative file path.")
+                                            },
+                                        )
+                                        put(
+                                            "old_text",
+                                            JSONObject().apply {
+                                                put("type", "string")
+                                                put("description", "Exact existing text substring to replace.")
+                                            },
+                                        )
+                                        put(
+                                            "new_text",
+                                            JSONObject().apply {
+                                                put("type", "string")
+                                                put("description", "Replacement text.")
+                                            },
+                                        )
+                                        put(
+                                            "replace_all",
+                                            JSONObject().apply {
+                                                put("type", "boolean")
+                                                put("description", "If true, replaces all occurrences; otherwise only the first.")
+                                            },
+                                        )
+                                    },
+                                )
+                                put("required", JSONArray().put("path").put("old_text").put("new_text"))
+                            },
+                        )
+                    },
+                )
+                put(
+                    JSONObject().apply {
+                        put("type", "function")
+                        put("name", "create_directory")
+                        put("description", "Creates a local directory including parent directories.")
+                        put(
+                            "parameters",
+                            JSONObject().apply {
+                                put("type", "object")
+                                put(
+                                    "properties",
+                                    JSONObject().apply {
+                                        put(
+                                            "path",
+                                            JSONObject().apply {
+                                                put("type", "string")
+                                                put("description", "Absolute or relative directory path.")
+                                            },
+                                        )
+                                    },
+                                )
+                                put("required", JSONArray().put("path"))
+                            },
+                        )
+                    },
+                )
+                put(
+                    JSONObject().apply {
+                        put("type", "function")
+                        put("name", "move_or_rename_path")
+                        put("description", "Moves or renames a local file or directory.")
+                        put(
+                            "parameters",
+                            JSONObject().apply {
+                                put("type", "object")
+                                put(
+                                    "properties",
+                                    JSONObject().apply {
+                                        put(
+                                            "source_path",
+                                            JSONObject().apply {
+                                                put("type", "string")
+                                                put("description", "Existing source file or directory path.")
+                                            },
+                                        )
+                                        put(
+                                            "destination_path",
+                                            JSONObject().apply {
+                                                put("type", "string")
+                                                put("description", "Target destination path.")
+                                            },
+                                        )
+                                    },
+                                )
+                                put("required", JSONArray().put("source_path").put("destination_path"))
+                            },
+                        )
+                    },
+                )
+                put(
+                    JSONObject().apply {
+                        put("type", "function")
+                        put("name", "delete_path")
+                        put("description", "Deletes a local file or directory.")
+                        put(
+                            "parameters",
+                            JSONObject().apply {
+                                put("type", "object")
+                                put(
+                                    "properties",
+                                    JSONObject().apply {
+                                        put(
+                                            "path",
+                                            JSONObject().apply {
+                                                put("type", "string")
+                                                put("description", "File or directory path to delete.")
+                                            },
+                                        )
+                                        put(
+                                            "recursive",
+                                            JSONObject().apply {
+                                                put("type", "boolean")
+                                                put("description", "Set true to delete non-empty directories recursively.")
+                                            },
+                                        )
+                                    },
+                                )
+                                put("required", JSONArray().put("path"))
+                            },
+                        )
+                    },
+                )
+                if (terminalEnabled) {
+                    put(
+                        JSONObject().apply {
+                            put("type", "function")
+                            put("name", "run_terminal_command")
+                            put(
+                                "description",
+                                "Executes an Android shell command via /system/bin/sh -c and returns exit_code, stdout, and stderr.",
+                            )
+                            put(
+                                "parameters",
+                                JSONObject().apply {
+                                    put("type", "object")
+                                    put(
+                                        "properties",
+                                    JSONObject().apply {
+                                            put(
+                                                "command",
+                                                JSONObject().apply {
+                                                    put("type", "string")
+                                                    put("description", "Shell command string to execute.")
+                                                },
+                                            )
+                                            put(
+                                                "working_dir",
+                                                JSONObject().apply {
+                                                    put("type", "string")
+                                                    put("description", "Optional working directory (defaults to current directory).")
+                                                },
+                                            )
+                                            put(
+                                                "timeout_sec",
+                                                JSONObject().apply {
+                                                    put("type", "integer")
+                                                    put("description", "Optional timeout in seconds (1..30, default 15).")
+                                                },
+                                            )
+                                        },
+                                    )
+                                    put("required", JSONArray().put("command"))
+                                },
+                            )
+                        },
+                    )
+                }
+            }
         }
     }
 
@@ -209,6 +446,8 @@ object ExplorerAiTools {
         name: String,
         arguments: JSONObject,
         currentDirectory: String,
+        writeToolsEnabled: Boolean = false,
+        terminalEnabled: Boolean = false,
     ): String {
         val defaultDir = currentDirectory.ifBlank {
             Environment.getExternalStorageDirectory().absolutePath
@@ -243,6 +482,54 @@ object ExplorerAiTools {
                     val path = if (rawPath.isEmpty()) "" else resolvePath(rawPath, defaultDir)
                     val password = arguments.optString("password").takeIf { it.isNotEmpty() }
                     listArchiveContents(path, password)
+                }
+                "write_text_file" -> {
+                    if (!writeToolsEnabled) return@runCatching JSONObject().put("error", "Write tools are disabled in Settings").toString()
+                    val rawPath = arguments.optString("path").trim()
+                    val path = if (rawPath.isEmpty()) "" else resolveTargetPath(rawPath, defaultDir)
+                    val content = arguments.optString("content")
+                    val append = arguments.optBoolean("append", false)
+                    writeTextFile(path, content, append)
+                }
+                "edit_text_file" -> {
+                    if (!writeToolsEnabled) return@runCatching JSONObject().put("error", "Write tools are disabled in Settings").toString()
+                    val rawPath = arguments.optString("path").trim()
+                    val path = if (rawPath.isEmpty()) "" else resolvePath(rawPath, defaultDir)
+                    val oldText = arguments.optString("old_text")
+                    val newText = arguments.optString("new_text")
+                    val replaceAll = arguments.optBoolean("replace_all", false)
+                    editTextFile(path, oldText, newText, replaceAll)
+                }
+                "create_directory" -> {
+                    if (!writeToolsEnabled) return@runCatching JSONObject().put("error", "Write tools are disabled in Settings").toString()
+                    val rawPath = arguments.optString("path").trim()
+                    val path = if (rawPath.isEmpty()) "" else resolveTargetPath(rawPath, defaultDir)
+                    createDirectory(path)
+                }
+                "move_or_rename_path" -> {
+                    if (!writeToolsEnabled) return@runCatching JSONObject().put("error", "Write tools are disabled in Settings").toString()
+                    val rawSource = arguments.optString("source_path").trim()
+                    val rawDest = arguments.optString("destination_path").trim()
+                    val sourcePath = if (rawSource.isEmpty()) "" else resolvePath(rawSource, defaultDir)
+                    val destPath = if (rawDest.isEmpty()) "" else resolveTargetPath(rawDest, defaultDir)
+                    moveOrRenamePath(sourcePath, destPath)
+                }
+                "delete_path" -> {
+                    if (!writeToolsEnabled) return@runCatching JSONObject().put("error", "Write tools are disabled in Settings").toString()
+                    val rawPath = arguments.optString("path").trim()
+                    val path = if (rawPath.isEmpty()) "" else resolvePath(rawPath, defaultDir)
+                    val recursive = arguments.optBoolean("recursive", false)
+                    deletePath(path, recursive)
+                }
+                "run_terminal_command" -> {
+                    if (!writeToolsEnabled || !terminalEnabled) {
+                        return@runCatching JSONObject().put("error", "Terminal access is disabled in Settings").toString()
+                    }
+                    val command = arguments.optString("command")
+                    val rawWorkingDir = arguments.optString("working_dir").trim()
+                    val workingDir = if (rawWorkingDir.isEmpty()) defaultDir else resolvePath(rawWorkingDir, defaultDir)
+                    val timeoutSec = arguments.optInt("timeout_sec", 15).coerceIn(1, 30)
+                    runTerminalCommand(command, workingDir, timeoutSec)
                 }
                 else -> JSONObject().put("error", "Unknown tool: $name").toString()
             }
@@ -468,5 +755,166 @@ object ExplorerAiTools {
             bytes < 1024L * 1024L * 1024L -> String.format(Locale.US, "%.1fMB", bytes / (1024.0 * 1024.0))
             else -> String.format(Locale.US, "%.2fGB", bytes / (1024.0 * 1024.0 * 1024.0))
         }
+    }
+
+    private fun resolveTargetPath(rawPath: String, defaultDir: String): String {
+        if (rawPath.isBlank()) return defaultDir
+        return if (rawPath.startsWith("/")) {
+            File(rawPath).absolutePath
+        } else {
+            File(defaultDir, rawPath).absolutePath
+        }
+    }
+
+    private fun writeTextFile(path: String, content: String, append: Boolean): String {
+        if (path.isBlank()) return JSONObject().put("error", "Missing path").toString()
+        val file = File(path)
+        file.parentFile?.mkdirs()
+        if (append) {
+            file.appendText(content, Charsets.UTF_8)
+        } else {
+            file.writeText(content, Charsets.UTF_8)
+        }
+        return JSONObject().apply {
+            put("status", "ok")
+            put("path", file.absolutePath)
+            put("append", append)
+            put("size_bytes", file.length())
+        }.toString()
+    }
+
+    private fun editTextFile(path: String, oldText: String, newText: String, replaceAll: Boolean): String {
+        if (path.isBlank()) return JSONObject().put("error", "Missing path").toString()
+        if (oldText.isEmpty()) return JSONObject().put("error", "old_text must not be empty").toString()
+        val file = File(path)
+        if (!file.exists() || !file.isFile) {
+            return JSONObject().put("error", "File not found: $path").toString()
+        }
+        val original = file.readText(Charsets.UTF_8)
+        if (!original.contains(oldText)) {
+            return JSONObject().put("error", "old_text not found in file: $path").toString()
+        }
+        var replacements = 0
+        val updated = if (replaceAll) {
+            replacements = original.split(oldText).size - 1
+            original.replace(oldText, newText)
+        } else {
+            replacements = 1
+            original.replaceFirst(oldText, newText)
+        }
+        file.writeText(updated, Charsets.UTF_8)
+        return JSONObject().apply {
+            put("status", "ok")
+            put("path", file.absolutePath)
+            put("replacements", replacements)
+            put("size_bytes", file.length())
+        }.toString()
+    }
+
+    private fun createDirectory(path: String): String {
+        if (path.isBlank()) return JSONObject().put("error", "Missing path").toString()
+        val dir = File(path)
+        val existed = dir.isDirectory
+        val created = dir.mkdirs() || dir.isDirectory
+        if (!created) {
+            return JSONObject().put("error", "Failed to create directory: $path").toString()
+        }
+        return JSONObject().apply {
+            put("status", "ok")
+            put("path", dir.absolutePath)
+            put("already_existed", existed)
+        }.toString()
+    }
+
+    private fun moveOrRenamePath(sourcePath: String, destPath: String): String {
+        if (sourcePath.isBlank() || destPath.isBlank()) {
+            return JSONObject().put("error", "Missing source_path or destination_path").toString()
+        }
+        val src = File(sourcePath)
+        if (!src.exists()) {
+            return JSONObject().put("error", "Source does not exist: $sourcePath").toString()
+        }
+        val dst = File(destPath)
+        dst.parentFile?.mkdirs()
+        val moved = src.renameTo(dst) || runCatching {
+            src.copyRecursively(dst, overwrite = true) && src.deleteRecursively()
+        }.getOrDefault(false)
+        if (!moved) {
+            return JSONObject().put("error", "Failed to move $sourcePath to $destPath").toString()
+        }
+        return JSONObject().apply {
+            put("status", "ok")
+            put("source_path", src.absolutePath)
+            put("destination_path", dst.absolutePath)
+        }.toString()
+    }
+
+    private fun deletePath(path: String, recursive: Boolean): String {
+        if (path.isBlank()) return JSONObject().put("error", "Missing path").toString()
+        val target = File(path)
+        if (!target.exists()) {
+            return JSONObject().put("error", "Path does not exist: $path").toString()
+        }
+        if (target.isDirectory && !recursive && (target.listFiles()?.isNotEmpty() == true)) {
+            return JSONObject().put("error", "Directory is not empty (set recursive=true to delete): $path").toString()
+        }
+        val deleted = if (recursive) target.deleteRecursively() else target.delete()
+        if (!deleted) {
+            return JSONObject().put("error", "Failed to delete: $path").toString()
+        }
+        return JSONObject().apply {
+            put("status", "ok")
+            put("deleted", target.absolutePath)
+        }.toString()
+    }
+
+    private fun runTerminalCommand(command: String, workingDir: String, timeoutSec: Int): String {
+        if (command.isBlank()) return JSONObject().put("error", "Missing command").toString()
+        val workDirFile = File(workingDir).takeIf { it.isDirectory }
+            ?: Environment.getExternalStorageDirectory()
+        val process = ProcessBuilder("/system/bin/sh", "-c", command)
+            .directory(workDirFile)
+            .start()
+        val stdoutBuf = StringBuilder()
+        val stderrBuf = StringBuilder()
+        val outThread = thread(start = true, name = "monolith-sh-stdout") {
+            runCatching {
+                process.inputStream.bufferedReader(Charsets.UTF_8).use { reader ->
+                    val buf = CharArray(2048)
+                    var n: Int
+                    while (reader.read(buf).also { n = it } != -1) {
+                        if (stdoutBuf.length < MAX_READ_CHARS) {
+                            stdoutBuf.append(buf, 0, minOf(n, MAX_READ_CHARS - stdoutBuf.length))
+                        }
+                    }
+                }
+            }
+        }
+        val errThread = thread(start = true, name = "monolith-sh-stderr") {
+            runCatching {
+                process.errorStream.bufferedReader(Charsets.UTF_8).use { reader ->
+                    val buf = CharArray(2048)
+                    var n: Int
+                    while (reader.read(buf).also { n = it } != -1) {
+                        if (stderrBuf.length < MAX_READ_CHARS) {
+                            stderrBuf.append(buf, 0, minOf(n, MAX_READ_CHARS - stderrBuf.length))
+                        }
+                    }
+                }
+            }
+        }
+        val finished = process.waitFor(timeoutSec.toLong(), TimeUnit.SECONDS)
+        if (!finished) {
+            process.destroyForcibly()
+        }
+        outThread.join(1000L)
+        errThread.join(1000L)
+        return JSONObject().apply {
+            put("working_dir", workDirFile.absolutePath)
+            put("timed_out", !finished)
+            put("exit_code", if (finished) process.exitValue() else -1)
+            put("stdout", stdoutBuf.toString())
+            put("stderr", stderrBuf.toString())
+        }.toString()
     }
 }

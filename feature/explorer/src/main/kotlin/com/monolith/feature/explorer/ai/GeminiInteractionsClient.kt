@@ -28,11 +28,40 @@ object GeminiInteractionsClient {
     const val DEFAULT_THINKING_LEVEL = "medium"
     const val CURRENT_DIR_PLACEHOLDER = "{current_dir}"
 
-    val DEFAULT_SYSTEM_PROMPT = """
+    private val LEGACY_DEFAULT_SYSTEM_PROMPT = """
         Du bist Monolith, ein hilfreicher Assistent im Monolith-Dateiexplorer (Android). Antworte auf Deutsch, klar und prägnant.
         Aktueller Ordner: $CURRENT_DIR_PLACEHOLDER
         Nutze deine Dateisystem-Tools (`list_directory`, `read_text_file`, `get_file_info`, `search_files`, `list_archive_contents`) nur bei Bedarf (z. B. `list_directory({"path": "$CURRENT_DIR_PLACEHOLDER/Download", "include_hidden": true})`). Unterordner öffnest du über `<dir>/<name>`.
     """.trimIndent()
+
+    fun buildDefaultSystemPrompt(
+        writeToolsEnabled: Boolean = false,
+        terminalEnabled: Boolean = false,
+    ): String = buildString {
+        appendLine("# Rolle & Verhalten")
+        appendLine("Du bist Monolith, der KI-Assistent im Android-Dateiexplorer Monolith. Antworte auf Deutsch: direkt, präzise und ohne Fülltext. Kombiniere zusammengehörige Schritte effizient und führe Dateiänderungen oder Löschungen nur bei klarem Nutzerauftrag aus.")
+        appendLine()
+        appendLine("# Umgebung & Werkzeuge")
+        appendLine("Aktueller Ordner: $CURRENT_DIR_PLACEHOLDER (relative Pfade beziehen sich hierauf)")
+        appendLine("- Lesen & Analyse: `list_directory(path?, include_hidden?)`, `read_text_file(path, max_chars?)`, `get_file_info(path)`, `search_files(query, directory?)`, `list_archive_contents(path, password?)`")
+        if (writeToolsEnabled) {
+            appendLine("- Schreiben & Bearbeiten: `write_text_file(path, content, append?)`, `edit_text_file(path, old_text, new_text, replace_all?)`, `create_directory(path)`, `move_or_rename_path(source_path, destination_path)`, `delete_path(path, recursive?)`")
+        }
+        if (writeToolsEnabled && terminalEnabled) {
+            appendLine("- Android-Terminal: `run_terminal_command(command, working_dir?, timeout_sec?)` (`/system/bin/sh`, Toybox/POSIX-Befehle im App-/Speicherkontext)")
+        }
+    }.trimEnd()
+
+    val DEFAULT_SYSTEM_PROMPT: String = buildDefaultSystemPrompt()
+
+    fun isBuiltInDefaultPrompt(prompt: String): Boolean {
+        val trimmed = prompt.trim()
+        if (trimmed.isEmpty()) return true
+        return trimmed == LEGACY_DEFAULT_SYSTEM_PROMPT ||
+            trimmed == buildDefaultSystemPrompt(writeToolsEnabled = false, terminalEnabled = false) ||
+            trimmed == buildDefaultSystemPrompt(writeToolsEnabled = true, terminalEnabled = false) ||
+            trimmed == buildDefaultSystemPrompt(writeToolsEnabled = true, terminalEnabled = true)
+    }
 
     private const val ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/interactions"
     private const val API_REVISION = "2026-05-20"
@@ -59,15 +88,27 @@ object GeminiInteractionsClient {
         model: String = DEFAULT_MODEL,
         thinkingLevel: String = DEFAULT_THINKING_LEVEL,
         systemPromptTemplate: String = DEFAULT_SYSTEM_PROMPT,
+        writeToolsEnabled: Boolean = false,
+        terminalEnabled: Boolean = false,
         onTextDelta: (String) -> Unit,
         onThoughtDelta: (String) -> Unit = {},
         onToolCallTrace: (ToolCallTrace) -> Unit = {},
         onToolStatus: (String?) -> Unit,
     ): Result<String?> = withContext(Dispatchers.IO) {
         runCatching {
-            val resolvedPrompt = systemPromptTemplate
-                .ifBlank { DEFAULT_SYSTEM_PROMPT }
-                .replace(CURRENT_DIR_PLACEHOLDER, currentDirectory)
+            val activeDefaultPrompt = buildDefaultSystemPrompt(
+                writeToolsEnabled = writeToolsEnabled,
+                terminalEnabled = terminalEnabled,
+            )
+            val resolvedPrompt = (if (isBuiltInDefaultPrompt(systemPromptTemplate)) {
+                activeDefaultPrompt
+            } else {
+                systemPromptTemplate
+            }).replace(CURRENT_DIR_PLACEHOLDER, currentDirectory)
+            val toolDeclarations = ExplorerAiTools.toolDeclarationsJson(
+                writeToolsEnabled = writeToolsEnabled,
+                terminalEnabled = terminalEnabled,
+            )
 
             var activePrevId = previousInteractionId
             var currentInput: Any = userMessage
@@ -85,7 +126,7 @@ object GeminiInteractionsClient {
                             put("thinking_summaries", "auto")
                         },
                     )
-                    put("tools", ExplorerAiTools.toolDeclarationsJson())
+                    put("tools", toolDeclarations)
                     if (activePrevId == null) {
                         put("system_instruction", resolvedPrompt)
                     } else {
@@ -126,6 +167,8 @@ object GeminiInteractionsClient {
                         name = call.name,
                         arguments = argsJson,
                         currentDirectory = currentDirectory,
+                        writeToolsEnabled = writeToolsEnabled,
+                        terminalEnabled = terminalEnabled,
                     )
 
                     onToolCallTrace(

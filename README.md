@@ -32,7 +32,8 @@
 - **Built-in Viewers (`:feature:viewers`):**
   - Text editor and image viewer, plus "Open With" system app discovery and default-app associations.
 - **Integrated Gemini AI Chat (`:feature:explorer`):**
-  - Selectable Gemini models (`gemini-3.5-flash-lite`, `gemini-3.8-flash`, `gemini-4-hydrogen`, `gemini-4-neon`) with configurable thinking levels, streaming responses, collapsible thinking & tool-call traces, Markdown rendering, multi-API-key management, customizable system prompt with quick-copy tool blocks, and read-only explorer tool calling (`list_directory`, `read_text_file`, `get_file_info`, `search_files`, `list_archive_contents`).
+  - Selectable Gemini models (`gemini-3.5-flash-lite`, `gemini-3.8-flash`, `gemini-4-hydrogen`, `gemini-4-neon`) with configurable thinking levels, streaming responses, collapsible thinking & tool-call traces, Markdown rendering, multi-API-key management, and customizable two-section base system prompt (`# Rolle & Verhalten` / `# Umgebung & Werkzeuge`).
+  - Built-in read-only explorer tools (`list_directory`, `read_text_file`, `get_file_info`, `search_files`, `list_archive_contents`), plus opt-in experimental write/edit tools (`write_text_file`, `edit_text_file`, `create_directory`, `move_or_rename_path`, `delete_path`) and gated Android terminal access (`run_terminal_command` via `/system/bin/sh`).
 - **Design & Tactile Polish (`:core:ui`):**
   - **Obsidian** (textured stone aesthetic, cut-corner geometry, unified `MonolithDialog` & `MonolithStarMenu`) and **Phosphor** themes with Day/Night modes and granular per-action haptic feedback (`Ordner öffnen`, `Monolith-Menü öffnen`, `Gedrückthalten`, `Schalter umlegen`, `Pfad-Navigation`, `3-Punkte-Menü öffnen`, `Datei öffnen`, `Aktualisieren`).
 

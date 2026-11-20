@@ -31,6 +31,8 @@ data class AppSettings(
     val aiModelId: String = "gemini-4-hydrogen",
     val aiThinkingLevel: String = "medium",
     val aiSystemPrompt: String = "",
+    val aiExperimentalWriteTools: Boolean = false,
+    val aiExperimentalTerminalAccess: Boolean = false,
 ) {
     val activeGeminiApiKey: String
         get() = geminiApiKeys.firstOrNull { it.id == activeGeminiApiKeyId }?.key

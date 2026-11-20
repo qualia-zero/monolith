@@ -90,10 +90,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
-import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -292,6 +290,8 @@ fun AiChatScreen(
                 model = usedModel.id,
                 thinkingLevel = usedThinking.id,
                 systemPromptTemplate = appSettings.aiSystemPrompt,
+                writeToolsEnabled = appSettings.aiExperimentalWriteTools,
+                terminalEnabled = appSettings.aiExperimentalTerminalAccess,
                 onTextDelta = { delta ->
                     val idx = messages.indexOfFirst { it.id == assistantId }
                     if (idx >= 0) {
@@ -722,21 +722,28 @@ fun AiChatScreen(
     }
 
     if (showSystemPromptDialog) {
-        val clipboardManager = LocalClipboardManager.current
-        val currentStored = appSettings.aiSystemPrompt.ifBlank { GeminiInteractionsClient.DEFAULT_SYSTEM_PROMPT }
-        var promptDraft by remember(appSettings.aiSystemPrompt) { mutableStateOf(currentStored) }
-        var showResetPromptConfirm by remember { mutableStateOf(false) }
-        var copiedTokenHint by remember { mutableStateOf<String?>(null) }
-        val buildingBlocks = remember {
-            listOf(
-                GeminiInteractionsClient.CURRENT_DIR_PLACEHOLDER to "Aktueller Explorer-Ordner",
-                """list_directory({"path": "{current_dir}/Download", "include_hidden": true})""" to "Ordnerinhalt auflisten (Beispiel)",
-                """read_text_file({"path": "{current_dir}/notes.txt", "max_chars": 12000})""" to "UTF-8-Textdatei lesen (Beispiel)",
-                """get_file_info({"path": "{current_dir}/song.mp3"})""" to "Datei-/Media-Metadaten (Beispiel)",
-                """search_files({"query": "rechnung", "directory": "{current_dir}"})""" to "Rekursive Dateisuche bis Tiefe 4 (Beispiel)",
-                """list_archive_contents({"path": "{current_dir}/backup.zip"})""" to "Archivinhalt auflisten (Beispiel)",
+        val activeDefaultPrompt = remember(
+            appSettings.aiExperimentalWriteTools,
+            appSettings.aiExperimentalTerminalAccess,
+        ) {
+            GeminiInteractionsClient.buildDefaultSystemPrompt(
+                writeToolsEnabled = appSettings.aiExperimentalWriteTools,
+                terminalEnabled = appSettings.aiExperimentalTerminalAccess,
             )
         }
+        val currentStored = if (GeminiInteractionsClient.isBuiltInDefaultPrompt(appSettings.aiSystemPrompt)) {
+            activeDefaultPrompt
+        } else {
+            appSettings.aiSystemPrompt
+        }
+        var promptDraft by remember(
+            appSettings.aiSystemPrompt,
+            appSettings.aiExperimentalWriteTools,
+            appSettings.aiExperimentalTerminalAccess,
+        ) {
+            mutableStateOf(currentStored)
+        }
+        var showResetPromptConfirm by remember { mutableStateOf(false) }
 
         MonolithDialog(
             onDismissRequest = { showSystemPromptDialog = false },
@@ -747,7 +754,7 @@ fun AiChatScreen(
             confirmLabel = "Speichern",
             onConfirmClick = {
                 val cleaned = promptDraft.trim()
-                val toStore = if (cleaned == GeminiInteractionsClient.DEFAULT_SYSTEM_PROMPT) "" else cleaned
+                val toStore = if (GeminiInteractionsClient.isBuiltInDefaultPrompt(cleaned)) "" else cleaned
                 AppSettingsStore.update { it.copy(aiSystemPrompt = toStore) }
                 showSystemPromptDialog = false
             },
@@ -755,9 +762,9 @@ fun AiChatScreen(
             OutlinedTextField(
                 value = promptDraft,
                 onValueChange = { promptDraft = it },
-                label = { Text("Prompt-Vorlage") },
-                minLines = 4,
-                maxLines = 9,
+                label = { Text("Basisprompt (Rolle & Werkzeuge)") },
+                minLines = 6,
+                maxLines = 14,
                 modifier = Modifier.fillMaxWidth(),
             )
 
@@ -767,48 +774,6 @@ fun AiChatScreen(
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text("Auf Standard zurücksetzen")
-            }
-
-            Text(
-                text = copiedTokenHint?.let { "Kopiert: $it" }
-                    ?: "Bausteine (antippen zum Kopieren):",
-                style = MaterialTheme.typography.labelMedium,
-                color = if (copiedTokenHint != null) {
-                    MaterialTheme.colorScheme.primary
-                } else {
-                    MaterialTheme.colorScheme.onSurface
-                },
-            )
-
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                buildingBlocks.forEach { (token, desc) ->
-                    Surface(
-                        shape = MaterialTheme.shapes.small,
-                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                clipboardManager.setText(AnnotatedString(token))
-                                copiedTokenHint = token
-                            },
-                    ) {
-                        Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)) {
-                            Text(
-                                text = token,
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontFamily = FontFamily.Monospace,
-                                ),
-                                color = MaterialTheme.colorScheme.primary,
-                            )
-                            Text(
-                                text = desc,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
-                }
             }
         }
 
@@ -821,7 +786,7 @@ fun AiChatScreen(
                 confirmLabel = "Zurücksetzen",
                 onConfirmClick = {
                     showResetPromptConfirm = false
-                    promptDraft = GeminiInteractionsClient.DEFAULT_SYSTEM_PROMPT
+                    promptDraft = activeDefaultPrompt
                     AppSettingsStore.update { it.copy(aiSystemPrompt = "") }
                 },
             ) {

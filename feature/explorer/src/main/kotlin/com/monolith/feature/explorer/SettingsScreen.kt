@@ -1,6 +1,7 @@
 package com.monolith.feature.explorer
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -340,6 +341,63 @@ fun SettingsScreen(
                 },
                 modifier = Modifier.fillMaxWidth(),
             )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+                    Text(
+                        text = "Experimentelle KI-Tools",
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
+                    Text(
+                        text = "Schreib-, Bearbeitungs- und Datei-Tools für die KI freigeben",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                MonolithSwitch(
+                    checked = appSettings.aiExperimentalWriteTools,
+                    onCheckedChange = { enabled ->
+                        AppSettingsStore.update {
+                            it.copy(
+                                aiExperimentalWriteTools = enabled,
+                                aiExperimentalTerminalAccess = if (enabled) it.aiExperimentalTerminalAccess else false,
+                            )
+                        }
+                    },
+                )
+            }
+
+            AnimatedVisibility(visible = appSettings.aiExperimentalWriteTools) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+                        Text(
+                            text = "Android-Terminal-Zugriff",
+                            style = MaterialTheme.typography.bodyLarge,
+                        )
+                        Text(
+                            text = "Der KI direkten Shell-Zugriff (/system/bin/sh) gewähren",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    MonolithSwitch(
+                        checked = appSettings.aiExperimentalTerminalAccess,
+                        onCheckedChange = { enabled ->
+                            AppSettingsStore.update {
+                                it.copy(aiExperimentalTerminalAccess = enabled)
+                            }
+                        },
+                    )
+                }
+            }
 
             HorizontalDivider(thickness = 0.5.dp)
 

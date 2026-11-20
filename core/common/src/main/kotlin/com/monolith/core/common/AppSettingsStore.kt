@@ -30,6 +30,8 @@ object AppSettingsStore {
     private const val KEY_AI_MODEL_ID = "ai_model_id"
     private const val KEY_AI_THINKING_LEVEL = "ai_thinking_level"
     private const val KEY_AI_SYSTEM_PROMPT = "ai_system_prompt"
+    private const val KEY_AI_EXPERIMENTAL_WRITE_TOOLS = "ai_experimental_write_tools"
+    private const val KEY_AI_EXPERIMENTAL_TERMINAL_ACCESS = "ai_experimental_terminal_access"
 
     @Volatile
     private var prefs: SharedPreferences? = null
@@ -170,6 +172,14 @@ object AppSettingsStore {
                 ?: defaults.aiThinkingLevel,
             aiSystemPrompt = sp.getString(KEY_AI_SYSTEM_PROMPT, defaults.aiSystemPrompt)
                 ?: defaults.aiSystemPrompt,
+            aiExperimentalWriteTools = sp.getBoolean(
+                KEY_AI_EXPERIMENTAL_WRITE_TOOLS,
+                defaults.aiExperimentalWriteTools,
+            ),
+            aiExperimentalTerminalAccess = sp.getBoolean(
+                KEY_AI_EXPERIMENTAL_TERMINAL_ACCESS,
+                defaults.aiExperimentalTerminalAccess,
+            ),
         )
     }
 
@@ -202,6 +212,8 @@ object AppSettingsStore {
             ?.putString(KEY_AI_MODEL_ID, value.aiModelId)
             ?.putString(KEY_AI_THINKING_LEVEL, value.aiThinkingLevel)
             ?.putString(KEY_AI_SYSTEM_PROMPT, value.aiSystemPrompt)
+            ?.putBoolean(KEY_AI_EXPERIMENTAL_WRITE_TOOLS, value.aiExperimentalWriteTools)
+            ?.putBoolean(KEY_AI_EXPERIMENTAL_TERMINAL_ACCESS, value.aiExperimentalTerminalAccess)
             ?.apply()
     }
 
