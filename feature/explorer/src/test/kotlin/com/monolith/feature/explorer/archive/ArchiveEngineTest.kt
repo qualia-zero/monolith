@@ -282,4 +282,42 @@ class ArchiveEngineTest {
         assertTrue(previewFile.exists())
         assertEquals("Preview content", previewFile.readText())
     }
+
+    @Test
+    fun `7z filename encryption hides entries without password and extracts with password`() = runBlocking {
+        val srcFile = tempFolder.newFile("hidden_name.txt").apply { writeText("Secret 7z Header Payload") }
+        val outDir = tempFolder.newFolder("out_7z_enc_header")
+
+        val group = ArchiveEngine.createArchive(
+            PackArchiveRequest(
+                sourcePaths = listOf(srcFile.absolutePath),
+                outputDirectory = outDir.absolutePath,
+                archiveBaseName = "enc_header",
+                format = ArchiveFormat.SEVEN_Z,
+                encryptionMethod = ArchiveEncryptionMethod.AES_256,
+                password = "header-secret-pw",
+                encryptFilenames = true,
+            ),
+        ).getOrThrow()
+
+        // Without password: must fail with ArchivePasswordException or require password to list
+        val noPwdResult = ArchiveEngine.inspectArchive(group.primaryFile, password = null)
+        assertTrue(
+            noPwdResult.isFailure && noPwdResult.exceptionOrNull() is ArchivePasswordException ||
+                noPwdResult.getOrNull()?.requiresPasswordToList == true,
+        )
+
+        // With password: lists entries and extracts cleanly
+        val okSummary = ArchiveEngine.inspectArchive(group.primaryFile, password = "header-secret-pw").getOrThrow()
+        assertFalse(okSummary.requiresPasswordToList)
+        assertTrue(okSummary.entries.any { it.name == "hidden_name.txt" })
+
+        val extractDir = tempFolder.newFolder("extract_7z_enc_header")
+        ArchiveEngine.extractArchive(
+            file = group.primaryFile,
+            targetDir = extractDir,
+            password = "header-secret-pw",
+        ).getOrThrow()
+        assertEquals("Secret 7z Header Payload", File(extractDir, "hidden_name.txt").readText())
+    }
 }

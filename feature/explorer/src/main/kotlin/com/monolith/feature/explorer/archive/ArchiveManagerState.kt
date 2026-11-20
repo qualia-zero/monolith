@@ -13,9 +13,8 @@ import kotlinx.coroutines.Job
 import java.io.File
 
 enum class ArchiveToolMode(val label: String) {
-    MANAGE("Verwalten"),
-    PACK("Packen"),
     EXTRACT("Entpacken"),
+    PACK("Packen"),
 }
 
 data class ArchiveLaunchRequest(
@@ -29,7 +28,7 @@ data class ArchiveLaunchRequest(
 class ArchiveManagerState(
     val defaultRootDir: String,
 ) {
-    var activeMode by mutableStateOf(ArchiveToolMode.MANAGE)
+    var activeMode by mutableStateOf(ArchiveToolMode.EXTRACT)
     var lastConsumedLaunchNonce by mutableLongStateOf(0L)
 
     val rememberedPasswords = mutableStateMapOf<String, String>()
@@ -61,6 +60,7 @@ class ArchiveManagerState(
     var packEncryptionMethod by mutableStateOf(ArchiveEncryptionMethod.AES_256)
     var packPassword by mutableStateOf("")
     var packPasswordConfirm by mutableStateOf("")
+    var packEncryptFilenames by mutableStateOf(false)
     var packSplitEnabled by mutableStateOf(false)
     var packSplitPreset by mutableStateOf(SplitVolumePreset.MB_50)
     var packSplitCustomSelected by mutableStateOf(false)

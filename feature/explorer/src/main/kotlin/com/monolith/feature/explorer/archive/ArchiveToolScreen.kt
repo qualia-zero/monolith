@@ -25,14 +25,13 @@ import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.FolderZip
 import androidx.compose.material.icons.outlined.MoreVert
-import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.SelectAll
-import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Unarchive
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -44,7 +43,6 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -140,7 +138,8 @@ fun ArchiveToolScreen(
     var renameEntryTarget by remember { mutableStateOf<ArchiveEntryItem?>(null) }
     var deleteEntriesConfirm by remember { mutableStateOf<Set<String>?>(null) }
     var convertSourceGroup by remember { mutableStateOf<ArchiveVolumeGroup?>(null) }
-    var quickExtractGroup by remember { mutableStateOf<ArchiveVolumeGroup?>(null) }
+    var extractDialogGroup by remember { mutableStateOf<ArchiveVolumeGroup?>(null) }
+    var extractDialogSelection by remember { mutableStateOf<Set<String>?>(null) }
     var completionDialog by remember { mutableStateOf<OperationCompletionDialogState?>(null) }
 
     fun openAndInspectArchive(
@@ -378,6 +377,60 @@ fun ArchiveToolScreen(
         }
     }
 
+    fun launchAddFilesToArchive(group: ArchiveVolumeGroup) {
+        activePickerRequest = LocalPickerRequest(
+            mode = LocalPickerMode.FILES_AND_FOLDERS_MULTI,
+            title = "Dateien & Ordner hinzufügen",
+            initialDirectory = group.primaryFile.parent ?: defaultRootDir,
+            onConfirm = { paths ->
+                if (paths.isEmpty()) return@LocalPickerRequest
+                fun runAdd(pwd: String?) {
+                    state.activeJob?.cancel()
+                    state.activeProgress = ArchiveOperationProgress(
+                        title = "Einträge werden hinzugefügt…",
+                        currentItem = group.displayName,
+                        processedBytes = 0L,
+                        totalBytes = 1L,
+                    )
+                    state.activeJob = scope.launch {
+                        val res = ArchiveEngine.addEntriesToArchive(
+                            archiveFile = group.primaryFile,
+                            pathsToAdd = paths,
+                            targetInternalDir = state.archiveInternalPath,
+                            password = pwd ?: state.resolvePasswordFor(group),
+                            onProgress = { p -> state.activeProgress = p },
+                        )
+                        state.activeProgress = null
+                        state.activeJob = null
+                        res.onSuccess {
+                            snackbarHostState.showSnackbar("${paths.size} Element(e) hinzugefügt.")
+                            openAndInspectArchive(
+                                group.primaryFile,
+                                pwd ?: state.resolvePasswordFor(group),
+                                resetInternalPath = false,
+                            )
+                        }.onFailure { err ->
+                            if (err is CancellationException) return@onFailure
+                            if (err is ArchivePasswordException) {
+                                passwordPrompt = PasswordPromptRequest(
+                                    archiveFile = group.primaryFile,
+                                    archiveLabel = group.displayName,
+                                    isWrongPassword = err.isWrongPassword,
+                                    onSubmit = { newPwd -> runAdd(newPwd) },
+                                )
+                            } else {
+                                snackbarHostState.showSnackbar(
+                                    err.message ?: "Hinzufügen fehlgeschlagen.",
+                                )
+                            }
+                        }
+                    }
+                }
+                runAdd(null)
+            },
+        )
+    }
+
     // Consume each incoming launchRequest once
     LaunchedEffect(launchRequest.nonce) {
         if (launchRequest.nonce > 0L && launchRequest.nonce != state.lastConsumedLaunchNonce) {
@@ -391,12 +444,9 @@ fun ArchiveToolScreen(
                 !launchRequest.archivePath.isNullOrBlank() -> {
                     val f = File(launchRequest.archivePath)
                     if (f.exists()) {
-                        val targetMode = launchRequest.mode ?: ArchiveToolMode.MANAGE
-                        state.activeMode = targetMode
+                        state.activeMode = ArchiveToolMode.EXTRACT
                         state.prepareExtractFor(f)
-                        if (targetMode == ArchiveToolMode.MANAGE) {
-                            openAndInspectArchive(f)
-                        }
+                        openAndInspectArchive(f)
                     }
                 }
                 launchRequest.mode != null -> {
@@ -446,23 +496,6 @@ fun ArchiveToolScreen(
         }
     }
 
-    // Resolve extract volume group whenever path changes
-    LaunchedEffect(state.extractArchivePath) {
-        if (state.extractArchivePath.isBlank()) {
-            state.extractArchiveGroup = null
-        } else {
-            state.extractArchiveGroup = withContext(Dispatchers.IO) {
-                val f = File(state.extractArchivePath)
-                if (f.exists()) ArchiveEngine.resolveVolumeGroup(f) else null
-            }
-            state.extractArchiveGroup?.let { grp ->
-                state.resolvePasswordFor(grp)?.let { saved ->
-                    if (state.extractPassword.isEmpty()) state.extractPassword = saved
-                }
-            }
-        }
-    }
-
     BackHandler(enabled = starMenuExpanded || menuExpanded) {
         starMenuExpanded = false
         menuExpanded = false
@@ -470,14 +503,14 @@ fun ArchiveToolScreen(
 
     BackHandler(enabled = !starMenuExpanded && !menuExpanded) {
         when {
-            state.activeMode == ArchiveToolMode.MANAGE && state.selectedEntryPaths.isNotEmpty() -> {
+            state.activeMode == ArchiveToolMode.EXTRACT && state.selectedEntryPaths.isNotEmpty() -> {
                 state.selectedEntryPaths = emptySet()
             }
-            state.activeMode == ArchiveToolMode.MANAGE && state.openedSummary != null && state.archiveInternalPath.isNotEmpty() -> {
+            state.activeMode == ArchiveToolMode.EXTRACT && state.openedSummary != null && state.archiveInternalPath.isNotEmpty() -> {
                 MonolithHaptics.backNav(context, view)
                 state.archiveInternalPath = state.archiveInternalPath.substringBeforeLast('/', "")
             }
-            state.activeMode == ArchiveToolMode.MANAGE && state.openedSummary != null -> {
+            state.activeMode == ArchiveToolMode.EXTRACT && state.openedSummary != null -> {
                 MonolithHaptics.backNav(context, view)
                 state.openedSummary = null
                 state.selectedEntryPaths = emptySet()
@@ -530,7 +563,7 @@ fun ArchiveToolScreen(
             snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
             topBar = {
                 val summary = state.openedSummary
-                if (state.activeMode == ArchiveToolMode.MANAGE && summary != null && state.selectedEntryPaths.isNotEmpty()) {
+                if (state.activeMode == ArchiveToolMode.EXTRACT && summary != null && state.selectedEntryPaths.isNotEmpty()) {
                     val isModifiable = !summary.group.isMultiVolume && summary.group.format.canCreate
                     val currentFolderEntries = remember(summary, state.archiveInternalPath) {
                         summary.entries.filter { it.parentPath == state.archiveInternalPath }
@@ -562,31 +595,6 @@ fun ArchiveToolScreen(
                                 },
                             ) {
                                 Icon(Icons.Outlined.SelectAll, contentDescription = "Alle auswählen")
-                            }
-                            IconButton(
-                                onClick = {
-                                    val chosen = state.selectedEntryPaths
-                                    val initialDir = summary.group.primaryFile.parent ?: defaultRootDir
-                                    activePickerRequest = LocalPickerRequest(
-                                        mode = LocalPickerMode.SINGLE_DIRECTORY,
-                                        title = "Zielordner für Auswahl",
-                                        initialDirectory = initialDir,
-                                        onConfirm = { dirs ->
-                                            val target = dirs.firstOrNull() ?: return@LocalPickerRequest
-                                            state.selectedEntryPaths = emptySet()
-                                            launchExtractOperation(
-                                                archiveFile = summary.group.primaryFile,
-                                                targetDir = File(target),
-                                                password = null,
-                                                selectedEntries = chosen,
-                                                createSubfolder = false,
-                                                deleteAfterExtract = false,
-                                            )
-                                        },
-                                    )
-                                },
-                            ) {
-                                Icon(Icons.Outlined.Unarchive, contentDescription = "Auswahl entpacken")
                             }
                             if (isModifiable && state.selectedEntryPaths.size == 1) {
                                 val targetPath = state.selectedEntryPaths.first()
@@ -653,6 +661,7 @@ fun ArchiveToolScreen(
                     .fillMaxSize()
                     .padding(padding),
             ) {
+                // Clean 2-tab selector: Entpacken & Packen
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -675,8 +684,8 @@ fun ArchiveToolScreen(
                 }
 
                 when (state.activeMode) {
-                    ArchiveToolMode.MANAGE -> {
-                        ManageArchiveContent(
+                    ArchiveToolMode.EXTRACT -> {
+                        ExtractArchiveTab(
                             summary = state.openedSummary,
                             isInspecting = state.isInspecting,
                             isScanning = state.isScanningArchives,
@@ -705,10 +714,11 @@ fun ArchiveToolScreen(
                                 state.archiveInternalPath = ""
                                 state.selectedEntryPaths = emptySet()
                             },
-                            onSwitchToPack = { state.activeMode = ArchiveToolMode.PACK },
-                            onQuickExtract = { group ->
-                                state.prepareExtractFor(group.primaryFile)
-                                quickExtractGroup = group
+                            onExtractClick = {
+                                val summary = state.openedSummary ?: return@ExtractArchiveTab
+                                state.prepareExtractFor(summary.group.primaryFile)
+                                extractDialogSelection = state.selectedEntryPaths.takeIf { it.isNotEmpty() }
+                                extractDialogGroup = summary.group
                             },
                             onRequestPasswordEdit = { group ->
                                 passwordPrompt = PasswordPromptRequest(
@@ -720,62 +730,6 @@ fun ArchiveToolScreen(
                                     },
                                 )
                             },
-                            onAddFilesToArchive = { group ->
-                                activePickerRequest = LocalPickerRequest(
-                                    mode = LocalPickerMode.FILES_AND_FOLDERS_MULTI,
-                                    title = "Dateien & Ordner hinzufügen",
-                                    initialDirectory = group.primaryFile.parent ?: defaultRootDir,
-                                    onConfirm = { paths ->
-                                        if (paths.isEmpty()) return@LocalPickerRequest
-                                        fun runAdd(pwd: String?) {
-                                            state.activeJob?.cancel()
-                                            state.activeProgress = ArchiveOperationProgress(
-                                                title = "Einträge werden hinzugefügt…",
-                                                currentItem = group.displayName,
-                                                processedBytes = 0L,
-                                                totalBytes = 1L,
-                                            )
-                                            state.activeJob = scope.launch {
-                                                val res = ArchiveEngine.addEntriesToArchive(
-                                                    archiveFile = group.primaryFile,
-                                                    pathsToAdd = paths,
-                                                    targetInternalDir = state.archiveInternalPath,
-                                                    password = pwd ?: state.resolvePasswordFor(group),
-                                                    onProgress = { p -> state.activeProgress = p },
-                                                )
-                                                state.activeProgress = null
-                                                state.activeJob = null
-                                                res.onSuccess {
-                                                    snackbarHostState.showSnackbar("${paths.size} Element(e) hinzugefügt.")
-                                                    openAndInspectArchive(
-                                                        group.primaryFile,
-                                                        pwd ?: state.resolvePasswordFor(group),
-                                                        resetInternalPath = false,
-                                                    )
-                                                }.onFailure { err ->
-                                                    if (err is CancellationException) return@onFailure
-                                                    if (err is ArchivePasswordException) {
-                                                        passwordPrompt = PasswordPromptRequest(
-                                                            archiveFile = group.primaryFile,
-                                                            archiveLabel = group.displayName,
-                                                            isWrongPassword = err.isWrongPassword,
-                                                            onSubmit = { newPwd -> runAdd(newPwd) },
-                                                        )
-                                                    } else {
-                                                        snackbarHostState.showSnackbar(
-                                                            err.message ?: "Hinzufügen fehlgeschlagen.",
-                                                        )
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        runAdd(null)
-                                    },
-                                )
-                            },
-                            onVerifyArchive = { group -> launchVerifyOperation(group) },
-                            onConvertArchive = { group -> convertSourceGroup = group },
-                            onMergeArchive = { group -> launchMergeOperation(group) },
                             onNavigateInternalPath = { newPath ->
                                 MonolithHaptics.folderOpen(context, view)
                                 state.archiveInternalPath = newPath
@@ -821,6 +775,7 @@ fun ArchiveToolScreen(
                             encryptionMethod = state.packEncryptionMethod,
                             password = state.packPassword,
                             passwordConfirm = state.packPasswordConfirm,
+                            encryptFilenames = state.packEncryptFilenames,
                             splitEnabled = state.packSplitEnabled,
                             splitPreset = state.packSplitPreset,
                             splitCustomSelected = state.packSplitCustomSelected,
@@ -854,8 +809,11 @@ fun ArchiveToolScreen(
                                 state.packFormat = newFmt
                                 if (!newFmt.supportsEncryption) {
                                     state.packEncryptionEnabled = false
+                                    state.packEncryptFilenames = false
                                 } else if (newFmt == ArchiveFormat.SEVEN_Z) {
                                     state.packEncryptionMethod = ArchiveEncryptionMethod.AES_256
+                                } else {
+                                    state.packEncryptFilenames = false
                                 }
                             },
                             onCompressionChange = { state.packCompression = it },
@@ -863,6 +821,7 @@ fun ArchiveToolScreen(
                             onEncryptionMethodChange = { state.packEncryptionMethod = it },
                             onPasswordChange = { state.packPassword = it },
                             onPasswordConfirmChange = { state.packPasswordConfirm = it },
+                            onEncryptFilenamesChange = { state.packEncryptFilenames = it },
                             onSplitEnabledChange = { state.packSplitEnabled = it },
                             onSplitPresetChange = {
                                 state.packSplitCustomSelected = false
@@ -919,6 +878,9 @@ fun ArchiveToolScreen(
                                     compressionLevel = state.packCompression,
                                     encryptionMethod = effectiveEnc,
                                     password = if (effectiveEnc != ArchiveEncryptionMethod.NONE) state.packPassword else "",
+                                    encryptFilenames = effectiveEnc != ArchiveEncryptionMethod.NONE &&
+                                        state.packFormat.supportsFilenameEncryption &&
+                                        state.packEncryptFilenames,
                                     splitVolumeBytes = splitBytes,
                                     solidArchive = state.packSolidArchive,
                                 )
@@ -963,58 +925,6 @@ fun ArchiveToolScreen(
                             },
                         )
                     }
-
-                    ArchiveToolMode.EXTRACT -> {
-                        ExtractArchiveContent(
-                            archivePath = state.extractArchivePath,
-                            volumeGroup = state.extractArchiveGroup,
-                            targetDir = state.extractTargetDir,
-                            password = state.extractPassword,
-                            createSubfolder = state.extractCreateSubfolder,
-                            conflictPolicy = state.extractConflictPolicy,
-                            deleteAfterExtract = state.extractDeleteAfter,
-                            onPickArchive = {
-                                activePickerRequest = LocalPickerRequest(
-                                    mode = LocalPickerMode.SINGLE_FILE,
-                                    title = "Archiv zum Entpacken wählen",
-                                    initialDirectory = state.extractArchivePath.takeIf { it.isNotBlank() }
-                                        ?.let { File(it).parent } ?: defaultRootDir,
-                                    archiveHighlight = true,
-                                    onConfirm = { paths ->
-                                        paths.firstOrNull()?.let { picked ->
-                                            state.prepareExtractFor(File(picked))
-                                        }
-                                    },
-                                )
-                            },
-                            onPickTargetDir = {
-                                activePickerRequest = LocalPickerRequest(
-                                    mode = LocalPickerMode.SINGLE_DIRECTORY,
-                                    title = "Zielordner wählen",
-                                    initialDirectory = state.extractTargetDir,
-                                    onConfirm = { dirs -> dirs.firstOrNull()?.let { state.extractTargetDir = it } },
-                                )
-                            },
-                            onPasswordChange = { state.extractPassword = it },
-                            onCreateSubfolderChange = { state.extractCreateSubfolder = it },
-                            onConflictPolicyChange = { state.extractConflictPolicy = it },
-                            onDeleteAfterExtractChange = { state.extractDeleteAfter = it },
-                            onExtractNow = {
-                                val srcFile = File(state.extractArchivePath)
-                                val dstDir = File(state.extractTargetDir)
-                                MonolithHaptics.launchItem(context)
-                                launchExtractOperation(
-                                    archiveFile = srcFile,
-                                    targetDir = dstDir,
-                                    password = state.extractPassword.takeIf { it.isNotEmpty() },
-                                    selectedEntries = null,
-                                    createSubfolder = state.extractCreateSubfolder,
-                                    conflictPolicy = state.extractConflictPolicy,
-                                    deleteAfterExtract = state.extractDeleteAfter,
-                                )
-                            },
-                        )
-                    }
                 }
             }
         }
@@ -1033,11 +943,58 @@ fun ArchiveToolScreen(
             onDismiss = { starMenuExpanded = false },
         )
 
+        val openedGroup = state.openedSummary?.group
         val menuItems = buildList {
+            if (openedGroup != null) {
+                val isModifiable = !openedGroup.isMultiVolume && openedGroup.format.canCreate
+                if (isModifiable) {
+                    add(
+                        CornerMenuItem(
+                            id = "add_files",
+                            label = "Dateien hinzufügen…",
+                            onClick = { launchAddFilesToArchive(openedGroup) },
+                        ),
+                    )
+                }
+                add(
+                    CornerMenuItem(
+                        id = "verify_archive",
+                        label = "Archiv prüfen",
+                        onClick = { launchVerifyOperation(openedGroup) },
+                    ),
+                )
+                add(
+                    CornerMenuItem(
+                        id = "convert_archive",
+                        label = "Format konvertieren…",
+                        onClick = { convertSourceGroup = openedGroup },
+                    ),
+                )
+                if (ArchiveEngine.canBinaryMerge(openedGroup)) {
+                    add(
+                        CornerMenuItem(
+                            id = "merge_archive",
+                            label = "Teile zusammenführen",
+                            onClick = { launchMergeOperation(openedGroup) },
+                        ),
+                    )
+                }
+                add(
+                    CornerMenuItem(
+                        id = "close_archive",
+                        label = "Archiv schließen",
+                        onClick = {
+                            state.openedSummary = null
+                            state.archiveInternalPath = ""
+                            state.selectedEntryPaths = emptySet()
+                        },
+                    ),
+                )
+            }
             add(
                 CornerMenuItem(
                     id = "open_archive",
-                    label = "Archiv öffnen…",
+                    label = "Anderes Archiv öffnen…",
                     onClick = {
                         activePickerRequest = LocalPickerRequest(
                             mode = LocalPickerMode.SINGLE_FILE,
@@ -1046,7 +1003,7 @@ fun ArchiveToolScreen(
                             archiveHighlight = true,
                             onConfirm = { paths ->
                                 paths.firstOrNull()?.let {
-                                    state.activeMode = ArchiveToolMode.MANAGE
+                                    state.activeMode = ArchiveToolMode.EXTRACT
                                     openAndInspectArchive(File(it))
                                 }
                             },
@@ -1061,19 +1018,6 @@ fun ArchiveToolScreen(
                     onClick = { state.scanTrigger++ },
                 ),
             )
-            if (state.openedSummary != null) {
-                add(
-                    CornerMenuItem(
-                        id = "close_archive",
-                        label = "Archiv schließen",
-                        onClick = {
-                            state.openedSummary = null
-                            state.archiveInternalPath = ""
-                            state.selectedEntryPaths = emptySet()
-                        },
-                    ),
-                )
-            }
             add(
                 CornerMenuItem(
                     id = "settings",
@@ -1102,24 +1046,32 @@ fun ArchiveToolScreen(
         )
     }
 
-    quickExtractGroup?.let { grp ->
+    extractDialogGroup?.let { grp ->
+        var showPwd by remember(grp) { mutableStateOf(false) }
         MonolithDialog(
-            onDismissRequest = { quickExtractGroup = null },
-            title = "Entpacken: ${grp.displayName}",
+            onDismissRequest = { extractDialogGroup = null },
+            title = if (extractDialogSelection != null) {
+                "Auswahl entpacken (${extractDialogSelection?.size ?: 0})"
+            } else {
+                "Entpacken: ${grp.displayName}"
+            },
             dismissLabel = "Abbrechen",
-            onDismissClick = { quickExtractGroup = null },
+            onDismissClick = { extractDialogGroup = null },
             confirmLabel = "Jetzt entpacken",
             onConfirmClick = {
-                quickExtractGroup = null
+                val chosenSelection = extractDialogSelection
+                extractDialogGroup = null
+                extractDialogSelection = null
+                state.selectedEntryPaths = emptySet()
                 MonolithHaptics.launchItem(context)
                 launchExtractOperation(
                     archiveFile = grp.primaryFile,
                     targetDir = File(state.extractTargetDir),
                     password = state.extractPassword.takeIf { it.isNotEmpty() },
-                    selectedEntries = null,
+                    selectedEntries = chosenSelection,
                     createSubfolder = state.extractCreateSubfolder,
                     conflictPolicy = state.extractConflictPolicy,
-                    deleteAfterExtract = false,
+                    deleteAfterExtract = state.extractDeleteAfter && chosenSelection == null,
                 )
             },
         ) {
@@ -1169,30 +1121,75 @@ fun ArchiveToolScreen(
                     )
                 }
             }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = "In eigenen Unterordner entpacken",
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.weight(1f),
-                )
-                MonolithSwitch(
-                    checked = state.extractCreateSubfolder,
-                    onCheckedChange = { state.extractCreateSubfolder = it },
+
+            if (extractDialogSelection == null) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "In eigenen Unterordner entpacken",
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.weight(1f),
+                    )
+                    MonolithSwitch(
+                        checked = state.extractCreateSubfolder,
+                        onCheckedChange = { state.extractCreateSubfolder = it },
+                    )
+                }
+            }
+
+            HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
+
+            Text(
+                text = "Bei vorhandenen Dateien",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            ExtractConflictPolicy.entries.forEach { policy ->
+                MonolithDialogOption(
+                    label = policy.label,
+                    selected = state.extractConflictPolicy == policy,
+                    onClick = { state.extractConflictPolicy = policy },
                 )
             }
-            TextButton(
-                onClick = {
-                    quickExtractGroup = null
-                    state.prepareExtractFor(grp.primaryFile)
-                    state.activeMode = ArchiveToolMode.EXTRACT
-                },
-                modifier = Modifier.align(Alignment.End),
-            ) {
-                Text("Erweiterte Optionen…")
+
+            if (state.openedSummary?.isEncrypted == true && state.resolvePasswordFor(grp).isNullOrEmpty()) {
+                OutlinedTextField(
+                    value = state.extractPassword,
+                    onValueChange = { state.extractPassword = it },
+                    label = { Text("Passwort (falls erforderlich)") },
+                    singleLine = true,
+                    visualTransformation = if (showPwd) VisualTransformation.None else PasswordVisualTransformation(),
+                    trailingIcon = {
+                        IconButton(onClick = { showPwd = !showPwd }) {
+                            Icon(
+                                imageVector = if (showPwd) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
+                                contentDescription = if (showPwd) "Verbergen" else "Anzeigen",
+                            )
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+
+            if (extractDialogSelection == null) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "Archiv nach Entpacken löschen",
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.weight(1f),
+                    )
+                    MonolithSwitch(
+                        checked = state.extractDeleteAfter,
+                        onCheckedChange = { state.extractDeleteAfter = it },
+                    )
+                }
             }
         }
     }
@@ -1648,7 +1645,7 @@ fun ArchiveToolScreen(
             dismissLabel = "Schließen",
             onDismissClick = { completionDialog = null },
             confirmLabel = when {
-                done.openArchivePath != null -> "Archiv verwalten"
+                done.openArchivePath != null -> "Archiv öffnen"
                 done.openFolderPath != null -> "Zielordner öffnen"
                 else -> "OK"
             },
@@ -1656,7 +1653,7 @@ fun ArchiveToolScreen(
                 completionDialog = null
                 when {
                     done.openArchivePath != null -> {
-                        state.activeMode = ArchiveToolMode.MANAGE
+                        state.activeMode = ArchiveToolMode.EXTRACT
                         openAndInspectArchive(File(done.openArchivePath))
                     }
                     done.openFolderPath != null -> {

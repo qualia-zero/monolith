@@ -421,6 +421,7 @@ object ArchiveEngine {
                     tempArchiveFile = tempArchiveFile,
                     compressionLevel = request.compressionLevel,
                     passwordChars = passwordChars,
+                    encryptFilenames = request.encryptFilenames,
                     splitBytes = splitBytes,
                     onProgress = onProgress,
                 )
@@ -1646,6 +1647,7 @@ object ArchiveEngine {
         tempArchiveFile: File,
         compressionLevel: ArchiveCompressionLevel,
         passwordChars: CharArray?,
+        encryptFilenames: Boolean,
         splitBytes: Long?,
         onProgress: (ArchiveOperationProgress) -> Unit,
     ): ArchiveVolumeGroup {
@@ -1705,6 +1707,10 @@ object ArchiveEngine {
                 szOut.finish()
             }
 
+            if (encryptFilenames && passwordChars != null && passwordChars.isNotEmpty()) {
+                encryptSevenZHeader(tempArchiveFile, passwordChars)
+            }
+
             if (splitBytes != null) {
                 val firstPart = splitBinaryFile(
                     sourceFile = tempArchiveFile,
@@ -1726,6 +1732,136 @@ object ArchiveEngine {
             }
         } finally {
             if (tempArchiveFile.exists()) tempArchiveFile.delete()
+        }
+    }
+
+    /**
+     * Encrypts a 7z archive's plaintext header into a standard kEncodedHeader (0x17)
+     * using AES256SHA256 so filenames and folder structure require a password to list.
+     */
+    private fun encryptSevenZHeader(
+        sevenZFile: File,
+        passwordChars: CharArray,
+    ) {
+        java.io.RandomAccessFile(sevenZFile, "rw").use { raf ->
+            if (raf.length() < 32L) return
+            val sigHeader = ByteArray(32)
+            raf.seek(0L)
+            raf.readFully(sigHeader)
+            val sigBuf = java.nio.ByteBuffer.wrap(sigHeader).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+            val nextHeaderOffset = sigBuf.getLong(12)
+            val nextHeaderSize = sigBuf.getLong(20).toInt()
+            if (nextHeaderOffset < 0L || nextHeaderSize <= 0) return
+
+            val headerFilePos = 32L + nextHeaderOffset
+            val plainHeader = ByteArray(nextHeaderSize)
+            raf.seek(headerFilePos)
+            raf.readFully(plainHeader)
+            // Already encoded/encrypted
+            if (plainHeader.firstOrNull() == 0x17.toByte()) return
+
+            val iv = ByteArray(16).also { java.security.SecureRandom().nextBytes(it) }
+            val numCyclesPower = 19
+            val pwBytes = String(passwordChars).toByteArray(Charsets.UTF_16LE)
+            val digest = java.security.MessageDigest.getInstance("SHA-256")
+            val counter = ByteArray(8)
+            val totalCycles = 1 shl numCyclesPower
+            for (i in 0 until totalCycles) {
+                digest.update(pwBytes)
+                var v = i.toLong()
+                for (b in 0 until 8) {
+                    counter[b] = (v and 0xFFL).toByte()
+                    v = v ushr 8
+                }
+                digest.update(counter)
+            }
+            val key = digest.digest()
+
+            val paddedLen = ((plainHeader.size + 15) / 16) * 16
+            val paddedHeader = plainHeader.copyOf(paddedLen)
+            val cipher = javax.crypto.Cipher.getInstance("AES/CBC/NoPadding")
+            cipher.init(
+                javax.crypto.Cipher.ENCRYPT_MODE,
+                javax.crypto.spec.SecretKeySpec(key, "AES"),
+                javax.crypto.spec.IvParameterSpec(iv),
+            )
+            val encryptedHeader = cipher.doFinal(paddedHeader)
+
+            fun writeSevenZUint64(out: java.io.ByteArrayOutputStream, value: Long) {
+                var mask = 0x80
+                var firstByte = 0
+                var bytesNeeded = 0
+                for (i in 0 until 8) {
+                    if (value < (1L shl (7 * (i + 1)))) {
+                        firstByte = (value ushr (8 * i)).toInt() or (mask xor 0xFF)
+                        //Wait: standard 7z encoding:
+                        break
+                    }
+                    mask = mask ushr 1
+                    bytesNeeded++
+                }
+                if (bytesNeeded == 8) {
+                    out.write(0xFF)
+                    for (i in 0 until 8) {
+                        out.write(((value ushr (8 * i)) and 0xFFL).toInt())
+                    }
+                } else {
+                    var prefixMask = 0
+                    for (j in 0 until bytesNeeded) {
+                        prefixMask = prefixMask or (0x80 ushr j)
+                    }
+                    val topBits = ((value ushr (8 * bytesNeeded)) and ((0x7F ushr bytesNeeded).toLong())).toInt()
+                    out.write(prefixMask or topBits)
+                    for (i in 0 until bytesNeeded) {
+                        out.write(((value ushr (8 * i)) and 0xFFL).toInt())
+                    }
+                }
+            }
+
+            val encodedMeta = java.io.ByteArrayOutputStream().apply {
+                write(0x17) // kEncodedHeader
+                write(0x06) // kPackInfo
+                writeSevenZUint64(this, nextHeaderOffset)
+                writeSevenZUint64(this, 1L) // numPackStreams
+                write(0x09) // kSize
+                writeSevenZUint64(this, encryptedHeader.size.toLong())
+                write(0x00) // kEnd kPackInfo
+
+                write(0x07) // kUnpackInfo
+                write(0x0B) // kFolder
+                writeSevenZUint64(this, 1L) // numFolders
+                write(0x00) // external = 0
+                writeSevenZUint64(this, 1L) // numCoders = 1
+                // Coder AES256SHA256: idSize=4 | hasAttributes=0x20 => 0x24
+                write(0x24)
+                write(byteArrayOf(0x06, 0xF1.toByte(), 0x07, 0x01))
+                writeSevenZUint64(this, 18L) // propsSize = 2 + 16
+                write(numCyclesPower or 0x40) // ivPresent=1 (bit 6), saltPresent=0 (bit 7)
+                write(15) // ivSize - 1
+                write(iv)
+                write(0x0C) // kCodersUnpackSize
+                writeSevenZUint64(this, plainHeader.size.toLong())
+                write(0x00) // kEnd kUnpackInfo
+                write(0x00) // kEnd StreamsInfo
+            }.toByteArray()
+
+            // Write encrypted header + encoded header metadata
+            raf.seek(headerFilePos)
+            raf.write(encryptedHeader)
+            raf.write(encodedMeta)
+            raf.setLength(headerFilePos + encryptedHeader.size + encodedMeta.size)
+
+            val newNextHeaderOffset = nextHeaderOffset + encryptedHeader.size
+            val newNextHeaderSize = encodedMeta.size.toLong()
+            val headerCrc = java.util.zip.CRC32().apply { update(encodedMeta) }.value
+            sigBuf.putLong(12, newNextHeaderOffset)
+            sigBuf.putLong(20, newNextHeaderSize)
+            sigBuf.putInt(28, headerCrc.toInt())
+            val startCrc = java.util.zip.CRC32().apply { update(sigHeader, 12, 20) }.value
+            sigBuf.putInt(8, startCrc.toInt())
+
+            raf.seek(0L)
+            raf.write(sigHeader)
         }
     }
 

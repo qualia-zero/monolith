@@ -70,6 +70,7 @@ internal fun PackArchiveContent(
     encryptionMethod: ArchiveEncryptionMethod,
     password: String,
     passwordConfirm: String,
+    encryptFilenames: Boolean,
     splitEnabled: Boolean,
     splitPreset: SplitVolumePreset,
     splitCustomSelected: Boolean,
@@ -86,6 +87,7 @@ internal fun PackArchiveContent(
     onEncryptionMethodChange: (ArchiveEncryptionMethod) -> Unit,
     onPasswordChange: (String) -> Unit,
     onPasswordConfirmChange: (String) -> Unit,
+    onEncryptFilenamesChange: (Boolean) -> Unit,
     onSplitEnabledChange: (Boolean) -> Unit,
     onSplitPresetChange: (SplitVolumePreset) -> Unit,
     onSelectCustomSplit: () -> Unit,
@@ -365,6 +367,30 @@ internal fun PackArchiveContent(
                         visualTransformation = if (showPwd) VisualTransformation.None else PasswordVisualTransformation(),
                         modifier = Modifier.fillMaxWidth(),
                     )
+                    if (format.supportsFilenameEncryption) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Dateinamen verschlüsseln",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Medium,
+                                )
+                                Text(
+                                    text = "Verbirgt Dateinamen und Ordnerstruktur ohne Passwort",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            MonolithSwitch(
+                                checked = encryptFilenames,
+                                onCheckedChange = onEncryptFilenamesChange,
+                            )
+                        }
+                    }
                 }
             }
         }

@@ -250,7 +250,7 @@ class MainActivity : ComponentActivity() {
                         archiveLaunchNonce++
                         archiveLaunchRequest = ArchiveLaunchRequest(
                             nonce = archiveLaunchNonce,
-                            mode = ArchiveToolMode.MANAGE,
+                            mode = ArchiveToolMode.EXTRACT,
                             archivePath = node.path,
                         )
                         activeDestination = MainDestination.ARCHIVE_TOOL
@@ -359,7 +359,7 @@ class MainActivity : ComponentActivity() {
                     archiveLaunchNonce++
                     archiveLaunchRequest = ArchiveLaunchRequest(
                         nonce = archiveLaunchNonce,
-                        mode = ArchiveToolMode.MANAGE,
+                        mode = ArchiveToolMode.EXTRACT,
                         archivePath = first.file.absolutePath,
                     )
                     activeDestination = MainDestination.ARCHIVE_TOOL

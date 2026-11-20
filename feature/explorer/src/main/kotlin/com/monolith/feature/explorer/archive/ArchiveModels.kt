@@ -11,9 +11,18 @@ enum class ArchiveFormat(
     val supportsEncryption: Boolean,
     val supportsSplit: Boolean,
     val supportsSolid: Boolean,
+    val supportsFilenameEncryption: Boolean = false,
 ) {
     ZIP("ZIP", "zip", canCreate = true, supportsEncryption = true, supportsSplit = true, supportsSolid = false),
-    SEVEN_Z("7z", "7z", canCreate = true, supportsEncryption = true, supportsSplit = true, supportsSolid = true),
+    SEVEN_Z(
+        "7z",
+        "7z",
+        canCreate = true,
+        supportsEncryption = true,
+        supportsSplit = true,
+        supportsSolid = true,
+        supportsFilenameEncryption = true,
+    ),
     RAR("RAR", "rar", canCreate = false, supportsEncryption = true, supportsSplit = true, supportsSolid = true),
     TAR_GZ("TAR.GZ", "tar.gz", canCreate = true, supportsEncryption = false, supportsSplit = true, supportsSolid = true),
     TAR_XZ("TAR.XZ", "tar.xz", canCreate = true, supportsEncryption = false, supportsSplit = true, supportsSolid = true),
@@ -86,6 +95,7 @@ data class PackArchiveRequest(
     val compressionLevel: ArchiveCompressionLevel = ArchiveCompressionLevel.NORMAL,
     val encryptionMethod: ArchiveEncryptionMethod = ArchiveEncryptionMethod.NONE,
     val password: String = "",
+    val encryptFilenames: Boolean = false,
     val splitVolumeBytes: Long? = null,
     val solidArchive: Boolean = true,
 )
