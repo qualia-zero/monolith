@@ -756,20 +756,45 @@ class MainActivity : ComponentActivity() {
                                 onConfirm = { dirs ->
                                     val targetPath = dirs.firstOrNull() ?: return@LocalPickerRequest
                                     scope.launch {
-                                        val res = copyIncomingFilesToDirectory(sharedFiles, File(targetPath))
-                                        res.onSuccess { count ->
-                                            Toast.makeText(
-                                                this@MainActivity,
-                                                "$count Datei(en) gespeichert.",
-                                                Toast.LENGTH_SHORT,
-                                            ).show()
-                                            openLocalFolderInExplorer(targetPath)
-                                        }.onFailure { err ->
-                                            Toast.makeText(
-                                                this@MainActivity,
-                                                err.message ?: "Speichern fehlgeschlagen.",
-                                                Toast.LENGTH_LONG,
-                                            ).show()
+                                        if (targetPath.startsWith("gdrive://")) {
+                                            var uploaded = 0
+                                            var lastErr: Throwable? = null
+                                            for (item in sharedFiles) {
+                                                val res = driveProvider.uploadFile(item.file, targetPath)
+                                                if (res.isSuccess) uploaded++ else lastErr = res.exceptionOrNull()
+                                            }
+                                            if (uploaded > 0) {
+                                                Toast.makeText(
+                                                    this@MainActivity,
+                                                    "$uploaded Datei(en) in Google Drive gespeichert.",
+                                                    Toast.LENGTH_SHORT,
+                                                ).show()
+                                                explorerNavState.activeLocation = LocationType.GOOGLE_DRIVE
+                                                explorerNavState.driveStack = listOf(targetPath to "Google Drive")
+                                                activeDestination = MainDestination.EXPLORER
+                                            } else {
+                                                Toast.makeText(
+                                                    this@MainActivity,
+                                                    lastErr?.message ?: "Upload fehlgeschlagen.",
+                                                    Toast.LENGTH_LONG,
+                                                ).show()
+                                            }
+                                        } else {
+                                            val res = copyIncomingFilesToDirectory(sharedFiles, File(targetPath))
+                                            res.onSuccess { count ->
+                                                Toast.makeText(
+                                                    this@MainActivity,
+                                                    "$count Datei(en) gespeichert.",
+                                                    Toast.LENGTH_SHORT,
+                                                ).show()
+                                                openLocalFolderInExplorer(targetPath)
+                                            }.onFailure { err ->
+                                                Toast.makeText(
+                                                    this@MainActivity,
+                                                    err.message ?: "Speichern fehlgeschlagen.",
+                                                    Toast.LENGTH_LONG,
+                                                ).show()
+                                            }
                                         }
                                     }
                                 },

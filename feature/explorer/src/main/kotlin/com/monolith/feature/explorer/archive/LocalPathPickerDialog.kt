@@ -225,20 +225,24 @@ fun LocalPathPickerDialog(
         onDismissClick = { if (!isDownloadingDrive) onDismiss() },
         confirmLabel = when {
             isDownloadingDrive -> "Wird geladen…"
-            request.mode == LocalPickerMode.SINGLE_DIRECTORY && activeDriveEmail != null -> "Lokalen Ordner wählen"
             request.mode == LocalPickerMode.SINGLE_DIRECTORY -> "Diesen Ordner wählen"
             request.mode == LocalPickerMode.SINGLE_FILE -> "Öffnen"
             else -> "Übernehmen (${selectedPaths.size})"
         },
         confirmEnabled = when {
             isDownloadingDrive -> false
-            request.mode == LocalPickerMode.SINGLE_DIRECTORY -> activeDriveEmail == null
+            request.mode == LocalPickerMode.SINGLE_DIRECTORY -> true
             else -> selectedPaths.isNotEmpty()
         },
         onConfirmClick = {
             if (request.mode == LocalPickerMode.SINGLE_DIRECTORY) {
+                val chosenDir = if (activeDriveEmail != null) {
+                    driveStack.lastOrNull()?.first ?: "gdrive://root"
+                } else {
+                    currentDir
+                }
                 onDismiss()
-                request.onConfirm(listOf(currentDir))
+                request.onConfirm(listOf(chosenDir))
             } else {
                 val hasDriveSelection = selectedPaths.any { it.startsWith("gdrive://") }
                 if (!hasDriveSelection) {
