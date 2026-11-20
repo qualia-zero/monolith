@@ -1,6 +1,5 @@
 package com.monolith.feature.explorer.archive
 
-import android.os.Environment
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -9,6 +8,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -29,6 +29,7 @@ import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.CheckBox
 import androidx.compose.material.icons.outlined.CheckBoxOutlineBlank
 import androidx.compose.material.icons.outlined.ChevronRight
+import androidx.compose.material.icons.outlined.CloudQueue
 import androidx.compose.material.icons.outlined.CreateNewFolder
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.FolderZip
@@ -50,6 +51,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -58,13 +60,26 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.monolith.core.ui.components.MonolithDialog
+import com.monolith.core.ui.components.MonolithLoadingSpinner
 import com.monolith.core.ui.theme.LocalMonolithButtonShape
+import com.monolith.core.vfs.GoogleDriveAuthManager
+import com.monolith.core.vfs.GoogleDriveVfsProvider
 import com.monolith.feature.explorer.ExternalVolumeKind
 import com.monolith.feature.explorer.rememberExternalStorageVolumes
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.Locale
+
+private data class PickerItem(
+    val id: String,
+    val name: String,
+    val isDirectory: Boolean,
+    val sizeBytes: Long,
+    val isArchive: Boolean,
+    val isDrive: Boolean,
+)
 
 @Composable
 fun LocalPathPickerDialog(
@@ -73,7 +88,10 @@ fun LocalPathPickerDialog(
     onDismiss: () -> Unit,
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val externalVolumes = rememberExternalStorageVolumes(context)
+    val signedInAccounts = remember(request) { GoogleDriveAuthManager.getSignedInAccounts(context) }
+    val driveProvider = remember { GoogleDriveVfsProvider(context) }
 
     var activeRoot by remember(request) {
         val matchingExternal = externalVolumes.firstOrNull {
@@ -81,11 +99,16 @@ fun LocalPathPickerDialog(
         }?.rootPath
         mutableStateOf(matchingExternal ?: defaultRootDir)
     }
+    var activeDriveEmail by remember(request) { mutableStateOf<String?>(null) }
+    var driveStack by remember(request) { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
     var currentDir by remember(request) {
         val initial = File(request.initialDirectory)
         mutableStateOf(if (initial.isDirectory) initial.absolutePath else defaultRootDir)
     }
-    var children by remember { mutableStateOf<List<File>>(emptyList()) }
+
+    var children by remember { mutableStateOf<List<PickerItem>>(emptyList()) }
+    var isLoadingChildren by remember { mutableStateOf(false) }
+    var isDownloadingDrive by remember { mutableStateOf(false) }
     var selectedPaths by remember(request) { mutableStateOf(request.initialSelectedPaths) }
     var archivesOnlyFilter by remember(request) { mutableStateOf(request.archiveHighlight) }
     var searchQuery by remember(request) { mutableStateOf("") }
@@ -93,26 +116,70 @@ fun LocalPathPickerDialog(
     var newFolderName by remember { mutableStateOf("") }
     var reloadTick by remember { mutableIntStateOf(0) }
 
-    LaunchedEffect(currentDir, archivesOnlyFilter, reloadTick, request.mode) {
+    LaunchedEffect(currentDir, activeDriveEmail, driveStack, archivesOnlyFilter, reloadTick, request.mode) {
+        isLoadingChildren = true
         children = withContext(Dispatchers.IO) {
-            val dir = File(currentDir)
-            if (!dir.isDirectory) return@withContext emptyList()
-            dir.listFiles()
-                ?.asSequence()
-                ?.filter { !it.name.startsWith(".") }
-                ?.filter { file ->
-                    when (request.mode) {
-                        LocalPickerMode.SINGLE_DIRECTORY -> file.isDirectory
-                        LocalPickerMode.SINGLE_FILE -> {
-                            file.isDirectory || !archivesOnlyFilter || ArchiveEngine.isSupportedArchiveFile(file)
+            if (activeDriveEmail != null) {
+                val targetPath = driveStack.lastOrNull()?.first ?: "gdrive://root"
+                val nodes = runCatching { driveProvider.list(targetPath, showHidden = false) }
+                    .getOrDefault(emptyList())
+                nodes.asSequence()
+                    .filter { node ->
+                        when (request.mode) {
+                            LocalPickerMode.SINGLE_DIRECTORY -> node.isDirectory
+                            LocalPickerMode.SINGLE_FILE -> {
+                                node.isDirectory || !archivesOnlyFilter ||
+                                    ArchiveEngine.isSupportedArchiveFile(File(node.name))
+                            }
+                            LocalPickerMode.FILES_AND_FOLDERS_MULTI -> true
                         }
-                        LocalPickerMode.FILES_AND_FOLDERS_MULTI -> true
                     }
-                }
-                ?.sortedWith(compareByDescending<File> { it.isDirectory }.thenBy { it.name.lowercase(Locale.ROOT) })
-                ?.toList()
-                ?: emptyList()
+                    .sortedWith(
+                        compareByDescending<com.monolith.core.model.VfsNode> { it.isDirectory }
+                            .thenBy { it.name.lowercase(Locale.ROOT) },
+                    )
+                    .map { node ->
+                        PickerItem(
+                            id = node.path,
+                            name = node.name,
+                            isDirectory = node.isDirectory,
+                            sizeBytes = node.sizeBytes,
+                            isArchive = !node.isDirectory && ArchiveEngine.isSupportedArchiveFile(File(node.name)),
+                            isDrive = true,
+                        )
+                    }
+                    .toList()
+            } else {
+                val dir = File(currentDir)
+                if (!dir.isDirectory) return@withContext emptyList()
+                dir.listFiles()
+                    ?.asSequence()
+                    ?.filter { !it.name.startsWith(".") }
+                    ?.filter { file ->
+                        when (request.mode) {
+                            LocalPickerMode.SINGLE_DIRECTORY -> file.isDirectory
+                            LocalPickerMode.SINGLE_FILE -> {
+                                file.isDirectory || !archivesOnlyFilter || ArchiveEngine.isSupportedArchiveFile(file)
+                            }
+                            LocalPickerMode.FILES_AND_FOLDERS_MULTI -> true
+                        }
+                    }
+                    ?.sortedWith(compareByDescending<File> { it.isDirectory }.thenBy { it.name.lowercase(Locale.ROOT) })
+                    ?.map { file ->
+                        PickerItem(
+                            id = file.absolutePath,
+                            name = file.name,
+                            isDirectory = file.isDirectory,
+                            sizeBytes = file.length(),
+                            isArchive = !file.isDirectory && ArchiveEngine.isSupportedArchiveFile(file),
+                            isDrive = false,
+                        )
+                    }
+                    ?.toList()
+                    ?: emptyList()
+            }
         }
+        isLoadingChildren = false
     }
 
     val filteredChildren = remember(children, searchQuery) {
@@ -121,64 +188,88 @@ fun LocalPathPickerDialog(
         else children.filter { it.name.contains(q, ignoreCase = true) }
     }
 
-    val canGoUp = remember(currentDir, activeRoot) {
-        val current = File(currentDir)
-        currentDir != activeRoot && current.parentFile != null && currentDir.startsWith(activeRoot)
+    val canGoUp = remember(currentDir, activeRoot, activeDriveEmail, driveStack) {
+        if (activeDriveEmail != null) {
+            driveStack.size > 1
+        } else {
+            val current = File(currentDir)
+            currentDir != activeRoot && current.parentFile != null && currentDir.startsWith(activeRoot)
+        }
     }
 
-    val breadcrumbs = remember(currentDir, activeRoot) {
-        val relative = currentDir.removePrefix(activeRoot).trim('/')
-        if (relative.isEmpty()) {
+    val localBreadcrumbs = remember(currentDir, activeRoot, activeDriveEmail) {
+        if (activeDriveEmail != null) {
             emptyList()
         } else {
-            val parts = relative.split('/').filter { it.isNotBlank() }
-            var acc = activeRoot.trimEnd('/')
-            parts.map { seg ->
-                acc = "$acc/$seg"
-                seg to acc
+            val relative = currentDir.removePrefix(activeRoot).trim('/')
+            if (relative.isEmpty()) {
+                emptyList()
+            } else {
+                val parts = relative.split('/').filter { it.isNotBlank() }
+                var acc = activeRoot.trimEnd('/')
+                parts.map { seg ->
+                    acc = "$acc/$seg"
+                    seg to acc
+                }
             }
         }
     }
 
     MonolithDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!isDownloadingDrive) onDismiss() },
         title = request.title,
         wide = true,
         dismissLabel = "Abbrechen",
-        onDismissClick = onDismiss,
-        confirmLabel = when (request.mode) {
-            LocalPickerMode.SINGLE_DIRECTORY -> "Diesen Ordner wählen"
-            LocalPickerMode.SINGLE_FILE -> "Öffnen"
-            LocalPickerMode.FILES_AND_FOLDERS_MULTI -> "Übernehmen (${selectedPaths.size})"
+        onDismissClick = { if (!isDownloadingDrive) onDismiss() },
+        confirmLabel = when {
+            isDownloadingDrive -> "Wird geladen…"
+            request.mode == LocalPickerMode.SINGLE_DIRECTORY && activeDriveEmail != null -> "Lokalen Ordner wählen"
+            request.mode == LocalPickerMode.SINGLE_DIRECTORY -> "Diesen Ordner wählen"
+            request.mode == LocalPickerMode.SINGLE_FILE -> "Öffnen"
+            else -> "Übernehmen (${selectedPaths.size})"
         },
-        confirmEnabled = when (request.mode) {
-            LocalPickerMode.SINGLE_DIRECTORY -> true
-            LocalPickerMode.SINGLE_FILE, LocalPickerMode.FILES_AND_FOLDERS_MULTI ->
-                selectedPaths.isNotEmpty()
+        confirmEnabled = when {
+            isDownloadingDrive -> false
+            request.mode == LocalPickerMode.SINGLE_DIRECTORY -> activeDriveEmail == null
+            else -> selectedPaths.isNotEmpty()
         },
         onConfirmClick = {
-            val result = when (request.mode) {
-                LocalPickerMode.SINGLE_DIRECTORY -> listOf(currentDir)
-                else -> selectedPaths.toList()
+            if (request.mode == LocalPickerMode.SINGLE_DIRECTORY) {
+                onDismiss()
+                request.onConfirm(listOf(currentDir))
+            } else {
+                val hasDriveSelection = selectedPaths.any { it.startsWith("gdrive://") }
+                if (!hasDriveSelection) {
+                    val result = selectedPaths.toList()
+                    onDismiss()
+                    request.onConfirm(result)
+                } else {
+                    isDownloadingDrive = true
+                    scope.launch {
+                        val resolved = withContext(Dispatchers.IO) {
+                            val cacheDir = File(context.cacheDir, "drive_picker").apply { mkdirs() }
+                            selectedPaths.mapNotNull { path ->
+                                if (!path.startsWith("gdrive://")) {
+                                    path
+                                } else {
+                                    val matchName = children.firstOrNull { it.id == path }?.name
+                                        ?: "drive_file_${path.hashCode().toUInt().toString(16)}"
+                                    val dest = File(cacheDir, matchName)
+                                    driveProvider.downloadToFile(path, dest).getOrNull()?.absolutePath
+                                }
+                            }
+                        }
+                        isDownloadingDrive = false
+                        onDismiss()
+                        if (resolved.isNotEmpty()) {
+                            request.onConfirm(resolved)
+                        }
+                    }
+                }
             }
-            onDismiss()
-            request.onConfirm(result)
         },
     ) {
-        // Storage Volume & Quick Folder Chips
-        val quickFolders = remember(defaultRootDir) {
-            listOf(
-                "Downloads" to File(defaultRootDir, Environment.DIRECTORY_DOWNLOADS),
-                "Dokumente" to File(defaultRootDir, Environment.DIRECTORY_DOCUMENTS),
-                "Bilder" to File(defaultRootDir, Environment.DIRECTORY_PICTURES),
-                "DCIM" to File(defaultRootDir, Environment.DIRECTORY_DCIM),
-                "Musik" to File(defaultRootDir, Environment.DIRECTORY_MUSIC),
-                "Videos" to File(defaultRootDir, Environment.DIRECTORY_MOVIES),
-            ).filter { (_, dir) -> dir.exists() && dir.isDirectory }
-        }
-        val activeQuickFolder = quickFolders.firstOrNull { (_, dir) ->
-            currentDir == dir.absolutePath || currentDir.startsWith(dir.absolutePath + "/")
-        }
+        // 1:1 Storage Chips matching ExplorerScreen: Intern, External Volumes, Signed-in Google Drive Accounts
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -187,31 +278,23 @@ fun LocalPathPickerDialog(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             FilterChip(
-                selected = activeRoot == defaultRootDir && activeQuickFolder == null,
+                selected = activeDriveEmail == null && activeRoot == defaultRootDir,
                 shape = LocalMonolithButtonShape.current,
                 onClick = {
+                    activeDriveEmail = null
+                    driveStack = emptyList()
                     activeRoot = defaultRootDir
                     currentDir = defaultRootDir
                 },
                 label = { Text("Intern") },
             )
-            quickFolders.forEach { (label, dir) ->
-                val isSelected = activeRoot == defaultRootDir && activeQuickFolder?.second == dir
-                FilterChip(
-                    selected = isSelected,
-                    shape = LocalMonolithButtonShape.current,
-                    onClick = {
-                        activeRoot = defaultRootDir
-                        currentDir = dir.absolutePath
-                    },
-                    label = { Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                )
-            }
             externalVolumes.forEach { vol ->
                 FilterChip(
-                    selected = activeRoot == vol.rootPath,
+                    selected = activeDriveEmail == null && activeRoot == vol.rootPath,
                     shape = LocalMonolithButtonShape.current,
                     onClick = {
+                        activeDriveEmail = null
+                        driveStack = emptyList()
                         activeRoot = vol.rootPath
                         currentDir = vol.rootPath
                     },
@@ -229,6 +312,26 @@ fun LocalPathPickerDialog(
                     label = { Text(vol.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                 )
             }
+            signedInAccounts.forEach { email ->
+                val accountLabel = email.substringBefore('@')
+                FilterChip(
+                    selected = activeDriveEmail == email,
+                    shape = LocalMonolithButtonShape.current,
+                    onClick = {
+                        GoogleDriveAuthManager.setActiveEmail(context, email)
+                        activeDriveEmail = email
+                        driveStack = listOf("gdrive://root" to accountLabel)
+                    },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Outlined.CloudQueue,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                        )
+                    },
+                    label = { Text(accountLabel, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                )
+            }
         }
 
         // Breadcrumbs + Actions
@@ -240,7 +343,11 @@ fun LocalPathPickerDialog(
             if (canGoUp) {
                 IconButton(
                     onClick = {
-                        File(currentDir).parentFile?.let { currentDir = it.absolutePath }
+                        if (activeDriveEmail != null) {
+                            if (driveStack.size > 1) driveStack = driveStack.dropLast(1)
+                        } else {
+                            File(currentDir).parentFile?.let { currentDir = it.absolutePath }
+                        }
                     },
                     modifier = Modifier.size(32.dp),
                 ) {
@@ -253,33 +360,57 @@ fun LocalPathPickerDialog(
                     .horizontalScroll(rememberScrollState()),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                TextButton(
-                    onClick = { currentDir = activeRoot },
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp, vertical = 2.dp),
-                ) {
-                    Text(
-                        text = "Stamm",
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = if (breadcrumbs.isEmpty()) FontWeight.SemiBold else FontWeight.Normal,
-                    )
-                }
-                breadcrumbs.forEachIndexed { index, (label, path) ->
-                    Icon(
-                        imageVector = Icons.Outlined.ChevronRight,
-                        contentDescription = null,
-                        modifier = Modifier.size(14.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                if (activeDriveEmail != null) {
+                    driveStack.forEachIndexed { idx, (_, label) ->
+                        if (idx > 0) {
+                            Icon(
+                                imageVector = Icons.Outlined.ChevronRight,
+                                contentDescription = null,
+                                modifier = Modifier.size(14.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        TextButton(
+                            onClick = { driveStack = driveStack.take(idx + 1) },
+                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                        ) {
+                            Text(
+                                text = label,
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = if (idx == driveStack.lastIndex) FontWeight.SemiBold else FontWeight.Normal,
+                                maxLines = 1,
+                            )
+                        }
+                    }
+                } else {
                     TextButton(
-                        onClick = { currentDir = path },
-                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                        onClick = { currentDir = activeRoot },
+                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
                     ) {
                         Text(
-                            text = label,
+                            text = "Stamm",
                             style = MaterialTheme.typography.labelMedium,
-                            fontWeight = if (index == breadcrumbs.lastIndex) FontWeight.SemiBold else FontWeight.Normal,
-                            maxLines = 1,
+                            fontWeight = if (localBreadcrumbs.isEmpty()) FontWeight.SemiBold else FontWeight.Normal,
                         )
+                    }
+                    localBreadcrumbs.forEachIndexed { index, (label, path) ->
+                        Icon(
+                            imageVector = Icons.Outlined.ChevronRight,
+                            contentDescription = null,
+                            modifier = Modifier.size(14.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        TextButton(
+                            onClick = { currentDir = path },
+                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                        ) {
+                            Text(
+                                text = label,
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = if (index == localBreadcrumbs.lastIndex) FontWeight.SemiBold else FontWeight.Normal,
+                                maxLines = 1,
+                            )
+                        }
                     }
                 }
             }
@@ -291,7 +422,7 @@ fun LocalPathPickerDialog(
                     label = { Text("Nur Archive") },
                 )
             }
-            if (request.mode == LocalPickerMode.SINGLE_DIRECTORY) {
+            if (request.mode == LocalPickerMode.SINGLE_DIRECTORY && activeDriveEmail == null) {
                 IconButton(
                     onClick = {
                         newFolderName = ""
@@ -321,7 +452,7 @@ fun LocalPathPickerDialog(
             modifier = Modifier.fillMaxWidth(),
         )
 
-        AnimatedVisibility(visible = showCreateFolder && request.mode == LocalPickerMode.SINGLE_DIRECTORY) {
+        AnimatedVisibility(visible = showCreateFolder && request.mode == LocalPickerMode.SINGLE_DIRECTORY && activeDriveEmail == null) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -360,137 +491,145 @@ fun LocalPathPickerDialog(
             color = MaterialTheme.colorScheme.surfaceContainerLow,
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         ) {
-            if (filteredChildren.isEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(180.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        text = if (searchQuery.isBlank()) "Keine passenden Einträge" else "Keine Treffer für „$searchQuery“",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+            when {
+                isLoadingChildren -> {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(180.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        MonolithLoadingSpinner()
+                    }
                 }
-            } else {
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 340.dp),
-                ) {
-                    items(filteredChildren, key = { it.absolutePath }) { file ->
-                        val isSelected = file.absolutePath in selectedPaths
-                        val isArchive = !file.isDirectory && ArchiveEngine.isSupportedArchiveFile(file)
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .then(
-                                    if (isSelected) {
-                                        Modifier.background(
-                                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f),
-                                        )
-                                    } else {
-                                        Modifier
-                                    },
-                                )
-                                .clickable {
-                                    when (request.mode) {
-                                        LocalPickerMode.SINGLE_DIRECTORY -> {
-                                            if (file.isDirectory) currentDir = file.absolutePath
-                                        }
-                                        LocalPickerMode.SINGLE_FILE -> {
-                                            if (file.isDirectory) {
-                                                currentDir = file.absolutePath
+                filteredChildren.isEmpty() -> {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(180.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = if (searchQuery.isBlank()) "Keine passenden Einträge" else "Keine Treffer für „$searchQuery“",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+                else -> {
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 340.dp),
+                    ) {
+                        items(filteredChildren, key = { it.id }) { item ->
+                            val isSelected = item.id in selectedPaths
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .then(
+                                        if (isSelected) {
+                                            Modifier.background(
+                                                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f),
+                                            )
+                                        } else {
+                                            Modifier
+                                        },
+                                    )
+                                    .clickable {
+                                        if (item.isDirectory) {
+                                            if (item.isDrive) {
+                                                driveStack = driveStack + (item.id to item.name)
                                             } else {
-                                                selectedPaths = setOf(file.absolutePath)
+                                                currentDir = item.id
                                             }
-                                        }
-                                        LocalPickerMode.FILES_AND_FOLDERS_MULTI -> {
-                                            if (file.isDirectory) {
-                                                currentDir = file.absolutePath
-                                            } else {
-                                                selectedPaths = if (isSelected) {
-                                                    selectedPaths - file.absolutePath
-                                                } else {
-                                                    selectedPaths + file.absolutePath
+                                        } else {
+                                            when (request.mode) {
+                                                LocalPickerMode.SINGLE_DIRECTORY -> Unit
+                                                LocalPickerMode.SINGLE_FILE -> selectedPaths = setOf(item.id)
+                                                LocalPickerMode.FILES_AND_FOLDERS_MULTI -> {
+                                                    selectedPaths = if (isSelected) {
+                                                        selectedPaths - item.id
+                                                    } else {
+                                                        selectedPaths + item.id
+                                                    }
                                                 }
                                             }
                                         }
                                     }
-                                }
-                                .padding(horizontal = 12.dp, vertical = 9.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Icon(
-                                imageVector = when {
-                                    file.isDirectory -> Icons.Outlined.Folder
-                                    isArchive -> Icons.Outlined.FolderZip
-                                    else -> Icons.AutoMirrored.Outlined.InsertDriveFile
-                                },
-                                contentDescription = null,
-                                tint = when {
-                                    file.isDirectory || isArchive -> MaterialTheme.colorScheme.primary
-                                    else -> MaterialTheme.colorScheme.onSurfaceVariant
-                                },
-                                modifier = Modifier.size(22.dp),
-                            )
-                            Spacer(Modifier.width(10.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = file.name,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                                if (!file.isDirectory) {
-                                    Text(
-                                        text = formatArchiveBytes(file.length()),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                }
-                            }
-                            val showSelectBox = when (request.mode) {
-                                LocalPickerMode.FILES_AND_FOLDERS_MULTI -> true
-                                LocalPickerMode.SINGLE_FILE -> !file.isDirectory
-                                LocalPickerMode.SINGLE_DIRECTORY -> false
-                            }
-                            if (showSelectBox) {
-                                IconButton(
-                                    onClick = {
-                                        selectedPaths = when (request.mode) {
-                                            LocalPickerMode.SINGLE_FILE -> setOf(file.absolutePath)
-                                            else -> if (isSelected) {
-                                                selectedPaths - file.absolutePath
-                                            } else {
-                                                selectedPaths + file.absolutePath
-                                            }
-                                        }
+                                    .padding(horizontal = 12.dp, vertical = 9.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Icon(
+                                    imageVector = when {
+                                        item.isDirectory -> Icons.Outlined.Folder
+                                        item.isArchive -> Icons.Outlined.FolderZip
+                                        else -> Icons.AutoMirrored.Outlined.InsertDriveFile
                                     },
-                                    modifier = Modifier.size(34.dp),
-                                ) {
-                                    Icon(
-                                        imageVector = if (isSelected) {
-                                            Icons.Outlined.CheckBox
-                                        } else {
-                                            Icons.Outlined.CheckBoxOutlineBlank
-                                        },
-                                        contentDescription = "Auswählen",
-                                        tint = if (isSelected) {
-                                            MaterialTheme.colorScheme.primary
-                                        } else {
-                                            MaterialTheme.colorScheme.onSurfaceVariant
-                                        },
-                                        modifier = Modifier.size(20.dp),
+                                    contentDescription = null,
+                                    tint = when {
+                                        item.isDirectory || item.isArchive -> MaterialTheme.colorScheme.primary
+                                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                                    },
+                                    modifier = Modifier.size(22.dp),
+                                )
+                                Spacer(Modifier.width(10.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = item.name,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
                                     )
+                                    if (!item.isDirectory) {
+                                        Text(
+                                            text = formatArchiveBytes(item.sizeBytes),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                }
+                                val showSelectBox = when (request.mode) {
+                                    LocalPickerMode.FILES_AND_FOLDERS_MULTI -> !item.isDrive || !item.isDirectory
+                                    LocalPickerMode.SINGLE_FILE -> !item.isDirectory
+                                    LocalPickerMode.SINGLE_DIRECTORY -> false
+                                }
+                                if (showSelectBox) {
+                                    IconButton(
+                                        onClick = {
+                                            selectedPaths = when (request.mode) {
+                                                LocalPickerMode.SINGLE_FILE -> setOf(item.id)
+                                                else -> if (isSelected) {
+                                                    selectedPaths - item.id
+                                                } else {
+                                                    selectedPaths + item.id
+                                                }
+                                            }
+                                        },
+                                        modifier = Modifier.size(34.dp),
+                                    ) {
+                                        Icon(
+                                            imageVector = if (isSelected) {
+                                                Icons.Outlined.CheckBox
+                                            } else {
+                                                Icons.Outlined.CheckBoxOutlineBlank
+                                            },
+                                            contentDescription = "Auswählen",
+                                            tint = if (isSelected) {
+                                                MaterialTheme.colorScheme.primary
+                                            } else {
+                                                MaterialTheme.colorScheme.onSurfaceVariant
+                                            },
+                                            modifier = Modifier.size(20.dp),
+                                        )
+                                    }
                                 }
                             }
+                            HorizontalDivider(
+                                thickness = 0.5.dp,
+                                color = MaterialTheme.colorScheme.outlineVariant,
+                            )
                         }
-                        HorizontalDivider(
-                            thickness = 0.5.dp,
-                            color = MaterialTheme.colorScheme.outlineVariant,
-                        )
                     }
                 }
             }
