@@ -26,13 +26,21 @@ object MonolithHaptics {
     fun monolithMenuOpen(context: Context, view: View) {
         val settings = AppSettingsStore.settings.value
         if (!settings.hapticsEnabled || !settings.hapticMonolithMenuOpen) return
-        triggerClick(context, view)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            triggerPredefined(context, view, VibrationEffect.EFFECT_DOUBLE_CLICK, HapticFeedbackConstants.CONTEXT_CLICK)
+        } else {
+            view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
+        }
     }
 
     fun cornerMenuOpen(context: Context, view: View) {
         val settings = AppSettingsStore.settings.value
         if (!settings.hapticsEnabled || !settings.hapticCornerMenuOpen) return
-        triggerClick(context, view)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            triggerPredefined(context, view, VibrationEffect.EFFECT_TICK, HapticFeedbackConstants.CLOCK_TICK)
+        } else {
+            view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+        }
     }
 
     fun dragLift(view: View) {
@@ -55,30 +63,56 @@ object MonolithHaptics {
         val settings = AppSettingsStore.settings.value
         if (!settings.hapticsEnabled || !settings.hapticPullRefresh) return
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            val ticked = vibratePredefined(context, VibrationEffect.EFFECT_TICK)
-            if (ticked) return
+            triggerPredefined(context, view, VibrationEffect.EFFECT_HEAVY_CLICK, HapticFeedbackConstants.CLOCK_TICK)
+        } else {
+            view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
         }
-        view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
     }
 
     fun refreshComplete(context: Context, view: View) {
         val settings = AppSettingsStore.settings.value
         if (!settings.hapticsEnabled || !settings.hapticPullRefresh) return
-        triggerClick(context, view)
+        val pulsed = vibrateWaveform(
+            context = context,
+            timings = longArrayOf(0L, 12L, 35L, 16L),
+            amplitudes = intArrayOf(0, 110, 0, 200),
+        )
+        if (!pulsed) {
+            view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
+        }
     }
 
-    fun switchToggle(context: Context, view: View) {
+    fun switchToggle(context: Context, view: View, checked: Boolean = true) {
         val settings = AppSettingsStore.settings.value
         if (!settings.hapticsEnabled || !settings.hapticSwitchToggle) return
-        triggerClick(context, view)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val effect = if (checked) VibrationEffect.EFFECT_HEAVY_CLICK else VibrationEffect.EFFECT_TICK
+            val fallback = if (checked) HapticFeedbackConstants.CONTEXT_CLICK else HapticFeedbackConstants.CLOCK_TICK
+            triggerPredefined(context, view, effect, fallback)
+        } else {
+            view.performHapticFeedback(
+                if (checked) HapticFeedbackConstants.CONTEXT_CLICK else HapticFeedbackConstants.CLOCK_TICK,
+            )
+        }
     }
 
     private fun triggerClick(context: Context, view: View) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            val clicked = vibratePredefined(context, VibrationEffect.EFFECT_CLICK)
-            if (clicked) return
+            triggerPredefined(context, view, VibrationEffect.EFFECT_CLICK, HapticFeedbackConstants.CONTEXT_CLICK)
+        } else {
+            view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
         }
-        view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
+    }
+
+    private fun triggerPredefined(
+        context: Context,
+        view: View,
+        effectId: Int,
+        fallbackConstant: Int,
+    ) {
+        if (!vibratePredefined(context, effectId)) {
+            view.performHapticFeedback(fallbackConstant)
+        }
     }
 
     private fun vibratePredefined(context: Context, effectId: Int): Boolean {

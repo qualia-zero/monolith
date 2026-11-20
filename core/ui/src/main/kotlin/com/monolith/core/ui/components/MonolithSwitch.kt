@@ -89,7 +89,7 @@ private fun CustomMonolithSwitch(
             role = Role.Switch,
             onValueChange = { newValue ->
                 onCheckedChange(newValue)
-                MonolithHaptics.switchToggle(context, view)
+                MonolithHaptics.switchToggle(context, view, checked = newValue)
             },
         )
     } else {
