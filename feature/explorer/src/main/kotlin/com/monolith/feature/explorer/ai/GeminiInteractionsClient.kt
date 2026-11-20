@@ -34,34 +34,53 @@ object GeminiInteractionsClient {
         Nutze deine Dateisystem-Tools (`list_directory`, `read_text_file`, `get_file_info`, `search_files`, `list_archive_contents`) nur bei Bedarf (z. B. `list_directory({"path": "$CURRENT_DIR_PLACEHOLDER/Download", "include_hidden": true})`). Unterordner öffnest du über `<dir>/<name>`.
     """.trimIndent()
 
-    fun buildDefaultSystemPrompt(
+    private const val ENV_SECTION_HEADER = "# Umgebung & Werkzeuge"
+
+    val DEFAULT_ROLE_PROMPT = """
+        Du bist Monolith, der KI-Assistent im Android-Dateiexplorer Monolith. Antworte auf Deutsch: direkt, präzise und ohne Fülltext. Kombiniere zusammengehörige Schritte effizient.
+    """.trimIndent()
+
+    fun extractUserRolePrompt(storedPrompt: String): String {
+        val trimmed = storedPrompt.trim()
+        if (trimmed.isEmpty() || trimmed == LEGACY_DEFAULT_SYSTEM_PROMPT) return ""
+        val withoutRoleHeader = trimmed.removePrefix("# Rolle & Verhalten").trim()
+        val envIdx = withoutRoleHeader.indexOf(ENV_SECTION_HEADER)
+        val rolePart = if (envIdx >= 0) {
+            withoutRoleHeader.substring(0, envIdx).trim()
+        } else {
+            withoutRoleHeader
+        }
+        return if (rolePart == DEFAULT_ROLE_PROMPT) "" else rolePart
+    }
+
+    fun buildEnvironmentPrompt(
         writeToolsEnabled: Boolean = false,
         terminalEnabled: Boolean = false,
     ): String = buildString {
-        appendLine("# Rolle & Verhalten")
-        appendLine("Du bist Monolith, der KI-Assistent im Android-Dateiexplorer Monolith. Antworte auf Deutsch: direkt, präzise und ohne Fülltext. Kombiniere zusammengehörige Schritte effizient und führe Dateiänderungen oder Löschungen nur bei klarem Nutzerauftrag aus.")
-        appendLine()
-        appendLine("# Umgebung & Werkzeuge")
         appendLine("Aktueller Ordner: $CURRENT_DIR_PLACEHOLDER (relative Pfade beziehen sich hierauf)")
         appendLine("- Lesen & Analyse: `list_directory(path?, include_hidden?)`, `read_text_file(path, max_chars?)`, `get_file_info(path)`, `search_files(query, directory?)`, `list_archive_contents(path, password?)`")
         if (writeToolsEnabled) {
-            appendLine("- Schreiben & Bearbeiten: `write_text_file(path, content, append?)`, `edit_text_file(path, old_text, new_text, replace_all?)`, `create_directory(path)`, `move_or_rename_path(source_path, destination_path)`, `delete_path(path, recursive?)`")
+            appendLine("- Schreiben & Bearbeiten: `write_text_file(path, content, append?)`, `edit_text_file(path, old_text, new_text, replace_all?)`, `create_directory(path)`, `move_or_rename_path(source_path, destination_path)`, `delete_path(path, recursive?)` (Dateiänderungen/Löschungen nur bei klarem Nutzerauftrag ausführen)")
         }
         if (writeToolsEnabled && terminalEnabled) {
             appendLine("- Android-Terminal: `run_terminal_command(command, working_dir?, timeout_sec?)` (`/system/bin/sh`, Toybox/POSIX-Befehle im App-/Speicherkontext)")
         }
     }.trimEnd()
 
-    val DEFAULT_SYSTEM_PROMPT: String = buildDefaultSystemPrompt()
-
-    fun isBuiltInDefaultPrompt(prompt: String): Boolean {
-        val trimmed = prompt.trim()
-        if (trimmed.isEmpty()) return true
-        return trimmed == LEGACY_DEFAULT_SYSTEM_PROMPT ||
-            trimmed == buildDefaultSystemPrompt(writeToolsEnabled = false, terminalEnabled = false) ||
-            trimmed == buildDefaultSystemPrompt(writeToolsEnabled = true, terminalEnabled = false) ||
-            trimmed == buildDefaultSystemPrompt(writeToolsEnabled = true, terminalEnabled = true)
+    fun buildDefaultSystemPrompt(
+        writeToolsEnabled: Boolean = false,
+        terminalEnabled: Boolean = false,
+        customRolePrompt: String = "",
+    ): String = buildString {
+        val role = extractUserRolePrompt(customRolePrompt).ifBlank { DEFAULT_ROLE_PROMPT }
+        appendLine("# Rolle & Verhalten")
+        appendLine(role)
+        appendLine()
+        appendLine(ENV_SECTION_HEADER)
+        append(buildEnvironmentPrompt(writeToolsEnabled = writeToolsEnabled, terminalEnabled = terminalEnabled))
     }
+
+    val DEFAULT_SYSTEM_PROMPT: String = buildDefaultSystemPrompt()
 
     private const val ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/interactions"
     private const val API_REVISION = "2026-05-20"
@@ -96,15 +115,11 @@ object GeminiInteractionsClient {
         onToolStatus: (String?) -> Unit,
     ): Result<String?> = withContext(Dispatchers.IO) {
         runCatching {
-            val activeDefaultPrompt = buildDefaultSystemPrompt(
+            val resolvedPrompt = buildDefaultSystemPrompt(
                 writeToolsEnabled = writeToolsEnabled,
                 terminalEnabled = terminalEnabled,
-            )
-            val resolvedPrompt = (if (isBuiltInDefaultPrompt(systemPromptTemplate)) {
-                activeDefaultPrompt
-            } else {
-                systemPromptTemplate
-            }).replace(CURRENT_DIR_PLACEHOLDER, currentDirectory)
+                customRolePrompt = systemPromptTemplate,
+            ).replace(CURRENT_DIR_PLACEHOLDER, currentDirectory)
             val toolDeclarations = ExplorerAiTools.toolDeclarationsJson(
                 writeToolsEnabled = writeToolsEnabled,
                 terminalEnabled = terminalEnabled,

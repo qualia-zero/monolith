@@ -722,26 +722,21 @@ fun AiChatScreen(
     }
 
     if (showSystemPromptDialog) {
-        val activeDefaultPrompt = remember(
+        val currentRolePrompt = remember(appSettings.aiSystemPrompt) {
+            GeminiInteractionsClient.extractUserRolePrompt(appSettings.aiSystemPrompt)
+                .ifBlank { GeminiInteractionsClient.DEFAULT_ROLE_PROMPT }
+        }
+        val activeEnvironmentPrompt = remember(
             appSettings.aiExperimentalWriteTools,
             appSettings.aiExperimentalTerminalAccess,
         ) {
-            GeminiInteractionsClient.buildDefaultSystemPrompt(
+            GeminiInteractionsClient.buildEnvironmentPrompt(
                 writeToolsEnabled = appSettings.aiExperimentalWriteTools,
                 terminalEnabled = appSettings.aiExperimentalTerminalAccess,
             )
         }
-        val currentStored = if (GeminiInteractionsClient.isBuiltInDefaultPrompt(appSettings.aiSystemPrompt)) {
-            activeDefaultPrompt
-        } else {
-            appSettings.aiSystemPrompt
-        }
-        var promptDraft by remember(
-            appSettings.aiSystemPrompt,
-            appSettings.aiExperimentalWriteTools,
-            appSettings.aiExperimentalTerminalAccess,
-        ) {
-            mutableStateOf(currentStored)
+        var promptDraft by remember(appSettings.aiSystemPrompt) {
+            mutableStateOf(currentRolePrompt)
         }
         var showResetPromptConfirm by remember { mutableStateOf(false) }
 
@@ -753,18 +748,17 @@ fun AiChatScreen(
             onDismissClick = { showSystemPromptDialog = false },
             confirmLabel = "Speichern",
             onConfirmClick = {
-                val cleaned = promptDraft.trim()
-                val toStore = if (GeminiInteractionsClient.isBuiltInDefaultPrompt(cleaned)) "" else cleaned
-                AppSettingsStore.update { it.copy(aiSystemPrompt = toStore) }
+                val cleaned = GeminiInteractionsClient.extractUserRolePrompt(promptDraft)
+                AppSettingsStore.update { it.copy(aiSystemPrompt = cleaned) }
                 showSystemPromptDialog = false
             },
         ) {
             OutlinedTextField(
                 value = promptDraft,
                 onValueChange = { promptDraft = it },
-                label = { Text("Basisprompt (Rolle & Werkzeuge)") },
-                minLines = 6,
-                maxLines = 14,
+                label = { Text("1. Rolle & Verhalten (eigener Teil)") },
+                minLines = 4,
+                maxLines = 8,
                 modifier = Modifier.fillMaxWidth(),
             )
 
@@ -774,6 +768,30 @@ fun AiChatScreen(
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text("Auf Standard zurücksetzen")
+            }
+
+            Text(
+                text = "2. Umgebung & Werkzeuge (automatisch nach Einstellung, markierbar):",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary,
+            )
+
+            Surface(
+                shape = MaterialTheme.shapes.small,
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                SelectionContainer {
+                    Text(
+                        text = activeEnvironmentPrompt,
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            fontFamily = FontFamily.Monospace,
+                        ),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                    )
+                }
             }
         }
 
@@ -786,11 +804,11 @@ fun AiChatScreen(
                 confirmLabel = "Zurücksetzen",
                 onConfirmClick = {
                     showResetPromptConfirm = false
-                    promptDraft = activeDefaultPrompt
+                    promptDraft = GeminiInteractionsClient.DEFAULT_ROLE_PROMPT
                     AppSettingsStore.update { it.copy(aiSystemPrompt = "") }
                 },
             ) {
-                Text("Möchtest du den Systemprompt wirklich auf den Standard zurücksetzen?")
+                Text("Möchtest du deinen eigenen Prompt-Teil wirklich auf den Standard zurücksetzen?")
             }
         }
     }
