@@ -951,7 +951,7 @@ fun ArchiveToolScreen(
                     add(
                         CornerMenuItem(
                             id = "add_files",
-                            label = "Dateien hinzufügen…",
+                            label = "Dateien hinzufügen",
                             onClick = { launchAddFilesToArchive(openedGroup) },
                         ),
                     )
@@ -966,7 +966,7 @@ fun ArchiveToolScreen(
                 add(
                     CornerMenuItem(
                         id = "convert_archive",
-                        label = "Format konvertieren…",
+                        label = "Format konvertieren",
                         onClick = { convertSourceGroup = openedGroup },
                     ),
                 )
@@ -979,22 +979,11 @@ fun ArchiveToolScreen(
                         ),
                     )
                 }
-                add(
-                    CornerMenuItem(
-                        id = "close_archive",
-                        label = "Archiv schließen",
-                        onClick = {
-                            state.openedSummary = null
-                            state.archiveInternalPath = ""
-                            state.selectedEntryPaths = emptySet()
-                        },
-                    ),
-                )
             }
             add(
                 CornerMenuItem(
                     id = "open_archive",
-                    label = "Anderes Archiv öffnen…",
+                    label = "Anderes Archiv öffnen",
                     onClick = {
                         activePickerRequest = LocalPickerRequest(
                             mode = LocalPickerMode.SINGLE_FILE,
@@ -1287,7 +1276,7 @@ fun ArchiveToolScreen(
                     )
                 }
                 MonolithDialogOption(
-                    label = "Entpacken…",
+                    label = "Entpacken",
                     subtitle = "In einen Zielordner entpacken",
                     selected = false,
                     onClick = {

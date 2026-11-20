@@ -1,5 +1,6 @@
 package com.monolith.feature.explorer.archive
 
+import android.os.Environment
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -164,7 +165,20 @@ fun LocalPathPickerDialog(
             request.onConfirm(result)
         },
     ) {
-        // Storage Volume Selector
+        // Storage Volume & Quick Folder Chips
+        val quickFolders = remember(defaultRootDir) {
+            listOf(
+                "Downloads" to File(defaultRootDir, Environment.DIRECTORY_DOWNLOADS),
+                "Dokumente" to File(defaultRootDir, Environment.DIRECTORY_DOCUMENTS),
+                "Bilder" to File(defaultRootDir, Environment.DIRECTORY_PICTURES),
+                "DCIM" to File(defaultRootDir, Environment.DIRECTORY_DCIM),
+                "Musik" to File(defaultRootDir, Environment.DIRECTORY_MUSIC),
+                "Videos" to File(defaultRootDir, Environment.DIRECTORY_MOVIES),
+            ).filter { (_, dir) -> dir.exists() && dir.isDirectory }
+        }
+        val activeQuickFolder = quickFolders.firstOrNull { (_, dir) ->
+            currentDir == dir.absolutePath || currentDir.startsWith(dir.absolutePath + "/")
+        }
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -173,7 +187,7 @@ fun LocalPathPickerDialog(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             FilterChip(
-                selected = activeRoot == defaultRootDir,
+                selected = activeRoot == defaultRootDir && activeQuickFolder == null,
                 shape = LocalMonolithButtonShape.current,
                 onClick = {
                     activeRoot = defaultRootDir
@@ -181,6 +195,18 @@ fun LocalPathPickerDialog(
                 },
                 label = { Text("Intern") },
             )
+            quickFolders.forEach { (label, dir) ->
+                val isSelected = activeRoot == defaultRootDir && activeQuickFolder?.second == dir
+                FilterChip(
+                    selected = isSelected,
+                    shape = LocalMonolithButtonShape.current,
+                    onClick = {
+                        activeRoot = defaultRootDir
+                        currentDir = dir.absolutePath
+                    },
+                    label = { Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                )
+            }
             externalVolumes.forEach { vol ->
                 FilterChip(
                     selected = activeRoot == vol.rootPath,
