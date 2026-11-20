@@ -49,6 +49,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -91,7 +92,7 @@ fun LocalPathPickerDialog(
     val scope = rememberCoroutineScope()
     val externalVolumes = rememberExternalStorageVolumes(context)
     val signedInAccounts = remember(request) { GoogleDriveAuthManager.getSignedInAccounts(context) }
-    val driveProvider = remember { GoogleDriveVfsProvider(context) }
+    val driveProvider = remember(context) { GoogleDriveVfsProvider(context.applicationContext) }
 
     var activeRoot by remember(request) {
         val matchingExternal = externalVolumes.firstOrNull {
@@ -110,6 +111,7 @@ fun LocalPathPickerDialog(
     var isLoadingChildren by remember { mutableStateOf(false) }
     var isDownloadingDrive by remember { mutableStateOf(false) }
     var selectedPaths by remember(request) { mutableStateOf(request.initialSelectedPaths) }
+    val selectedDriveItems = remember(request) { mutableStateMapOf<String, PickerItem>() }
     var archivesOnlyFilter by remember(request) { mutableStateOf(request.archiveHighlight) }
     var searchQuery by remember(request) { mutableStateOf("") }
     var showCreateFolder by remember { mutableStateOf(false) }
@@ -247,15 +249,42 @@ fun LocalPathPickerDialog(
                     isDownloadingDrive = true
                     scope.launch {
                         val resolved = withContext(Dispatchers.IO) {
+                            suspend fun downloadDriveRecursive(remotePath: String, destFile: File): Boolean {
+                                val item = selectedDriveItems[remotePath]
+                                val isDir = item?.isDirectory == true
+                                if (!isDir) {
+                                    destFile.parentFile?.mkdirs()
+                                    return driveProvider.downloadToFile(remotePath, destFile).isSuccess
+                                }
+                                destFile.mkdirs()
+                                val subNodes = runCatching { driveProvider.list(remotePath, showHidden = false) }
+                                    .getOrDefault(emptyList())
+                                for (child in subNodes) {
+                                    val childDest = File(destFile, child.name)
+                                    if (child.isDirectory) {
+                                        downloadDriveRecursive(child.path, childDest)
+                                    } else {
+                                        driveProvider.downloadToFile(child.path, childDest)
+                                    }
+                                }
+                                return true
+                            }
+
                             val cacheDir = File(context.cacheDir, "drive_picker").apply { mkdirs() }
                             selectedPaths.mapNotNull { path ->
                                 if (!path.startsWith("gdrive://")) {
                                     path
                                 } else {
-                                    val matchName = children.firstOrNull { it.id == path }?.name
+                                    val item = selectedDriveItems[path]
+                                    val matchName = item?.name
+                                        ?: children.firstOrNull { it.id == path }?.name
                                         ?: "drive_file_${path.hashCode().toUInt().toString(16)}"
                                     val dest = File(cacheDir, matchName)
-                                    driveProvider.downloadToFile(path, dest).getOrNull()?.absolutePath
+                                    if (item?.isDirectory == true) {
+                                        if (downloadDriveRecursive(path, dest)) dest.absolutePath else null
+                                    } else {
+                                        driveProvider.downloadToFile(path, dest).getOrNull()?.absolutePath
+                                    }
                                 }
                             }
                         }
@@ -298,17 +327,6 @@ fun LocalPathPickerDialog(
                         activeRoot = vol.rootPath
                         currentDir = vol.rootPath
                     },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = if (vol.kind == ExternalVolumeKind.USB) {
-                                Icons.Outlined.Usb
-                            } else {
-                                Icons.Outlined.SdStorage
-                            },
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp),
-                        )
-                    },
                     label = { Text(vol.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                 )
             }
@@ -321,13 +339,6 @@ fun LocalPathPickerDialog(
                         GoogleDriveAuthManager.setActiveEmail(context, email)
                         activeDriveEmail = email
                         driveStack = listOf("gdrive://root" to accountLabel)
-                    },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.Outlined.CloudQueue,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp),
-                        )
                     },
                     label = { Text(accountLabel, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                 )
@@ -361,7 +372,8 @@ fun LocalPathPickerDialog(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 if (activeDriveEmail != null) {
-                    driveStack.forEachIndexed { idx, (_, label) ->
+                    val subStack = driveStack.drop(1)
+                    subStack.forEachIndexed { idx, (_, label) ->
                         if (idx > 0) {
                             Icon(
                                 imageVector = Icons.Outlined.ChevronRight,
@@ -371,35 +383,27 @@ fun LocalPathPickerDialog(
                             )
                         }
                         TextButton(
-                            onClick = { driveStack = driveStack.take(idx + 1) },
+                            onClick = { driveStack = driveStack.take(idx + 2) },
                             contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
                         ) {
                             Text(
                                 text = label,
                                 style = MaterialTheme.typography.labelMedium,
-                                fontWeight = if (idx == driveStack.lastIndex) FontWeight.SemiBold else FontWeight.Normal,
+                                fontWeight = if (idx == subStack.lastIndex) FontWeight.SemiBold else FontWeight.Normal,
                                 maxLines = 1,
                             )
                         }
                     }
                 } else {
-                    TextButton(
-                        onClick = { currentDir = activeRoot },
-                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
-                    ) {
-                        Text(
-                            text = "Stamm",
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = if (localBreadcrumbs.isEmpty()) FontWeight.SemiBold else FontWeight.Normal,
-                        )
-                    }
                     localBreadcrumbs.forEachIndexed { index, (label, path) ->
-                        Icon(
-                            imageVector = Icons.Outlined.ChevronRight,
-                            contentDescription = null,
-                            modifier = Modifier.size(14.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+                        if (index > 0) {
+                            Icon(
+                                imageVector = Icons.Outlined.ChevronRight,
+                                contentDescription = null,
+                                modifier = Modifier.size(14.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                         TextButton(
                             onClick = { currentDir = path },
                             contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
@@ -546,11 +550,16 @@ fun LocalPathPickerDialog(
                                         } else {
                                             when (request.mode) {
                                                 LocalPickerMode.SINGLE_DIRECTORY -> Unit
-                                                LocalPickerMode.SINGLE_FILE -> selectedPaths = setOf(item.id)
+                                                LocalPickerMode.SINGLE_FILE -> {
+                                                    if (item.isDrive) selectedDriveItems[item.id] = item
+                                                    selectedPaths = setOf(item.id)
+                                                }
                                                 LocalPickerMode.FILES_AND_FOLDERS_MULTI -> {
                                                     selectedPaths = if (isSelected) {
+                                                        selectedDriveItems.remove(item.id)
                                                         selectedPaths - item.id
                                                     } else {
+                                                        if (item.isDrive) selectedDriveItems[item.id] = item
                                                         selectedPaths + item.id
                                                     }
                                                 }
@@ -590,7 +599,7 @@ fun LocalPathPickerDialog(
                                     }
                                 }
                                 val showSelectBox = when (request.mode) {
-                                    LocalPickerMode.FILES_AND_FOLDERS_MULTI -> !item.isDrive || !item.isDirectory
+                                    LocalPickerMode.FILES_AND_FOLDERS_MULTI -> true
                                     LocalPickerMode.SINGLE_FILE -> !item.isDirectory
                                     LocalPickerMode.SINGLE_DIRECTORY -> false
                                 }
@@ -598,10 +607,15 @@ fun LocalPathPickerDialog(
                                     IconButton(
                                         onClick = {
                                             selectedPaths = when (request.mode) {
-                                                LocalPickerMode.SINGLE_FILE -> setOf(item.id)
+                                                LocalPickerMode.SINGLE_FILE -> {
+                                                    if (item.isDrive) selectedDriveItems[item.id] = item
+                                                    setOf(item.id)
+                                                }
                                                 else -> if (isSelected) {
+                                                    selectedDriveItems.remove(item.id)
                                                     selectedPaths - item.id
                                                 } else {
+                                                    if (item.isDrive) selectedDriveItems[item.id] = item
                                                     selectedPaths + item.id
                                                 }
                                             }
