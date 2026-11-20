@@ -411,7 +411,7 @@ fun ArchiveToolScreen(
                 fun runAdd(pwd: String?) {
                     state.activeJob?.cancel()
                     state.activeProgress = ArchiveOperationProgress(
-                        title = "Einträge werden hinzugefügt…",
+                        title = if (paths.size == 1) "Eintrag wird hinzugefügt…" else "Einträge werden hinzugefügt…",
                         currentItem = group.displayName,
                         processedBytes = 0L,
                         totalBytes = 1L,
@@ -1429,7 +1429,7 @@ fun ArchiveToolScreen(
                 fun runDelete(pwd: String?) {
                     state.activeJob?.cancel()
                     state.activeProgress = ArchiveOperationProgress(
-                        title = "Einträge werden gelöscht…",
+                        title = if (pathsToDelete.size == 1) "Eintrag wird gelöscht…" else "Einträge werden gelöscht…",
                         currentItem = grp.displayName,
                         processedBytes = 0L,
                         totalBytes = 1L,

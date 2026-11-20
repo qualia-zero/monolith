@@ -185,7 +185,7 @@ class MediaDownloadService : Service() {
             }
             postProgressNotification(
                 req = req,
-                title = "${req.mode.label} wird initialisiert…",
+                title = "${req.mode.label}-Download wird initialisiert…",
                 text = displayLabelForTask(req.taskId, req.url),
                 progress = 0,
                 indeterminate = true,
@@ -220,7 +220,7 @@ class MediaDownloadService : Service() {
                 }
                 postProgressNotification(
                     req = req,
-                    title = "Format wird geprüft…",
+                    title = "Bestes Format wird ermittelt…",
                     text = displayLabelForTask(req.taskId, req.url),
                     progress = 0,
                     indeterminate = true,

@@ -803,7 +803,7 @@ class FileTransferService : Service() {
             "Dateiübertragungen",
             NotificationManager.IMPORTANCE_LOW,
         ).apply {
-            description = "Fortschritt beim Kopieren und Verschieben von Dateien."
+            description = "Fortschritt bei Dateiübertragungen, Cloud-Downloads und Archiven."
         }
         notificationManager.createNotificationChannel(channel)
     }

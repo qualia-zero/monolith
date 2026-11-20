@@ -556,7 +556,7 @@ fun SettingsScreen(
                         shape = LocalMonolithButtonShape.current,
                         onClick = { showResetAllDefaultAppsConfirm = true },
                     ) {
-                        Text("Alle zurücksetzen")
+                        Text("Zurücksetzen")
                     }
                 }
             }

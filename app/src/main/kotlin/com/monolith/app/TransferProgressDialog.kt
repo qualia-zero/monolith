@@ -31,26 +31,31 @@ fun TransferProgressDialog(
 ) {
     val title = when (progress.operation) {
         TransferOperation.DOWNLOAD -> when {
+            progress.isCancelled -> "Download abgebrochen"
             progress.errorMessage != null -> "Download fehlgeschlagen"
             progress.isFinished -> "Download abgeschlossen"
             else -> "Dateien herunterladen…"
         }
         TransferOperation.MOVE -> when {
+            progress.isCancelled -> "Verschieben abgebrochen"
             progress.errorMessage != null -> "Verschieben fehlgeschlagen"
             progress.isFinished -> "Verschieben abgeschlossen"
             else -> "Dateien verschieben…"
         }
         TransferOperation.EXTRACT -> when {
+            progress.isCancelled -> "Entpacken abgebrochen"
             progress.errorMessage != null -> "Entpacken fehlgeschlagen"
             progress.isFinished -> "Entpacken abgeschlossen"
             else -> "Archiv entpacken…"
         }
         TransferOperation.COMPRESS -> when {
+            progress.isCancelled -> "Packen abgebrochen"
             progress.errorMessage != null -> "Packen fehlgeschlagen"
             progress.isFinished -> "Packen abgeschlossen"
             else -> "Archiv packen…"
         }
         else -> when {
+            progress.isCancelled -> "Kopieren abgebrochen"
             progress.errorMessage != null -> "Kopieren fehlgeschlagen"
             progress.isFinished -> "Kopieren abgeschlossen"
             else -> "Dateien kopieren…"
@@ -113,7 +118,7 @@ fun TransferProgressDialog(
         }
 
         val statusLine = buildString {
-            append("${progress.processedItems}/${progress.totalItems.coerceAtLeast(1)} Elemente")
+            val itemTotal = progress.totalItems.coerceAtLeast(1); append("${progress.processedItems}/$itemTotal ${if (itemTotal == 1) "Element" else "Elemente"}")
             if (progress.totalBytes > 0L) {
                 append(" · ")
                 append(formatBytes(progress.bytesProcessed))

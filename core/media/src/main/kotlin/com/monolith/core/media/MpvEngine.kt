@@ -221,6 +221,7 @@ object MpvEngine : MPVLib.EventObserver, MPVLib.LogObserver {
             executeLoad(target, headerFields, isVideo, inBackground)
         }
 
+        val currentGen = loadGeneration
         scope.launch {
             val mkvInfo = MkvTagParser.parse(appCtx, uri)
             val mmrTags = if (mkvInfo == null || mkvInfo.title.isBlank()) {
@@ -228,6 +229,7 @@ object MpvEngine : MPVLib.EventObserver, MPVLib.LogObserver {
             } else {
                 null
             }
+            if (loadGeneration != currentGen || _uiState.value.mediaUri != uri) return@launch
             val resolvedTitle = mkvInfo?.title.orEmpty().ifBlank { mmrTags?.first.orEmpty() }
             val resolvedArtist = mkvInfo?.artist.orEmpty().ifBlank { mmrTags?.second.orEmpty() }
             val resolvedAlbum = mkvInfo?.album.orEmpty().ifBlank { mmrTags?.third.orEmpty() }
@@ -537,10 +539,13 @@ object MpvEngine : MPVLib.EventObserver, MPVLib.LogObserver {
     override fun event(eventId: Int) {
         when (eventId) {
             MPVLib.MpvEvent.MPV_EVENT_FILE_LOADED -> {
+                if (_uiState.value.mediaUri.isBlank()) return
                 refreshTracks()
                 readMpvMetadataFallback()
                 _uiState.update { it.copy(isBuffering = false, isEnded = false) }
-                appContext?.let { MediaPlaybackService.startOrUpdate(it) }
+                if (_uiState.value.mediaUri.isNotBlank()) {
+                    appContext?.let { MediaPlaybackService.startOrUpdate(it) }
+                }
             }
             MPVLib.MpvEvent.MPV_EVENT_PLAYBACK_RESTART -> {
                 _uiState.update { it.copy(isBuffering = false, isEnded = false) }

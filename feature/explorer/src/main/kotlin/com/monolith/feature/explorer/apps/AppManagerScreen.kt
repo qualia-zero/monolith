@@ -284,7 +284,7 @@ fun AppManagerScreen(
         if (appsToExport.isEmpty()) return
         scope.launch {
             val exportDir = AppManagerRepository.defaultExportDirectory()
-            batchBusyLabel = "Exportiere Apps…"
+            batchBusyLabel = if (appsToExport.size == 1) "App wird exportiert…" else "Apps werden exportiert…"
             batchProgress = 0 to appsToExport.size
             var successCount = 0
             withContext(Dispatchers.IO) {
@@ -324,7 +324,7 @@ fun AppManagerScreen(
     fun runBatchAudit(appsToAudit: List<ManagedAppInfo>) {
         if (appsToAudit.isEmpty()) return
         scope.launch {
-            batchBusyLabel = "Analysiere Berechtigungen…"
+            batchBusyLabel = "Berechtigungen werden analysiert…"
             batchProgress = null
             val report = AppManagerRepository.buildBatchAuditReport(context, appsToAudit)
             batchBusyLabel = null
@@ -908,7 +908,7 @@ fun AppManagerScreen(
                     auditReport = null
                     saveResult.onSuccess { file ->
                         val res = snackbarHostState.showSnackbar(
-                            message = "Bericht gespeichert: ${file.name}.",
+                            message = "Bericht gespeichert: „${file.name}“.",
                             actionLabel = "Ordner öffnen",
                             duration = SnackbarDuration.Long,
                         )

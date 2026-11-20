@@ -185,6 +185,13 @@ class MediaPlaybackService : Service() {
             },
         )
 
+        if (state.mediaUri.isBlank() && intent?.action != ACTION_STOP) {
+            ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+            notificationManager.cancel(NOTIF_ID)
+            stopSelf()
+            return START_NOT_STICKY
+        }
+
         when (intent?.action) {
             ACTION_PLAY -> {
                 requestAudioFocus()
@@ -223,10 +230,23 @@ class MediaPlaybackService : Service() {
         mediaSession.isActive = false
         mediaSession.release()
         albumArt480p = null
+        ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+        notificationManager.cancel(NOTIF_ID)
         super.onDestroy()
     }
 
     private fun onPlaybackStateChanged(state: PlaybackUiState) {
+        if (state.mediaUri.isBlank()) {
+            releaseLocks()
+            lastLoadedArtUri = ""
+            albumArt480p = null
+            updateMediaSession(state)
+            ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+            notificationManager.cancel(NOTIF_ID)
+            stopSelf()
+            return
+        }
+
         if (state.isPlaying) {
             requestAudioFocus()
             acquireLocks(state.mediaUri)
@@ -234,12 +254,9 @@ class MediaPlaybackService : Service() {
             releaseLocks()
         }
 
-        if (state.mediaUri.isNotBlank() && state.mediaUri != lastLoadedArtUri) {
+        if (state.mediaUri != lastLoadedArtUri) {
             lastLoadedArtUri = state.mediaUri
             loadArtworkAndTags(state.mediaUri, state.isVideo)
-        } else if (state.mediaUri.isBlank()) {
-            lastLoadedArtUri = ""
-            albumArt480p = null
         }
 
         updateMediaSession(state)
