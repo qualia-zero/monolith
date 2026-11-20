@@ -40,6 +40,16 @@ fun TransferProgressDialog(
             progress.isFinished -> "Verschieben abgeschlossen."
             else -> "Dateien verschieben…"
         }
+        TransferOperation.EXTRACT -> when {
+            progress.errorMessage != null -> "Entpacken fehlgeschlagen."
+            progress.isFinished -> "Entpacken abgeschlossen."
+            else -> "Archiv entpacken…"
+        }
+        TransferOperation.COMPRESS -> when {
+            progress.errorMessage != null -> "Packen fehlgeschlagen."
+            progress.isFinished -> "Packen abgeschlossen."
+            else -> "Archiv packen…"
+        }
         else -> when {
             progress.errorMessage != null -> "Kopieren fehlgeschlagen."
             progress.isFinished -> "Kopieren abgeschlossen."

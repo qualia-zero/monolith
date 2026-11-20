@@ -68,6 +68,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.monolith.core.model.ThemeMode
+import com.monolith.core.model.TransferOperation
 import com.monolith.core.ui.components.CornerMenuItem
 import com.monolith.core.ui.components.MonolithCornerMenuOverlay
 import com.monolith.core.ui.components.MonolithDialog
@@ -76,6 +77,7 @@ import com.monolith.core.ui.components.MonolithSwitch
 import com.monolith.core.ui.haptics.MonolithHaptics
 import com.monolith.core.ui.theme.LocalMonolithButtonShape
 import com.monolith.core.ui.theme.LocalMonolithThemeMode
+import com.monolith.core.vfs.FileTransferService
 import com.monolith.core.vfs.GoogleDriveVfsProvider
 import com.monolith.feature.explorer.MonolithToolDestination
 import com.monolith.feature.explorer.MonolithToolStarMenu
@@ -261,31 +263,16 @@ fun ArchiveToolScreen(
         createSubfolder: Boolean = state.extractCreateSubfolder,
         conflictPolicy: ExtractConflictPolicy = state.extractConflictPolicy,
         deleteAfterExtract: Boolean = false,
-        onCompleteSuccess: (File) -> Unit = { extractedDir ->
-            completionDialog = OperationCompletionDialogState(
-                title = "Entpacken abgeschlossen",
-                message = "Dateien wurden nach „${extractedDir.name}“ entpackt.",
-                openFolderPath = extractedDir.absolutePath,
-            )
-            if (deleteAfterExtract) {
-                if (state.openedSummary?.group?.primaryFile?.absolutePath == archiveFile.absolutePath) {
-                    state.openedSummary = null
-                }
-                state.scanTrigger++
-            }
-        },
     ) {
         val group = ArchiveEngine.resolveVolumeGroup(archiveFile)
         val pwdToUse = password?.takeIf { it.isNotEmpty() } ?: state.resolvePasswordFor(group)
-        state.activeJob?.cancel()
-        state.activeProgress = ArchiveOperationProgress(
-            title = "Archiv wird entpackt…",
-            currentItem = group.displayName,
-            processedBytes = 0L,
+        val isDriveTarget = targetDir.path.startsWith("gdrive://")
+        FileTransferService.enqueueArchiveTask(
+            context = context,
+            operation = TransferOperation.EXTRACT,
+            initialItem = group.displayName,
             totalBytes = group.totalSizeBytes.coerceAtLeast(1L),
-        )
-        state.activeJob = scope.launch {
-            val isDriveTarget = targetDir.path.startsWith("gdrive://")
+        ) { updateProgress ->
             val effectiveLocalTarget = if (isDriveTarget) {
                 File(context.cacheDir, "archive_drive_extract/${System.currentTimeMillis()}").apply { mkdirs() }
             } else {
@@ -299,56 +286,33 @@ fun ArchiveToolScreen(
                 createSubfolder = createSubfolder,
                 conflictPolicy = conflictPolicy,
                 deleteAfterExtract = deleteAfterExtract && !isDriveTarget,
-                onProgress = { progress -> state.activeProgress = progress },
+                onProgress = { p ->
+                    updateProgress(p.currentItem, p.processedBytes, p.totalBytes)
+                },
             )
-            if (isDriveTarget && result.isSuccess) {
-                state.activeProgress = ArchiveOperationProgress(
-                    title = "Wird nach Google Drive hochgeladen…",
-                    currentItem = group.displayName,
-                    processedBytes = 0L,
-                    totalBytes = 1L,
-                )
-                val uploadRes = uploadTreeToDrive(effectiveLocalTarget, targetDir.path)
-                withContext(Dispatchers.IO) { effectiveLocalTarget.deleteRecursively() }
-                state.activeProgress = null
-                state.activeJob = null
-                uploadRes.onSuccess {
-                    completionDialog = OperationCompletionDialogState(
-                        title = "Entpacken abgeschlossen",
-                        message = "Dateien wurden nach Google Drive entpackt.",
-                    )
-                }.onFailure { err ->
-                    snackbarHostState.showSnackbar(err.message ?: "Upload nach Google Drive fehlgeschlagen.")
-                }
-                return@launch
+            if (result.isFailure) {
+                if (isDriveTarget) effectiveLocalTarget.deleteRecursively()
+                return@enqueueArchiveTask Result.failure(result.exceptionOrNull() ?: Exception("Entpacken fehlgeschlagen."))
             }
-            state.activeProgress = null
-            state.activeJob = null
-            result.onSuccess { extractedDir ->
-                onCompleteSuccess(extractedDir)
-            }.onFailure { err ->
-                if (err is CancellationException) return@onFailure
-                if (err is ArchivePasswordException) {
-                    passwordPrompt = PasswordPromptRequest(
-                        archiveFile = group.primaryFile,
-                        archiveLabel = group.displayName,
-                        isWrongPassword = err.isWrongPassword,
-                        onSubmit = { pwd ->
-                            launchExtractOperation(
-                                archiveFile = group.primaryFile,
-                                targetDir = targetDir,
-                                password = pwd,
-                                selectedEntries = selectedEntries,
-                                createSubfolder = createSubfolder,
-                                conflictPolicy = conflictPolicy,
-                                deleteAfterExtract = deleteAfterExtract,
-                                onCompleteSuccess = onCompleteSuccess,
-                            )
-                        },
+            val extractedDir = result.getOrThrow()
+            if (isDriveTarget) {
+                updateProgress("Wird nach Google Drive hochgeladen…", 0L, 1L)
+                val uploadRes = uploadTreeToDrive(effectiveLocalTarget, targetDir.path)
+                effectiveLocalTarget.deleteRecursively()
+                if (uploadRes.isFailure) {
+                    return@enqueueArchiveTask Result.failure(
+                        uploadRes.exceptionOrNull() ?: Exception("Upload nach Google Drive fehlgeschlagen."),
                     )
-                } else {
-                    snackbarHostState.showSnackbar(err.message ?: "Entpacken fehlgeschlagen.")
                 }
+                Result.success("${group.displayName} → Google Drive")
+            } else {
+                if (deleteAfterExtract) {
+                    if (state.openedSummary?.group?.primaryFile?.absolutePath == archiveFile.absolutePath) {
+                        state.openedSummary = null
+                    }
+                    state.scanTrigger++
+                }
+                Result.success("${group.displayName} → ${extractedDir.name}")
             }
         }
     }
@@ -942,26 +906,31 @@ fun ArchiveToolScreen(
                                 )
 
                                 MonolithHaptics.launchItem(context)
-                                state.activeJob?.cancel()
-                                state.activeProgress = ArchiveOperationProgress(
-                                    title = "${state.packFormat.label}-Archiv wird erstellt…",
-                                    currentItem = state.packBaseName,
-                                    processedBytes = 0L,
+                                FileTransferService.enqueueArchiveTask(
+                                    context = context,
+                                    operation = TransferOperation.COMPRESS,
+                                    initialItem = state.packBaseName,
                                     totalBytes = state.packTotalSourceBytes.coerceAtLeast(1L),
-                                )
-                                state.activeJob = scope.launch {
+                                ) { updateProgress ->
                                     val res = ArchiveEngine.createArchive(
                                         request = request,
-                                        onProgress = { progress -> state.activeProgress = progress },
+                                        onProgress = { p ->
+                                            updateProgress(p.currentItem, p.processedBytes, p.totalBytes)
+                                        },
                                     )
-                                    if (isDriveOutput && res.isSuccess) {
-                                        val createdGroup = res.getOrThrow()
-                                        state.activeProgress = ArchiveOperationProgress(
-                                            title = "Wird nach Google Drive hochgeladen…",
-                                            currentItem = createdGroup.displayName,
-                                            processedBytes = 0L,
-                                            totalBytes = 1L,
+                                    if (res.isFailure) {
+                                        if (isDriveOutput) File(effectiveOutputDir).deleteRecursively()
+                                        return@enqueueArchiveTask Result.failure(
+                                            res.exceptionOrNull() ?: Exception("Packen fehlgeschlagen."),
                                         )
+                                    }
+                                    val createdGroup = res.getOrThrow()
+                                    if (request.password.isNotEmpty()) {
+                                        state.rememberedPasswords[state.passwordKeyFor(createdGroup.primaryFile)] =
+                                            request.password
+                                    }
+                                    if (isDriveOutput) {
+                                        updateProgress("Wird nach Google Drive hochgeladen…", 0L, 1L)
                                         var uploadErr: Throwable? = null
                                         for (part in createdGroup.parts) {
                                             val up = driveProvider.uploadFile(part, state.packOutputDir)
@@ -970,43 +939,14 @@ fun ArchiveToolScreen(
                                                 break
                                             }
                                         }
-                                        withContext(Dispatchers.IO) { File(effectiveOutputDir).deleteRecursively() }
-                                        state.activeProgress = null
-                                        state.activeJob = null
+                                        File(effectiveOutputDir).deleteRecursively()
                                         if (uploadErr != null) {
-                                            snackbarHostState.showSnackbar(
-                                                uploadErr.message ?: "Upload nach Google Drive fehlgeschlagen.",
-                                            )
-                                        } else {
-                                            completionDialog = OperationCompletionDialogState(
-                                                title = "Archiv erstellt",
-                                                message = "„${createdGroup.displayName}“ wurde in Google Drive gespeichert.",
-                                            )
+                                            return@enqueueArchiveTask Result.failure(uploadErr)
                                         }
-                                        return@launch
-                                    }
-                                    state.activeProgress = null
-                                    state.activeJob = null
-                                    res.onSuccess { createdGroup ->
-                                        if (request.password.isNotEmpty()) {
-                                            state.rememberedPasswords[state.passwordKeyFor(createdGroup.primaryFile)] =
-                                                request.password
-                                        }
+                                        Result.success("${createdGroup.displayName} → Google Drive")
+                                    } else {
                                         state.scanTrigger++
-                                        val partsHint = if (createdGroup.isMultiVolume) {
-                                            "\n${createdGroup.parts.size} Teilarchive (${formatArchiveBytes(createdGroup.totalSizeBytes)})"
-                                        } else {
-                                            "\nGröße: ${formatArchiveBytes(createdGroup.totalSizeBytes)}"
-                                        }
-                                        completionDialog = OperationCompletionDialogState(
-                                            title = "Archiv erstellt",
-                                            message = "„${createdGroup.displayName}“ wurde erfolgreich erstellt.$partsHint",
-                                            openFolderPath = createdGroup.primaryFile.parent,
-                                            openArchivePath = createdGroup.primaryFile.absolutePath,
-                                        )
-                                    }.onFailure { err ->
-                                        if (err is CancellationException) return@onFailure
-                                        snackbarHostState.showSnackbar(err.message ?: "Packen fehlgeschlagen.")
+                                        Result.success(createdGroup.displayName)
                                     }
                                 }
                             },

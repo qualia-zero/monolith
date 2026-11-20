@@ -101,6 +101,27 @@ class FileTransferService : Service() {
             return START_NOT_STICKY
         }
 
+        val externalTaskId = intent?.getLongExtra(EXTRA_EXTERNAL_TASK_ID, -1L) ?: -1L
+        if (externalTaskId > 0L) {
+            val runner = pendingExternalRunners.remove(externalTaskId)
+            val opName = intent?.getStringExtra(EXTRA_EXTERNAL_OPERATION).orEmpty()
+            val operation = runCatching { TransferOperation.valueOf(opName) }.getOrDefault(TransferOperation.EXTRACT)
+            val initialItem = intent?.getStringExtra(EXTRA_EXTERNAL_ITEM).orEmpty()
+            val totalBytes = intent?.getLongExtra(EXTRA_EXTERNAL_TOTAL_BYTES, 1L) ?: 1L
+            if (runner != null) {
+                startExternalArchiveJob(
+                    taskId = externalTaskId,
+                    operation = operation,
+                    initialItem = initialItem,
+                    totalBytes = totalBytes,
+                    runner = runner,
+                )
+            } else if (taskJobs.isEmpty()) {
+                stopSelf()
+            }
+            return START_NOT_STICKY
+        }
+
         val sources = intent?.getStringArrayListExtra(EXTRA_SOURCES).orEmpty()
         val destinationDir = intent?.getStringExtra(EXTRA_DESTINATION).orEmpty()
         val isMove = intent?.getBooleanExtra(EXTRA_IS_MOVE, false) ?: false
@@ -170,6 +191,171 @@ class FileTransferService : Service() {
         }
         taskJobs[taskId] = coroutineJob
         return START_NOT_STICKY
+    }
+
+    private fun startExternalArchiveJob(
+        taskId: Long,
+        operation: TransferOperation,
+        initialItem: String,
+        totalBytes: Long,
+        runner: suspend (
+            updateProgress: (currentItem: String, processedBytes: Long, totalBytes: Long) -> Unit,
+        ) -> Result<String>,
+    ) {
+        val isInitiallyQueued = taskJobs.size >= MAX_CONCURRENT_JOBS
+        val runningTitle = when (operation) {
+            TransferOperation.COMPRESS -> "Archiv packen…"
+            else -> "Archiv entpacken…"
+        }
+        updateTaskProgress(
+            TransferProgress(
+                taskId = taskId,
+                operation = operation,
+                currentFileName = if (isInitiallyQueued) "In Warteschlange…" else initialItem,
+                processedItems = 0,
+                totalItems = 1,
+                bytesProcessed = 0L,
+                totalBytes = totalBytes.coerceAtLeast(1L),
+                bytesPerSecond = 0L,
+                isFinished = false,
+            ),
+        )
+        val initialNotification = buildProgressNotification(
+            taskId = taskId,
+            title = runningTitle,
+            text = if (isInitiallyQueued) "In Warteschlange…" else initialItem,
+            progress = 0,
+            max = PROGRESS_NOTIFICATION_MAX,
+            indeterminate = true,
+        )
+        activeProgressNotifications[taskId] = initialNotification
+        if (foregroundAnchorTaskId == null) {
+            foregroundAnchorTaskId = taskId
+            startForegroundWithNotification(progressNotificationId(taskId), initialNotification)
+        } else {
+            notificationManager.notify(progressNotificationId(taskId), initialNotification)
+        }
+
+        val coroutineJob = serviceScope.launch {
+            var lastStateEmitMs = 0L
+            var lastNotifyMs = 0L
+            val startedAtMs = System.currentTimeMillis()
+            try {
+                executionSemaphore.withPermit {
+                    val result = runner { currentItem, processed, total ->
+                        val now = System.currentTimeMillis()
+                        val safeTotal = total.coerceAtLeast(1L)
+                        val safeProcessed = processed.coerceIn(0L, safeTotal)
+                        val elapsedMs = (now - startedAtMs).coerceAtLeast(1L)
+                        val bps = (safeProcessed * 1000L) / elapsedMs
+                        if (now - lastStateEmitMs >= STATE_THROTTLE_MS || safeProcessed >= safeTotal) {
+                            lastStateEmitMs = now
+                            updateTaskProgress(
+                                TransferProgress(
+                                    taskId = taskId,
+                                    operation = operation,
+                                    currentFileName = currentItem,
+                                    processedItems = 0,
+                                    totalItems = 1,
+                                    bytesProcessed = safeProcessed,
+                                    totalBytes = safeTotal,
+                                    bytesPerSecond = bps,
+                                    isFinished = false,
+                                ),
+                            )
+                        }
+                        if (now - lastNotifyMs >= NOTIFICATION_THROTTLE_MS) {
+                            lastNotifyMs = now
+                            val pct = ((safeProcessed.toDouble() / safeTotal.toDouble()) * PROGRESS_NOTIFICATION_MAX)
+                                .toInt()
+                                .coerceIn(0, PROGRESS_NOTIFICATION_MAX)
+                            val notif = buildProgressNotification(
+                                taskId = taskId,
+                                title = runningTitle,
+                                text = currentItem,
+                                progress = pct,
+                                max = PROGRESS_NOTIFICATION_MAX,
+                                indeterminate = safeTotal <= 1L,
+                            )
+                            activeProgressNotifications[taskId] = notif
+                            notificationManager.notify(progressNotificationId(taskId), notif)
+                        }
+                    }
+                    result.fold(
+                        onSuccess = { summaryMsg ->
+                            updateTaskProgress(
+                                TransferProgress(
+                                    taskId = taskId,
+                                    operation = operation,
+                                    currentFileName = summaryMsg,
+                                    processedItems = 1,
+                                    totalItems = 1,
+                                    bytesProcessed = totalBytes.coerceAtLeast(1L),
+                                    totalBytes = totalBytes.coerceAtLeast(1L),
+                                    bytesPerSecond = 0L,
+                                    isFinished = true,
+                                ),
+                            )
+                            val doneTitle = if (operation == TransferOperation.COMPRESS) {
+                                "Packen abgeschlossen"
+                            } else {
+                                "Entpacken abgeschlossen"
+                            }
+                            notificationManager.notify(
+                                resultNotificationId(taskId),
+                                buildResultNotification(taskId, doneTitle, summaryMsg),
+                            )
+                        },
+                        onFailure = { err ->
+                            val msg = err.message ?: "Vorgang fehlgeschlagen."
+                            updateTaskProgress(
+                                TransferProgress(
+                                    taskId = taskId,
+                                    operation = operation,
+                                    currentFileName = initialItem,
+                                    processedItems = 0,
+                                    totalItems = 1,
+                                    bytesProcessed = 0L,
+                                    totalBytes = totalBytes.coerceAtLeast(1L),
+                                    bytesPerSecond = 0L,
+                                    isFinished = true,
+                                    errorMessage = msg,
+                                ),
+                            )
+                            val failTitle = if (operation == TransferOperation.COMPRESS) {
+                                "Packen fehlgeschlagen"
+                            } else {
+                                "Entpacken fehlgeschlagen"
+                            }
+                            notificationManager.notify(
+                                resultNotificationId(taskId),
+                                buildResultNotification(taskId, failTitle, msg),
+                            )
+                        },
+                    )
+                }
+            } catch (ce: CancellationException) {
+                updateTaskProgress(
+                    TransferProgress(
+                        taskId = taskId,
+                        operation = operation,
+                        currentFileName = initialItem,
+                        processedItems = 0,
+                        totalItems = 1,
+                        bytesProcessed = 0L,
+                        totalBytes = totalBytes.coerceAtLeast(1L),
+                        bytesPerSecond = 0L,
+                        isFinished = true,
+                        isCancelled = true,
+                        errorMessage = "Abgebrochen.",
+                    ),
+                )
+                throw ce
+            } finally {
+                onTaskEnded(taskId)
+            }
+        }
+        taskJobs[taskId] = coroutineJob
     }
 
     private fun startForegroundWithNotification(notificationId: Int, notification: Notification) {
@@ -703,6 +889,14 @@ class FileTransferService : Service() {
         private const val EXTRA_DESTINATION = "extra_destination"
         private const val EXTRA_IS_MOVE = "extra_is_move"
         private const val EXTRA_IS_CLOUD_DOWNLOAD = "extra_is_cloud_download"
+        private const val EXTRA_EXTERNAL_TASK_ID = "extra_external_task_id"
+        private const val EXTRA_EXTERNAL_OPERATION = "extra_external_operation"
+        private const val EXTRA_EXTERNAL_ITEM = "extra_external_item"
+        private const val EXTRA_EXTERNAL_TOTAL_BYTES = "extra_external_total_bytes"
+
+        private val pendingExternalRunners = ConcurrentHashMap<Long, suspend (
+            updateProgress: (currentItem: String, processedBytes: Long, totalBytes: Long) -> Unit,
+        ) -> Result<String>>()
 
         private val nextTaskId = AtomicLong(1L)
 
@@ -750,6 +944,28 @@ class FileTransferService : Service() {
                 putExtra(EXTRA_IS_CLOUD_DOWNLOAD, true)
             }
             ContextCompat.startForegroundService(context.applicationContext, intent)
+        }
+
+        fun enqueueArchiveTask(
+            context: Context,
+            operation: TransferOperation,
+            initialItem: String,
+            totalBytes: Long,
+            runner: suspend (
+                updateProgress: (currentItem: String, processedBytes: Long, totalBytes: Long) -> Unit,
+            ) -> Result<String>,
+        ): Long {
+            val taskId = nextTaskId.getAndIncrement()
+            _latestCreatedTaskId.value = taskId
+            pendingExternalRunners[taskId] = runner
+            val intent = Intent(context.applicationContext, FileTransferService::class.java).apply {
+                putExtra(EXTRA_EXTERNAL_TASK_ID, taskId)
+                putExtra(EXTRA_EXTERNAL_OPERATION, operation.name)
+                putExtra(EXTRA_EXTERNAL_ITEM, initialItem)
+                putExtra(EXTRA_EXTERNAL_TOTAL_BYTES, totalBytes.coerceAtLeast(1L))
+            }
+            ContextCompat.startForegroundService(context.applicationContext, intent)
+            return taskId
         }
 
         fun cancel(context: Context, taskId: Long? = null) {
