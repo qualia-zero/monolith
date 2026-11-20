@@ -539,6 +539,8 @@ fun SettingsScreen(
             HorizontalDivider(thickness = 0.5.dp)
 
             val defaultApps by DefaultAppsStore.associations.collectAsState()
+            var showResetAllDefaultAppsConfirm by remember { mutableStateOf(false) }
+            var pendingRemoveDefaultApp by remember { mutableStateOf<Pair<String, String>?>(null) }
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -553,7 +555,7 @@ fun SettingsScreen(
                 if (defaultApps.isNotEmpty()) {
                     TextButton(
                         shape = LocalMonolithButtonShape.current,
-                        onClick = { DefaultAppsStore.clearAll() },
+                        onClick = { showResetAllDefaultAppsConfirm = true },
                     ) {
                         Text("Alle zurücksetzen")
                     }
@@ -597,7 +599,9 @@ fun SettingsScreen(
                             )
                         }
                         IconButton(
-                            onClick = { DefaultAppsStore.removeForExtension(assoc.extension) },
+                            onClick = {
+                                pendingRemoveDefaultApp = assoc.extension to assoc.handlerLabel
+                            },
                         ) {
                             Icon(
                                 imageVector = Icons.Outlined.DeleteOutline,
@@ -606,6 +610,49 @@ fun SettingsScreen(
                             )
                         }
                     }
+                }
+            }
+
+            if (showResetAllDefaultAppsConfirm) {
+                MonolithDialog(
+                    onDismissRequest = { showResetAllDefaultAppsConfirm = false },
+                    title = "Standard-Apps zurücksetzen",
+                    dismissLabel = "Abbrechen",
+                    onDismissClick = { showResetAllDefaultAppsConfirm = false },
+                    confirmLabel = "Zurücksetzen",
+                    onConfirmClick = {
+                        showResetAllDefaultAppsConfirm = false
+                        DefaultAppsStore.clearAll()
+                    },
+                ) {
+                    val countText = if (defaultApps.size == 1) {
+                        "Die gespeicherte Standard-App-Zuordnung wird entfernt."
+                    } else {
+                        "Alle ${defaultApps.size} gespeicherten Standard-App-Zuordnungen werden entfernt."
+                    }
+                    Text(
+                        text = "$countText Beim nächsten Öffnen wird wieder nachgefragt.",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+            }
+
+            pendingRemoveDefaultApp?.let { (ext, handlerLabel) ->
+                MonolithDialog(
+                    onDismissRequest = { pendingRemoveDefaultApp = null },
+                    title = "Standard-App entfernen",
+                    dismissLabel = "Abbrechen",
+                    onDismissClick = { pendingRemoveDefaultApp = null },
+                    confirmLabel = "Entfernen",
+                    onConfirmClick = {
+                        pendingRemoveDefaultApp = null
+                        DefaultAppsStore.removeForExtension(ext)
+                    },
+                ) {
+                    Text(
+                        text = "Soll die Zuordnung von .${ext.uppercase()} zu „$handlerLabel“ wirklich entfernt werden?",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
                 }
             }
 
