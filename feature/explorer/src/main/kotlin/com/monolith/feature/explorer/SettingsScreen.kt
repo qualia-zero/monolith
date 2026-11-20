@@ -159,11 +159,13 @@ fun SettingsScreen(
                 }
             }
 
+            HorizontalDivider(thickness = 0.5.dp)
+
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(
                     text = "Haptik",
-                    style = MaterialTheme.typography.titleSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary,
                 )
                 HapticToggleRow(
                     title = "Haptisches Feedback",
@@ -303,7 +305,8 @@ fun SettingsScreen(
 
             Text(
                 text = "Gemini-API",
-                style = MaterialTheme.typography.titleMedium,
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
             )
 
             Text(
@@ -412,7 +415,8 @@ fun SettingsScreen(
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
                     text = "Cloud-Downloads",
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary,
                 )
                 Text(
                     text = "Heruntergeladene Cloud-Dateien und Cloud-Ordnerlisten (${formatCacheSize(cachedBytes)})",
@@ -459,7 +463,8 @@ fun SettingsScreen(
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
                     text = "Thumbnails",
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary,
                 )
                 Text(
                     text = "Zwischengespeicherte Vorschaubilder (${formatCacheSize(thumbBytes)})",
@@ -604,7 +609,7 @@ fun SettingsScreen(
                 }
             }
 
-            HorizontalDivider()
+            HorizontalDivider(thickness = 0.5.dp)
 
             val packageInfo = remember(context) {
                 runCatching { context.packageManager.getPackageInfo(context.packageName, 0) }.getOrNull()
@@ -623,7 +628,7 @@ fun SettingsScreen(
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(
                     text = "Über Monolith",
-                    style = MaterialTheme.typography.titleSmall,
+                    style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.primary,
                 )
                 Text(

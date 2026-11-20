@@ -57,14 +57,27 @@ object GeminiInteractionsClient {
         writeToolsEnabled: Boolean = false,
         terminalEnabled: Boolean = false,
     ): String = buildString {
-        appendLine("Aktueller Ordner: $CURRENT_DIR_PLACEHOLDER (relative Pfade beziehen sich auf diesen Ordner).")
-        appendLine("Verfügbare Werkzeuge:")
-        appendLine("- Lesen: `list_directory`, `read_text_file`, `get_file_info`, `search_files`, `list_archive_contents`")
+        appendLine("Aktueller Ordner: $CURRENT_DIR_PLACEHOLDER (relative Pfade beziehen sich auf diesen Ordner, Unterordner über `<ordner>/<name>` öffnen).")
+        appendLine()
+        appendLine("Lese-Tools (JSON-Aufrufe):")
+        appendLine("- Ordner auflisten: `list_directory({\"path\": \"$CURRENT_DIR_PLACEHOLDER\", \"include_hidden\": false})`")
+        appendLine("- Textdatei lesen: `read_text_file({\"path\": \"$CURRENT_DIR_PLACEHOLDER/notiz.txt\", \"max_chars\": 12000})`")
+        appendLine("- Datei-/Medieninfos: `get_file_info({\"path\": \"$CURRENT_DIR_PLACEHOLDER/datei.mp3\"})`")
+        appendLine("- Dateien suchen (bis Tiefe 4): `search_files({\"query\": \"begriff\", \"directory\": \"$CURRENT_DIR_PLACEHOLDER\"})`")
+        appendLine("- Archivinhalt zeigen: `list_archive_contents({\"path\": \"$CURRENT_DIR_PLACEHOLDER/archiv.zip\", \"password\": \"optional\"})`")
         if (writeToolsEnabled) {
-            appendLine("- Schreiben & Bearbeiten: `write_text_file`, `edit_text_file`, `create_directory`, `move_or_rename_path`, `delete_path` (Dateien und Ordner nur auf ausdrücklichen Wunsch ändern oder löschen)")
+            appendLine()
+            appendLine("Schreib- & Bearbeitungs-Tools (nur auf ausdrücklichen Wunsch Dateien/Ordner ändern oder löschen):")
+            appendLine("- Textdatei schreiben: `write_text_file({\"path\": \"$CURRENT_DIR_PLACEHOLDER/neu.txt\", \"content\": \"Text\", \"append\": false})`")
+            appendLine("- Textdatei bearbeiten: `edit_text_file({\"path\": \"$CURRENT_DIR_PLACEHOLDER/neu.txt\", \"old_text\": \"alt\", \"new_text\": \"neu\", \"replace_all\": false})`")
+            appendLine("- Ordner erstellen: `create_directory({\"path\": \"$CURRENT_DIR_PLACEHOLDER/NeuerOrdner\"})`")
+            appendLine("- Verschieben/Umbenennen: `move_or_rename_path({\"source_path\": \"$CURRENT_DIR_PLACEHOLDER/alt.txt\", \"destination_path\": \"$CURRENT_DIR_PLACEHOLDER/neu.txt\"})`")
+            appendLine("- Datei/Ordner löschen: `delete_path({\"path\": \"$CURRENT_DIR_PLACEHOLDER/alt.txt\", \"recursive\": false})`")
         }
         if (writeToolsEnabled && terminalEnabled) {
-            appendLine("- Android-Terminal: `run_terminal_command` (Shell-Befehle über `/system/bin/sh` ausführen)")
+            appendLine()
+            appendLine("Android-Terminal (`/system/bin/sh`):")
+            appendLine("- Befehl ausführen: `run_terminal_command({\"command\": \"ls -la\", \"working_dir\": \"$CURRENT_DIR_PLACEHOLDER\", \"timeout_sec\": 15})`")
         }
     }.trimEnd()
 
