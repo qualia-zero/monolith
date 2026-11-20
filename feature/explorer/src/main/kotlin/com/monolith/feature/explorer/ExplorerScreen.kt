@@ -55,6 +55,7 @@ import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.SdStorage
 import androidx.compose.material.icons.outlined.SelectAll
 import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material.icons.outlined.Unarchive
 import androidx.compose.material.icons.outlined.Usb
 import androidx.compose.material.icons.outlined.VideoFile
 import androidx.compose.material3.Button
@@ -127,6 +128,8 @@ import com.monolith.core.ui.haptics.MonolithHaptics
 import com.monolith.core.ui.theme.LocalMonolithButtonShape
 import com.monolith.core.ui.theme.LocalMonolithThemeMode
 import com.monolith.core.vfs.FileTransferService
+import com.monolith.feature.explorer.archive.ArchiveEngine
+import com.monolith.feature.explorer.archive.ArchiveToolMode
 import com.monolith.core.vfs.GoogleDriveAuthManager
 import com.monolith.core.vfs.GoogleDriveVfsProvider
 import com.monolith.core.vfs.LocalVfsProvider
@@ -166,7 +169,7 @@ fun ExplorerScreen(
     onOpenSettings: () -> Unit = {},
     onOpenDownloader: () -> Unit = {},
     onOpenAiChat: (currentDirectory: String) -> Unit = {},
-    onOpenArchiveTool: (initialArchivePath: String?, initialPackPaths: List<String>) -> Unit = { _, _ -> },
+    onOpenArchiveTool: (initialArchivePath: String?, initialPackPaths: List<String>, initialMode: ArchiveToolMode?) -> Unit = { _, _, _ -> },
     onOpenStorageAnalysis: (rootPath: String) -> Unit = {},
     onSelectApps: () -> Unit = {},
     navState: ExplorerNavigationState = rememberExplorerNavigationState(),
@@ -553,15 +556,31 @@ fun ExplorerScreen(
                             }
                         }
                         if (activeLocation == LocationType.LOCAL) {
-                            IconButton(onClick = {
-                                val pathsToPack = selectedPaths.toList()
-                                selectedPaths = emptySet()
-                                onOpenArchiveTool(null, pathsToPack)
-                            }) {
-                                Icon(
-                                    imageVector = Icons.Outlined.FolderZip,
-                                    contentDescription = "Packen",
-                                )
+                            val singleArchivePath = selectedPaths.singleOrNull()?.takeIf { path ->
+                                val f = File(path)
+                                f.isFile && ArchiveEngine.isSupportedArchiveFile(f)
+                            }
+                            if (singleArchivePath != null) {
+                                IconButton(onClick = {
+                                    selectedPaths = emptySet()
+                                    onOpenArchiveTool(singleArchivePath, emptyList(), ArchiveToolMode.EXTRACT)
+                                }) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Unarchive,
+                                        contentDescription = "Entpacken",
+                                    )
+                                }
+                            } else {
+                                IconButton(onClick = {
+                                    val pathsToPack = selectedPaths.toList()
+                                    selectedPaths = emptySet()
+                                    onOpenArchiveTool(null, pathsToPack, ArchiveToolMode.PACK)
+                                }) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.FolderZip,
+                                        contentDescription = "Packen",
+                                    )
+                                }
                             }
                         }
                         IconButton(onClick = { showDeleteDialog = true }) {
@@ -1033,7 +1052,7 @@ fun ExplorerScreen(
             starMenuExpanded = false
         },
         onSelectArchives = {
-            onOpenArchiveTool(null, emptyList())
+            onOpenArchiveTool(null, emptyList(), null)
         },
         onSelectStorage = {
             onOpenStorageAnalysis(activeLocalRootPath)

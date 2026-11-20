@@ -7,6 +7,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Environment
 import android.provider.Settings
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
@@ -21,6 +22,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -50,7 +52,14 @@ import com.monolith.feature.explorer.ExternalStorageDetector
 import com.monolith.feature.explorer.SettingsScreen
 import com.monolith.feature.explorer.ai.AiChatScreen
 import com.monolith.feature.explorer.apps.AppManagerScreen
+import com.monolith.feature.explorer.archive.ArchiveEngine
+import com.monolith.feature.explorer.archive.ArchiveLaunchRequest
+import com.monolith.feature.explorer.archive.ArchiveToolMode
 import com.monolith.feature.explorer.archive.ArchiveToolScreen
+import com.monolith.feature.explorer.archive.LocalPathPickerDialog
+import com.monolith.feature.explorer.archive.LocalPickerMode
+import com.monolith.feature.explorer.archive.LocalPickerRequest
+import com.monolith.feature.explorer.archive.rememberArchiveManagerState
 import com.monolith.feature.explorer.downloader.DownloaderScreen
 import com.monolith.feature.explorer.downloader.MediaDownloadService
 import com.monolith.feature.explorer.rememberExplorerNavigationState
@@ -82,6 +91,7 @@ class MainActivity : ComponentActivity() {
     private var openTransferFromNotification by mutableStateOf(false)
     private var notificationTargetTaskId by mutableStateOf<Long?>(null)
     private var openDownloaderFromNotification by mutableStateOf(false)
+    private var pendingExternalIntent by mutableStateOf<Intent?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -103,11 +113,16 @@ class MainActivity : ComponentActivity() {
             var activeDestination by remember { mutableStateOf(MainDestination.EXPLORER) }
             var settingsReturnDestination by remember { mutableStateOf(MainDestination.EXPLORER) }
             var aiCurrentDirectory by remember { mutableStateOf("") }
-            var archiveInitialFilePath by remember { mutableStateOf<String?>(null) }
-            var archiveInitialPackPaths by remember { mutableStateOf<List<String>>(emptyList()) }
+            val defaultRootDir = remember { Environment.getExternalStorageDirectory().absolutePath }
+            val archiveManagerState = rememberArchiveManagerState(defaultRootDir = defaultRootDir)
+            var archiveLaunchNonce by remember { mutableLongStateOf(0L) }
+            var archiveLaunchRequest by remember { mutableStateOf(ArchiveLaunchRequest()) }
             var storageInitialRootPath by remember { mutableStateOf<String?>(null) }
             val explorerNavState = rememberExplorerNavigationState()
             var pendingOpen by remember { mutableStateOf<PendingOpenRequest?>(null) }
+            var pendingShareFiles by remember { mutableStateOf<List<IncomingSharedFile>?>(null) }
+            var shareSavePickerRequest by remember { mutableStateOf<LocalPickerRequest?>(null) }
+            var isResolvingExternalIntent by remember { mutableStateOf(false) }
             var downloadingDriveFile by remember { mutableStateOf<String?>(null) }
             val transferProgress by FileTransferService.progress.collectAsState()
             val transferTasks by FileTransferService.tasks.collectAsState()
@@ -232,8 +247,12 @@ class MainActivity : ComponentActivity() {
                         true
                     }
                     HANDLER_INTERNAL_ARCHIVE -> {
-                        archiveInitialFilePath = node.path
-                        archiveInitialPackPaths = emptyList()
+                        archiveLaunchNonce++
+                        archiveLaunchRequest = ArchiveLaunchRequest(
+                            nonce = archiveLaunchNonce,
+                            mode = ArchiveToolMode.MANAGE,
+                            archivePath = node.path,
+                        )
                         activeDestination = MainDestination.ARCHIVE_TOOL
                         true
                     }
@@ -334,6 +353,80 @@ class MainActivity : ComponentActivity() {
                 activeDestination = MainDestination.EXPLORER
             }
 
+            fun openIncomingFiles(files: List<IncomingSharedFile>) {
+                val first = files.firstOrNull() ?: return
+                if (ArchiveEngine.isSupportedArchiveFile(first.file)) {
+                    archiveLaunchNonce++
+                    archiveLaunchRequest = ArchiveLaunchRequest(
+                        nonce = archiveLaunchNonce,
+                        mode = ArchiveToolMode.MANAGE,
+                        archivePath = first.file.absolutePath,
+                    )
+                    activeDestination = MainDestination.ARCHIVE_TOOL
+                    return
+                }
+                val nodes = files.map { item ->
+                    val mime = item.mimeType.ifBlank { MimeNormalizer.normalizeMime(item.displayName) }
+                    val category = MimeNormalizer.categorize(
+                        fileName = item.displayName,
+                        isDirectory = false,
+                        mimeType = mime,
+                    )
+                    VfsNode(
+                        id = item.file.absolutePath,
+                        name = item.displayName,
+                        path = item.file.absolutePath,
+                        parentPath = item.file.parent,
+                        locationType = LocationType.LOCAL,
+                        isDirectory = false,
+                        sizeBytes = item.sizeBytes,
+                        lastModifiedMs = item.file.lastModified(),
+                        mimeType = mime,
+                        category = category,
+                    )
+                }
+                val firstNode = nodes.first()
+                when (firstNode.category) {
+                    FileCategory.IMAGE -> {
+                        val images = nodes.filter { it.category == FileCategory.IMAGE }.ifEmpty { listOf(firstNode) }
+                        openLocalWithAssociation(firstNode, images, HANDLER_INTERNAL_IMAGE, null, null)
+                    }
+                    FileCategory.VIDEO -> {
+                        val videos = nodes.filter { it.category == FileCategory.VIDEO }.ifEmpty { listOf(firstNode) }
+                        openLocalWithAssociation(firstNode, videos, HANDLER_INTERNAL_VIDEO, null, null)
+                    }
+                    FileCategory.AUDIO -> {
+                        val audios = nodes.filter { it.category == FileCategory.AUDIO }.ifEmpty { listOf(firstNode) }
+                        openLocalWithAssociation(firstNode, audios, HANDLER_INTERNAL_AUDIO, null, null)
+                    }
+                    FileCategory.TEXT -> {
+                        openLocalWithAssociation(firstNode, listOf(firstNode), HANDLER_INTERNAL_TEXT, null, null)
+                    }
+                    else -> handleOpenFile(firstNode, listOf(firstNode))
+                }
+            }
+
+            LaunchedEffect(pendingExternalIntent) {
+                val incoming = pendingExternalIntent ?: return@LaunchedEffect
+                pendingExternalIntent = null
+                isResolvingExternalIntent = true
+                val payload = resolveIncomingIntent(applicationContext, incoming)
+                isResolvingExternalIntent = false
+                if (payload == null || payload.files.isEmpty()) {
+                    Toast.makeText(
+                        this@MainActivity,
+                        "Datei(en) konnten nicht geladen werden.",
+                        Toast.LENGTH_SHORT,
+                    ).show()
+                    return@LaunchedEffect
+                }
+                if (payload.action == Intent.ACTION_VIEW) {
+                    openIncomingFiles(payload.files)
+                } else {
+                    pendingShareFiles = payload.files
+                }
+            }
+
             MonolithTheme(
                 darkTheme = darkTheme,
                 themeMode = appSettings.themeMode,
@@ -348,8 +441,8 @@ class MainActivity : ComponentActivity() {
                     }
                     MainDestination.ARCHIVE_TOOL -> {
                         ArchiveToolScreen(
-                            initialArchivePath = archiveInitialFilePath,
-                            initialPackSourcePaths = archiveInitialPackPaths,
+                            state = archiveManagerState,
+                            launchRequest = archiveLaunchRequest,
                             onBack = { activeDestination = MainDestination.EXPLORER },
                             onNavigateToFiles = { activeDestination = MainDestination.EXPLORER },
                             onNavigateToStorage = {
@@ -371,6 +464,27 @@ class MainActivity : ComponentActivity() {
                                 activeDestination = MainDestination.SETTINGS
                             },
                             onOpenExtractedFolder = ::openLocalFolderInExplorer,
+                            onOpenPreviewFile = { previewFile ->
+                                val mime = MimeNormalizer.normalizeMime(previewFile.name)
+                                val category = MimeNormalizer.categorize(
+                                    fileName = previewFile.name,
+                                    isDirectory = false,
+                                    mimeType = mime,
+                                )
+                                val previewNode = VfsNode(
+                                    id = previewFile.absolutePath,
+                                    name = previewFile.name,
+                                    path = previewFile.absolutePath,
+                                    parentPath = previewFile.parent,
+                                    locationType = LocationType.LOCAL,
+                                    isDirectory = false,
+                                    sizeBytes = previewFile.length(),
+                                    lastModifiedMs = previewFile.lastModified(),
+                                    mimeType = mime,
+                                    category = category,
+                                )
+                                handleOpenFile(previewNode, listOf(previewNode))
+                            },
                         )
                     }
                     MainDestination.STORAGE_ANALYSIS -> {
@@ -380,8 +494,24 @@ class MainActivity : ComponentActivity() {
                             onNavigateToFiles = { activeDestination = MainDestination.EXPLORER },
                             onOpenFolderInExplorer = ::openLocalFolderInExplorer,
                             onNavigateToArchives = { packPaths ->
-                                archiveInitialFilePath = null
-                                archiveInitialPackPaths = packPaths
+                                val singleArchive = packPaths.singleOrNull()?.takeIf { path ->
+                                    val f = File(path)
+                                    f.isFile && ArchiveEngine.isSupportedArchiveFile(f)
+                                }
+                                archiveLaunchNonce++
+                                archiveLaunchRequest = if (singleArchive != null) {
+                                    ArchiveLaunchRequest(
+                                        nonce = archiveLaunchNonce,
+                                        mode = ArchiveToolMode.EXTRACT,
+                                        archivePath = singleArchive,
+                                    )
+                                } else {
+                                    ArchiveLaunchRequest(
+                                        nonce = archiveLaunchNonce,
+                                        mode = if (packPaths.isNotEmpty()) ArchiveToolMode.PACK else null,
+                                        packSourcePaths = packPaths,
+                                    )
+                                }
                                 activeDestination = MainDestination.ARCHIVE_TOOL
                             },
                             onNavigateToDownloader = {
@@ -407,8 +537,8 @@ class MainActivity : ComponentActivity() {
                             onBack = { activeDestination = MainDestination.EXPLORER },
                             onNavigateToFiles = { activeDestination = MainDestination.EXPLORER },
                             onNavigateToArchives = {
-                                archiveInitialFilePath = null
-                                archiveInitialPackPaths = emptyList()
+                                archiveLaunchNonce++
+                                archiveLaunchRequest = ArchiveLaunchRequest(nonce = archiveLaunchNonce)
                                 activeDestination = MainDestination.ARCHIVE_TOOL
                             },
                             onNavigateToStorage = {
@@ -457,8 +587,8 @@ class MainActivity : ComponentActivity() {
                         AppManagerScreen(
                             onNavigateToFiles = { activeDestination = MainDestination.EXPLORER },
                             onNavigateToArchives = {
-                                archiveInitialFilePath = null
-                                archiveInitialPackPaths = emptyList()
+                                archiveLaunchNonce++
+                                archiveLaunchRequest = ArchiveLaunchRequest(nonce = archiveLaunchNonce)
                                 activeDestination = MainDestination.ARCHIVE_TOOL
                             },
                             onNavigateToStorage = {
@@ -484,8 +614,8 @@ class MainActivity : ComponentActivity() {
                             currentDirectory = aiCurrentDirectory,
                             onBack = { activeDestination = MainDestination.EXPLORER },
                             onOpenArchives = {
-                                archiveInitialFilePath = null
-                                archiveInitialPackPaths = emptyList()
+                                archiveLaunchNonce++
+                                archiveLaunchRequest = ArchiveLaunchRequest(nonce = archiveLaunchNonce)
                                 activeDestination = MainDestination.ARCHIVE_TOOL
                             },
                             onOpenStorage = {
@@ -529,9 +659,14 @@ class MainActivity : ComponentActivity() {
                                 aiCurrentDirectory = currentDir
                                 activeDestination = MainDestination.AI_CHAT
                             },
-                            onOpenArchiveTool = { initialArchive, initialPack ->
-                                archiveInitialFilePath = initialArchive
-                                archiveInitialPackPaths = initialPack
+                            onOpenArchiveTool = { initialArchive, initialPack, initialMode ->
+                                archiveLaunchNonce++
+                                archiveLaunchRequest = ArchiveLaunchRequest(
+                                    nonce = archiveLaunchNonce,
+                                    mode = initialMode,
+                                    archivePath = initialArchive,
+                                    packSourcePaths = initialPack,
+                                )
                                 activeDestination = MainDestination.ARCHIVE_TOOL
                             },
                             onOpenStorageAnalysis = { root ->
@@ -593,6 +728,69 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
+                if (isResolvingExternalIntent) {
+                    MonolithDialog(
+                        onDismissRequest = {},
+                        title = "Monolith",
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(16.dp),
+                            modifier = Modifier.padding(top = 4.dp),
+                        ) {
+                            CircularProgressIndicator()
+                            Text("Datei(en) werden vorbereitet…")
+                        }
+                    }
+                }
+
+                pendingShareFiles?.let { sharedFiles ->
+                    IncomingShareDialog(
+                        files = sharedFiles,
+                        onSaveToFolder = {
+                            pendingShareFiles = null
+                            shareSavePickerRequest = LocalPickerRequest(
+                                mode = LocalPickerMode.SINGLE_DIRECTORY,
+                                title = "Zielordner zum Speichern wählen",
+                                initialDirectory = explorerNavState.localPath.ifBlank { defaultRootDir },
+                                onConfirm = { dirs ->
+                                    val targetPath = dirs.firstOrNull() ?: return@LocalPickerRequest
+                                    scope.launch {
+                                        val res = copyIncomingFilesToDirectory(sharedFiles, File(targetPath))
+                                        res.onSuccess { count ->
+                                            Toast.makeText(
+                                                this@MainActivity,
+                                                "$count Datei(en) gespeichert.",
+                                                Toast.LENGTH_SHORT,
+                                            ).show()
+                                            openLocalFolderInExplorer(targetPath)
+                                        }.onFailure { err ->
+                                            Toast.makeText(
+                                                this@MainActivity,
+                                                err.message ?: "Speichern fehlgeschlagen.",
+                                                Toast.LENGTH_LONG,
+                                            ).show()
+                                        }
+                                    }
+                                },
+                            )
+                        },
+                        onOpenFiles = {
+                            pendingShareFiles = null
+                            openIncomingFiles(sharedFiles)
+                        },
+                        onDismiss = { pendingShareFiles = null },
+                    )
+                }
+
+                shareSavePickerRequest?.let { req ->
+                    LocalPathPickerDialog(
+                        request = req,
+                        defaultRootDir = defaultRootDir,
+                        onDismiss = { shareSavePickerRequest = null },
+                    )
+                }
+
                 if (showTransferOverlay) {
                     val activeProgress = focusedTransferTaskId?.let { transferTasks[it] }
                         ?: transferProgress
@@ -642,6 +840,10 @@ class MainActivity : ComponentActivity() {
         if (intent?.getBooleanExtra(MediaDownloadService.EXTRA_OPEN_DOWNLOADER, false) == true) {
             intent.removeExtra(MediaDownloadService.EXTRA_OPEN_DOWNLOADER)
             openDownloaderFromNotification = true
+        }
+        val action = intent?.action
+        if (action == Intent.ACTION_VIEW || action == Intent.ACTION_SEND || action == Intent.ACTION_SEND_MULTIPLE) {
+            pendingExternalIntent = intent
         }
     }
 

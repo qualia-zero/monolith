@@ -237,26 +237,44 @@ object ArchiveEngine {
 
     fun discoverArchiveGroups(
         directory: File,
-        recursiveDepth: Int = 2,
-    ): List<ArchiveVolumeGroup> {
-        if (!directory.exists() || !directory.isDirectory) return emptyList()
+        recursiveDepth: Int = 5,
+    ): List<ArchiveVolumeGroup> = discoverArchiveGroupsWithInfo(
+        directory = directory,
+        recursiveDepth = recursiveDepth,
+    ).groups
+
+    fun discoverArchiveGroupsWithInfo(
+        directory: File,
+        recursiveDepth: Int = 5,
+        maxScannedEntries: Int = 20_000,
+    ): ArchiveDiscoveryResult {
+        if (!directory.exists() || !directory.isDirectory) {
+            return ArchiveDiscoveryResult(groups = emptyList(), reachedScanLimit = false)
+        }
         val seenGroups = LinkedHashMap<String, ArchiveVolumeGroup>()
         val visitedDirs = HashSet<String>()
         var scannedCount = 0
-        val maxScannedEntries = 6000
+        var reachedLimit = false
+        val skipDirNames = setOf("android", ".git", "node_modules", ".thumbnails")
 
         fun walk(dir: File, depth: Int) {
-            if (scannedCount >= maxScannedEntries) return
+            if (scannedCount >= maxScannedEntries) {
+                reachedLimit = true
+                return
+            }
             val canonical = runCatching { dir.canonicalPath }.getOrNull() ?: return
             if (!visitedDirs.add(canonical)) return
             val children = dir.listFiles() ?: return
             for (child in children) {
-                if (scannedCount >= maxScannedEntries) break
+                if (scannedCount >= maxScannedEntries) {
+                    reachedLimit = true
+                    break
+                }
                 scannedCount++
                 val childName = child.name
                 if (childName.startsWith(".")) continue
                 if (child.isDirectory) {
-                    if (depth < recursiveDepth && !childName.equals("Android", ignoreCase = true)) {
+                    if (depth < recursiveDepth && childName.lowercase(Locale.ROOT) !in skipDirNames) {
                         walk(child, depth + 1)
                     }
                 } else if (isSupportedArchiveFile(child)) {
@@ -269,7 +287,10 @@ object ArchiveEngine {
         }
 
         walk(directory, 0)
-        return seenGroups.values.sortedByDescending { it.primaryFile.lastModified() }
+        return ArchiveDiscoveryResult(
+            groups = seenGroups.values.sortedByDescending { it.primaryFile.lastModified() },
+            reachedScanLimit = reachedLimit,
+        )
     }
 
     suspend fun inspectArchive(
@@ -543,6 +564,47 @@ object ArchiveEngine {
         } catch (e: Exception) {
             Result.failure(e)
         }
+    }
+
+    /**
+     * Extracts a single archive entry into a scoped cache folder for direct preview/open.
+     */
+    suspend fun extractSingleEntryToCache(
+        archiveFile: File,
+        entryPath: String,
+        cacheRootDir: File,
+        password: String? = null,
+    ): Result<File> = withContext(Dispatchers.IO) {
+        val normalizedPath = entryPath.trim().trim('/').replace('\\', '/')
+        if (normalizedPath.isEmpty()) {
+            return@withContext Result.failure(IOException("Ungültiger Archiveintrag."))
+        }
+        val archiveKey = runCatching { archiveFile.canonicalPath }
+            .getOrDefault(archiveFile.absolutePath)
+            .hashCode()
+            .toUInt()
+            .toString(16)
+        val previewDir = File(cacheRootDir, "archive_preview/$archiveKey").apply { mkdirs() }
+        val expectedFile = File(previewDir, normalizedPath)
+        val extractResult = extractArchive(
+            file = archiveFile,
+            targetDir = previewDir,
+            password = password,
+            selectedEntryPaths = setOf(normalizedPath),
+            createSubfolder = false,
+            conflictPolicy = ExtractConflictPolicy.OVERWRITE,
+            deleteAfterExtract = false,
+        )
+        extractResult.fold(
+            onSuccess = {
+                if (expectedFile.exists() && expectedFile.isFile) {
+                    Result.success(expectedFile)
+                } else {
+                    Result.failure(IOException("Vorschaudatei konnte nicht gefunden werden: ${expectedFile.name}"))
+                }
+            },
+            onFailure = { Result.failure(it) },
+        )
     }
 
     suspend fun addEntriesToArchive(

@@ -105,6 +105,11 @@ data class ArchiveOperationProgress(
     val errorMessage: String? = null,
 )
 
+data class ArchiveDiscoveryResult(
+    val groups: List<ArchiveVolumeGroup>,
+    val reachedScanLimit: Boolean = false,
+)
+
 class ArchivePasswordException(
     message: String,
     val isWrongPassword: Boolean = false,

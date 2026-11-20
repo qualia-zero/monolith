@@ -223,4 +223,63 @@ class ArchiveEngineTest {
         assertEquals("Alpha", File(extractDir, "src_targz/alpha.txt").readText())
         assertEquals("Beta", File(extractDir, "src_targz/sub/beta.txt").readText())
     }
+
+    @Test
+    fun `discoverArchiveGroupsWithInfo finds nested archives and skips android folder`() = runBlocking {
+        val root = tempFolder.newFolder("scan_root")
+        val deepDir = File(root, "a/b/c/d").apply { mkdirs() }
+        val androidDir = File(root, "Android/data/pkg").apply { mkdirs() }
+        val sampleFile = tempFolder.newFile("sample.txt").apply { writeText("hello") }
+
+        val deepGroup = ArchiveEngine.createArchive(
+            PackArchiveRequest(
+                sourcePaths = listOf(sampleFile.absolutePath),
+                outputDirectory = deepDir.absolutePath,
+                archiveBaseName = "deep_archive",
+                format = ArchiveFormat.ZIP,
+            ),
+        ).getOrThrow()
+
+        ArchiveEngine.createArchive(
+            PackArchiveRequest(
+                sourcePaths = listOf(sampleFile.absolutePath),
+                outputDirectory = androidDir.absolutePath,
+                archiveBaseName = "ignored_android",
+                format = ArchiveFormat.ZIP,
+            ),
+        ).getOrThrow()
+
+        val result = ArchiveEngine.discoverArchiveGroupsWithInfo(root)
+        assertFalse(result.reachedScanLimit)
+        val foundNames = result.groups.map { it.displayName }
+        assertTrue(deepGroup.displayName in foundNames)
+        assertFalse("ignored_android.zip" in foundNames)
+    }
+
+    @Test
+    fun `extractSingleEntryToCache extracts single entry for preview`() = runBlocking {
+        val srcDir = tempFolder.newFolder("src_preview")
+        File(srcDir, "readme.txt").writeText("Preview content")
+        File(srcDir, "other.txt").writeText("Other content")
+        val outDir = tempFolder.newFolder("out_preview")
+        val cacheDir = tempFolder.newFolder("cache_preview")
+
+        val group = ArchiveEngine.createArchive(
+            PackArchiveRequest(
+                sourcePaths = listOf(srcDir.absolutePath),
+                outputDirectory = outDir.absolutePath,
+                archiveBaseName = "preview_test",
+                format = ArchiveFormat.ZIP,
+            ),
+        ).getOrThrow()
+
+        val previewFile = ArchiveEngine.extractSingleEntryToCache(
+            archiveFile = group.primaryFile,
+            entryPath = "src_preview/readme.txt",
+            cacheRootDir = cacheDir,
+        ).getOrThrow()
+
+        assertTrue(previewFile.exists())
+        assertEquals("Preview content", previewFile.readText())
+    }
 }
