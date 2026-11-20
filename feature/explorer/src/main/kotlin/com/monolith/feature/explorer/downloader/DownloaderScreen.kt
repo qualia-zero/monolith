@@ -822,7 +822,7 @@ private fun DownloadTaskCard(
                         modifier = Modifier.weight(1f),
                     )
                     val etaText = if (task.status == DownloadTaskStatus.DOWNLOADING && task.etaSeconds > 0L) {
-                        "ETA ${formatSecondsEta(task.etaSeconds)}"
+                        "Restzeit ${formatSecondsEta(task.etaSeconds)}"
                     } else {
                         null
                     }
@@ -945,7 +945,7 @@ private fun DownloadTaskCard(
                                 shape = LocalMonolithButtonShape.current,
                                 contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
                             ) {
-                                Text(if (showLogs) "Log ausblenden" else "Log")
+                                Text(if (showLogs) "Protokoll ausblenden" else "Protokoll")
                             }
                         }
                         Spacer(Modifier.weight(1f))
@@ -1085,14 +1085,14 @@ private fun DownloaderSettingsSubscreen(
                     val formatSubtitle = "Video: ${formatShortSummary(DownloadMode.VIDEO, settings)} · Audio: ${formatShortSummary(DownloadMode.AUDIO, settings)}"
                     val sponsorSubtitle = when (settings.sponsorBlockMode) {
                         SponsorBlockMode.OFF -> "Aus"
-                        else -> "${settings.sponsorBlockMode.label} (${settings.sponsorBlockCategories.size} Kategorien)"
+                        else -> "${settings.sponsorBlockMode.label} (${if (settings.sponsorBlockCategories.size == 1) "1 Kategorie" else "${settings.sponsorBlockCategories.size} Kategorien"})"
                     }
                     val embedSubtitle = buildList {
                         if (settings.embedMetadata) add("Metadaten")
                         if (settings.embedChapters) add("Kapitel")
                         when (settings.thumbnailEmbedMode) {
-                            ThumbnailEmbedMode.AUDIO_ONLY -> add("Cover (Audio)")
-                            ThumbnailEmbedMode.ALWAYS -> add("Cover (Immer)")
+                            ThumbnailEmbedMode.AUDIO_ONLY -> add("Vorschaubild (Audio)")
+                            ThumbnailEmbedMode.ALWAYS -> add("Vorschaubild (Immer)")
                             ThumbnailEmbedMode.NEVER -> Unit
                         }
                         if (settings.embedSubtitles) add("Untertitel")
@@ -1161,7 +1161,7 @@ private fun DownloaderSettingsSubscreen(
 
                 DownloaderSettingsSubmenu.FORMAT -> {
                     Text(
-                        text = "Video-Format",
+                        text = "Videoformat",
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.primary,
                     )
@@ -1179,7 +1179,7 @@ private fun DownloaderSettingsSubscreen(
                             onValueChange = { raw ->
                                 DownloaderSettingsStore.update { it.copy(customVideoFormat = raw) }
                             },
-                            label = { Text("Video-Format-Ausdruck (-f)") },
+                            label = { Text("Video-Formatausdruck (-f)") },
                             placeholder = { Text("bv*+ba/b") },
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth(),
@@ -1214,7 +1214,7 @@ private fun DownloaderSettingsSubscreen(
                     )
 
                     Text(
-                        text = "Audio-Format",
+                        text = "Audioformat",
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.primary,
                     )
@@ -1232,7 +1232,7 @@ private fun DownloaderSettingsSubscreen(
                             onValueChange = { raw ->
                                 DownloaderSettingsStore.update { it.copy(customAudioFormat = raw) }
                             },
-                            label = { Text("Audio-Format-Ausdruck (-f)") },
+                            label = { Text("Audio-Formatausdruck (-f)") },
                             placeholder = { Text("bestaudio/best") },
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth(),
@@ -1308,7 +1308,7 @@ private fun DownloaderSettingsSubscreen(
                     )
                     DialogSwitchRow(
                         title = "Untertitel einbetten",
-                        subtitle = "Untertitel in Video-Container einbetten (--embed-subs)",
+                        subtitle = "Untertitel in Videocontainer einbetten (--embed-subs)",
                         checked = settings.embedSubtitles,
                         onCheckedChange = { enabled ->
                             DownloaderSettingsStore.update { it.copy(embedSubtitles = enabled) }
@@ -1320,7 +1320,7 @@ private fun DownloaderSettingsSubscreen(
                             onValueChange = { raw ->
                                 DownloaderSettingsStore.update { it.copy(subtitleLanguages = raw) }
                             },
-                            label = { Text("Untertitel-Sprachen (--sub-langs)") },
+                            label = { Text("Untertitelsprachen (--sub-langs)") },
                             placeholder = { Text("de,en") },
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth(),
@@ -1476,7 +1476,7 @@ private fun DownloaderSettingsSubscreen(
                         onValueChange = { raw ->
                             DownloaderSettingsStore.update { it.copy(outputTemplate = raw) }
                         },
-                        label = { Text("Dateinamens-Vorlage (-o)") },
+                        label = { Text("Dateinamensvorlage (-o)") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                     )
@@ -1625,7 +1625,7 @@ private fun DownloaderSettingsSubscreen(
     if (showResetConfirm) {
         MonolithDialog(
             onDismissRequest = { showResetConfirm = false },
-            title = "Downloader zurücksetzen",
+            title = "Downloader-Einstellungen zurücksetzen",
             dismissLabel = "Abbrechen",
             onDismissClick = { showResetConfirm = false },
             confirmLabel = "Zurücksetzen",
@@ -1807,7 +1807,7 @@ private fun TargetDirectoryPickerDialog(
                     },
                     modifier = Modifier.size(36.dp),
                 ) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Zurück")
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Übergeordneter Ordner")
                 }
             }
             Text(

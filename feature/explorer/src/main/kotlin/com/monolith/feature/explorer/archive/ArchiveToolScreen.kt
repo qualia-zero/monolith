@@ -427,7 +427,9 @@ fun ArchiveToolScreen(
                         state.activeProgress = null
                         state.activeJob = null
                         res.onSuccess {
-                            snackbarHostState.showSnackbar("${paths.size} Element(e) hinzugefügt.")
+                            snackbarHostState.showSnackbar(
+                                if (paths.size == 1) "1 Eintrag hinzugefügt." else "${paths.size} Einträge hinzugefügt.",
+                            )
                             openAndInspectArchive(
                                 group.primaryFile,
                                 pwd ?: state.resolvePasswordFor(group),
@@ -973,7 +975,7 @@ fun ArchiveToolScreen(
                     add(
                         CornerMenuItem(
                             id = "add_files",
-                            label = "Dateien hinzufügen",
+                            label = "Dateien & Ordner hinzufügen",
                             onClick = { launchAddFilesToArchive(openedGroup) },
                         ),
                     )
@@ -1192,7 +1194,7 @@ fun ArchiveToolScreen(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        text = "Archiv nach Entpacken löschen",
+                        text = "Archiv nach dem Entpacken löschen",
                         style = MaterialTheme.typography.bodyMedium,
                         modifier = Modifier.weight(1f),
                     )
@@ -1379,7 +1381,7 @@ fun ArchiveToolScreen(
                         state.activeJob = null
                         res.onSuccess {
                             state.selectedEntryPaths = emptySet()
-                            snackbarHostState.showSnackbar("Umbenannt zu „$updated“.")
+                            snackbarHostState.showSnackbar("Umbenannt in „$updated“.")
                             openAndInspectArchive(
                                 grp.primaryFile,
                                 pwd ?: state.resolvePasswordFor(grp),
@@ -1443,7 +1445,9 @@ fun ArchiveToolScreen(
                         state.activeJob = null
                         res.onSuccess {
                             state.selectedEntryPaths = emptySet()
-                            snackbarHostState.showSnackbar("${pathsToDelete.size} Eintrag/Einträge gelöscht.")
+                            snackbarHostState.showSnackbar(
+                                if (pathsToDelete.size == 1) "1 Eintrag gelöscht." else "${pathsToDelete.size} Einträge gelöscht.",
+                            )
                             openAndInspectArchive(
                                 grp.primaryFile,
                                 pwd ?: state.resolvePasswordFor(grp),

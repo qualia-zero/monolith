@@ -501,7 +501,7 @@ fun ExplorerScreen(
                                             }
                                             cacheVersionTick++
                                             selectedPaths = emptySet()
-                                            snackbarHostState.showSnackbar("Aus Zwischenspeicher gelöscht.")
+                                            snackbarHostState.showSnackbar("Aus dem Zwischenspeicher gelöscht.")
                                         }
                                     } else {
                                         FileTransferService.enqueueCloudDownload(
@@ -1294,7 +1294,7 @@ fun ExplorerScreen(
             dismissLabel = "Abbrechen",
             dismissEnabled = !isDownloadingForShare,
             onDismissClick = { shareCloudTarget = null },
-            confirmLabel = "Zwischenspeichern & Teilen",
+            confirmLabel = "Zwischenspeichern & teilen",
             confirmEnabled = !isDownloadingForShare,
             onConfirmClick = {
                 isDownloadingForShare = true
@@ -1504,7 +1504,7 @@ private fun ClipboardActionBar(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = "$count Element(e) ${if (isMoveOperation) "ausschneiden" else "kopieren"}",
+                    text = "${if (count == 1) "1 Element" else "$count Elemente"} ${if (isMoveOperation) "ausgeschnitten" else "kopiert"}",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSecondaryContainer,
                     maxLines = 1,
@@ -1708,7 +1708,7 @@ internal fun FileRow(
                 overflow = TextOverflow.Ellipsis,
             )
             val subtitle = if (node.isDirectory) {
-                node.childCount?.let { "$it Elemente" } ?: "Ordner"
+                node.childCount?.let { if (it == 1) "1 Element" else "$it Elemente" } ?: "Ordner"
             } else {
                 formatBytes(node.sizeBytes)
             }

@@ -165,7 +165,7 @@ object MpvEngine : MPVLib.EventObserver, MPVLib.LogObserver {
                     isVideo = isVideo,
                     isPlaying = false,
                     isBuffering = false,
-                    errorMessage = err.message ?: "Unable to open media",
+                    errorMessage = err.message ?: "Medium konnte nicht geöffnet werden.",
                 )
             }
             return

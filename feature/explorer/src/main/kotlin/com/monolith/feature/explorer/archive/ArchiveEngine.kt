@@ -299,7 +299,7 @@ object ArchiveEngine {
     ): Result<ArchiveSummary> = withContext(Dispatchers.IO) {
         try {
             if (!file.exists()) {
-                return@withContext Result.failure(IOException("Archivdatei nicht gefunden: ${file.name}"))
+                return@withContext Result.failure(IOException("Archiv nicht gefunden: ${file.name}"))
             }
             val group = resolveVolumeGroup(file)
             if (group.isMissingParts) {
@@ -438,7 +438,7 @@ object ArchiveEngine {
                     onProgress = onProgress,
                 )
 
-                ArchiveFormat.RAR -> throw IllegalStateException("RAR creation is unsupported")
+                ArchiveFormat.RAR -> throw IllegalStateException("Erstellen von RAR-Archiven wird nicht unterstützt.")
             }
 
             onProgress(
@@ -475,7 +475,7 @@ object ArchiveEngine {
             val group = resolveVolumeGroup(file)
             if (group.isMissingParts) {
                 return@withContext Result.failure(
-                    IOException("Unvollständiges Split-Archiv (${group.displayName}): Mindestens ein Teil fehlt."),
+                    IOException("Unvollständiges Split-Archiv (${group.displayName}): Mindestens ein Teilarchiv fehlt."),
                 )
             }
 
@@ -657,7 +657,7 @@ object ArchiveEngine {
                     onProgress = onProgress,
                 )
 
-                ArchiveFormat.RAR -> throw IllegalStateException("RAR modification unsupported")
+                ArchiveFormat.RAR -> throw IllegalStateException("RAR-Archive unterstützen kein nachträgliches Hinzufügen.")
             }
 
             Result.success(Unit)
@@ -713,7 +713,7 @@ object ArchiveEngine {
                     onProgress = onProgress,
                 )
 
-                ArchiveFormat.RAR -> throw IllegalStateException("RAR modification unsupported")
+                ArchiveFormat.RAR -> throw IllegalStateException("RAR-Archive unterstützen kein Löschen von Einträgen.")
             }
 
             Result.success(Unit)
@@ -772,7 +772,7 @@ object ArchiveEngine {
                     renameFrom = oldNorm,
                     renameTo = newNorm,
                 )
-                ArchiveFormat.RAR -> throw IllegalStateException("RAR modification unsupported")
+                ArchiveFormat.RAR -> throw IllegalStateException("RAR-Archive unterstützen kein Umbenennen.")
             }
 
             Result.success(Unit)
@@ -803,7 +803,7 @@ object ArchiveEngine {
             if (!canBinaryMerge(group)) {
                 return@withContext Result.failure(
                     IllegalStateException(
-                        "RAR-Teilarchive besitzen eigene Volume-Header und können nicht binär zusammengefügt werden — sie können direkt entpackt oder konvertiert werden.",
+                        "RAR-Teilarchive besitzen eigene Volume-Header und können nicht binär zusammengeführt werden – sie können direkt entpackt oder konvertiert werden.",
                     ),
                 )
             }
@@ -925,7 +925,7 @@ object ArchiveEngine {
                 ),
             )
             Result.success(
-                "Integritätsprüfung bestanden: $checkedFiles Datei(en) (${formatArchiveBytes(checkedBytes)}) fehlerfrei verifiziert.",
+                "Integritätsprüfung bestanden: ${if (checkedFiles == 1) "1 Datei" else "$checkedFiles Dateien"} (${formatArchiveBytes(checkedBytes)}) fehlerfrei verifiziert.",
             )
         } catch (e: CancellationException) {
             throw e
@@ -948,7 +948,7 @@ object ArchiveEngine {
         }
         val group = resolveVolumeGroup(archiveFile)
         val outputDir = group.primaryFile.parentFile ?: archiveFile.parentFile
-            ?: return@withContext Result.failure(IOException("Ausgabeordner konnte nicht ermittelt werden."))
+            ?: return@withContext Result.failure(IOException("Zielordner konnte nicht ermittelt werden."))
 
         val tempDir = File(System.getProperty("java.io.tmpdir"), "monolith_convert_${UUID.randomUUID()}")
         if (!tempDir.mkdirs()) {
@@ -2625,7 +2625,7 @@ object ArchiveEngine {
                     }
                     XZCompressorOutputStream(fileOut, preset)
                 }
-                TarCodec.BZIP2 -> throw IllegalStateException("BZIP2 creation is not supported")
+                TarCodec.BZIP2 -> throw IllegalStateException("Erstellen von BZIP2-Archiven wird nicht unterstützt.")
             }
         } catch (t: Throwable) {
             runCatching { fileOut.close() }
@@ -3020,7 +3020,7 @@ object ArchiveEngine {
                             wroteAny = true
                             onProgress(
                                 ArchiveOperationProgress(
-                                    title = "Teile werden aufgeteilt…",
+                                    title = "Archiv wird aufgeteilt…",
                                     currentItem = partFile.name,
                                     processedBytes = totalProcessed,
                                     totalBytes = totalSize,

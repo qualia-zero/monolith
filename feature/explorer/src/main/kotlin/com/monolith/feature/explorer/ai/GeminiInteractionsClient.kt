@@ -257,7 +257,7 @@ object GeminiInteractionsClient {
                 val parsedMessage = runCatching {
                     JSONObject(errorBody).optJSONObject("error")?.optString("message")
                 }.getOrNull()?.takeIf { it.isNotBlank() }
-                throw IllegalStateException(parsedMessage ?: "Gemini API Fehler ($code)")
+                throw IllegalStateException(parsedMessage ?: "Gemini-API-Fehler ($code).")
             }
 
             var interactionId: String? = null
@@ -378,7 +378,7 @@ object GeminiInteractionsClient {
                             "error" -> {
                                 val errMsg = eventObj.optJSONObject("error")?.optString("message")
                                     ?: eventObj.optString("message")
-                                    .ifBlank { "Unbekannter Streaming-Fehler" }
+                                    .ifBlank { "Unbekannter Streaming-Fehler." }
                                 throw IllegalStateException(errMsg)
                             }
                         }

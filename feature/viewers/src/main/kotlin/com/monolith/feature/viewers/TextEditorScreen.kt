@@ -302,7 +302,7 @@ fun TextEditorScreen(
                             onDismissRequest = { showOverflowMenu = false },
                         ) {
                             DropdownMenuItem(
-                                text = { Text("Nur-Lesen-Modus") },
+                                text = { Text("Nur-Lese-Modus") },
                                 trailingIcon = {
                                     if (isReadOnly) {
                                         Icon(

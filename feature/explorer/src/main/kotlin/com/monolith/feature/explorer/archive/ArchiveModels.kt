@@ -37,20 +37,20 @@ enum class ArchiveCompressionLevel(val label: String) {
 
 enum class ArchiveEncryptionMethod(val label: String) {
     NONE("Keine"),
-    AES_256("AES-256 (Stark)"),
-    ZIP_STANDARD("ZipCrypto (Kompatibel)"),
+    AES_256("AES-256 (stark)"),
+    ZIP_STANDARD("ZipCrypto (kompatibel)"),
 }
 
 enum class SplitVolumePreset(
     val label: String,
     val sizeBytes: Long?,
 ) {
-    NONE("Einzelarchiv (Kein Split)", null),
-    MB_10("10 MB Teile", 10L * 1024 * 1024),
-    MB_50("50 MB Teile", 50L * 1024 * 1024),
-    MB_100("100 MB Teile", 100L * 1024 * 1024),
-    MB_500("500 MB Teile", 500L * 1024 * 1024),
-    GB_1("1 GB Teile", 1024L * 1024 * 1024),
+    NONE("Einzelarchiv (kein Split)", null),
+    MB_10("10-MB-Teile", 10L * 1024 * 1024),
+    MB_50("50-MB-Teile", 50L * 1024 * 1024),
+    MB_100("100-MB-Teile", 100L * 1024 * 1024),
+    MB_500("500-MB-Teile", 500L * 1024 * 1024),
+    GB_1("1-GB-Teile", 1024L * 1024 * 1024),
 }
 
 data class ArchiveVolumeGroup(

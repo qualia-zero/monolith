@@ -214,7 +214,7 @@ fun AppManagerScreen(
             uninstallLauncher.launch(intent)
         }.onFailure {
             pendingUninstallQueue = pendingUninstallQueue.drop(1)
-            snackbarHostState.showSnackbar("Deinstallation für $nextPkg fehlgeschlagen")
+            snackbarHostState.showSnackbar("Deinstallation für $nextPkg fehlgeschlagen.")
         }
     }
 
@@ -301,9 +301,9 @@ fun AppManagerScreen(
             selectedPackages = emptySet()
 
             val msg = if (successCount == appsToExport.size) {
-                "$successCount App(s) exportiert"
+                if (successCount == 1) "1 App exportiert." else "$successCount Apps exportiert."
             } else {
-                "$successCount von ${appsToExport.size} App(s) exportiert"
+                if (appsToExport.size == 1) "$successCount von 1 App exportiert." else "$successCount von ${appsToExport.size} Apps exportiert."
             }
             val result = snackbarHostState.showSnackbar(
                 message = msg,
@@ -412,7 +412,7 @@ fun AppManagerScreen(
                                 Icon(Icons.Outlined.FileDownload, contentDescription = "Exportieren")
                             }
                             IconButton(onClick = { runTempCleanup(selectedApps) }) {
-                                Icon(Icons.Outlined.CleaningServices, contentDescription = "Temp/Cache")
+                                Icon(Icons.Outlined.CleaningServices, contentDescription = "Cache leeren")
                             }
                             IconButton(onClick = { runBatchAudit(selectedApps) }) {
                                 Icon(
@@ -426,7 +426,7 @@ fun AppManagerScreen(
                                     if (uninstallable.isEmpty()) {
                                         scope.launch {
                                             snackbarHostState.showSnackbar(
-                                                "System-Apps können nicht direkt deinstalliert werden",
+                                                "System-Apps können nicht direkt deinstalliert werden.",
                                             )
                                         }
                                     } else {
@@ -548,7 +548,7 @@ fun AppManagerScreen(
                                 context.startActivity(AppManagerRepository.buildUsageAccessIntent(context))
                             }.onFailure {
                                 scope.launch {
-                                    snackbarHostState.showSnackbar("Nutzungszugriff-Einstellungen nicht verfügbar")
+                                    snackbarHostState.showSnackbar("Nutzungszugriffseinstellungen nicht verfügbar.")
                                 }
                             }
                         },
@@ -798,7 +798,7 @@ fun AppManagerScreen(
                     context.startActivity(AppManagerRepository.buildAppDetailsIntent(activeApp.packageName))
                 }.onFailure {
                     scope.launch {
-                        snackbarHostState.showSnackbar("App-Info konnte nicht geöffnet werden")
+                        snackbarHostState.showSnackbar("App-Info konnte nicht geöffnet werden.")
                     }
                 }
             },
@@ -809,7 +809,7 @@ fun AppManagerScreen(
                     )
                 }.onFailure {
                     scope.launch {
-                        snackbarHostState.showSnackbar("Benachrichtigungs-Einstellungen nicht verfügbar")
+                        snackbarHostState.showSnackbar("Benachrichtigungseinstellungen nicht verfügbar.")
                     }
                 }
             },
@@ -873,7 +873,7 @@ fun AppManagerScreen(
                         systemClearCacheLauncher.launch(clearAllIntent)
                     }.onFailure {
                         scope.launch {
-                            snackbarHostState.showSnackbar("System-Cache-Dialog wird auf diesem Gerät nicht unterstützt")
+                            snackbarHostState.showSnackbar("System-Cache-Dialog wird auf diesem Gerät nicht unterstützt.")
                         }
                     }
                 } else if (firstPkg != null) {
@@ -885,7 +885,7 @@ fun AppManagerScreen(
         ) {
             Text(
                 text = if (clearAllIntent != null) {
-                    "Android öffnet den System-Dialog zum Leeren temporärer Cache-Dateien aller installierten Apps auf einmal. Nutzerdaten bleiben erhalten."
+                    "Android öffnet den Systemdialog zum Leeren temporärer Cache-Dateien aller installierten Apps auf einmal. Nutzerdaten bleiben erhalten."
                 } else {
                     "Auf dieser Android-Version muss der Cache in den jeweiligen App-Einstellungen geleert werden."
                 },
@@ -1359,7 +1359,7 @@ private fun AppDetailModalSheet(
                 ) {
                     Icon(Icons.Outlined.CleaningServices, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(6.dp))
-                    Text("Temp/Cache")
+                    Text("Cache leeren")
                 }
                 OutlinedButton(
                     onClick = onOpenAppInfo,
@@ -1444,7 +1444,7 @@ private fun AppDetailModalSheet(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                             ) {
                                 Text(
-                                    text = "Normale & Spezielle Berechtigungen (${otherPerms.size})",
+                                    text = "Normale & spezielle Berechtigungen (${otherPerms.size})",
                                     style = MaterialTheme.typography.labelLarge,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
@@ -1504,7 +1504,7 @@ private fun AppDetailModalSheet(
                         shape = buttonShape,
                         modifier = Modifier.fillMaxWidth(),
                     ) {
-                        Text("Benachrichtigungs-Einstellungen öffnen")
+                        Text("Benachrichtigungseinstellungen öffnen")
                     }
                 }
             }
@@ -1573,7 +1573,7 @@ private fun BatchAuditReportDialog(
         onConfirmClick = onSaveReport,
     ) {
         Text(
-            text = "${report.entries.size} App(s) geprüft",
+            text = if (report.entries.size == 1) "1 App geprüft" else "${report.entries.size} Apps geprüft",
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -1629,7 +1629,7 @@ private fun BatchAuditReportDialog(
                             HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
                             if (entry.grantedRuntimePermissions.isEmpty() && entry.deniedRuntimePermissions.isEmpty()) {
                                 Text(
-                                    text = "Keine Laufzeit-Berechtigungen (${entry.totalPermissionCount} gesamt)",
+                                    text = "Keine Laufzeitberechtigungen (${entry.totalPermissionCount} gesamt)",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )

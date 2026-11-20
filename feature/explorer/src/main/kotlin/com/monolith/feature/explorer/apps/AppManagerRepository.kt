@@ -393,37 +393,37 @@ object AppManagerRepository {
     }
 
     fun formatAuditReportText(report: BatchAuditReport): String {
-        val timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US)
+        val timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.GERMANY)
             .format(Date(report.generatedAtMs))
         return buildString {
-            appendLine("Monolith App Audit Report")
-            appendLine("Generated: $timestamp")
-            appendLine("Apps audited: ${report.entries.size}")
+            appendLine("Monolith App-Prüfbericht")
+            appendLine("Erstellt: $timestamp")
+            appendLine("Geprüfte Apps: ${report.entries.size}")
             appendLine("========================================")
             for (entry in report.entries) {
                 appendLine()
                 appendLine("${entry.appName} (${entry.packageName})")
-                appendLine("  Notifications: ${entry.notificationStatus.label}")
-                appendLine("  Total permissions: ${entry.totalPermissionCount}")
+                appendLine("  Benachrichtigungen: ${entry.notificationStatus.label}")
+                appendLine("  Berechtigungen gesamt: ${entry.totalPermissionCount}")
                 val grantedList = if (entry.grantedRuntimePermissions.isEmpty()) {
-                    "None"
+                    "Keine"
                 } else {
                     entry.grantedRuntimePermissions.joinToString(", ") { it.shortName }
                 }
                 val deniedList = if (entry.deniedRuntimePermissions.isEmpty()) {
-                    "None"
+                    "Keine"
                 } else {
                     entry.deniedRuntimePermissions.joinToString(", ") { it.shortName }
                 }
-                appendLine("  Granted runtime (${entry.grantedRuntimePermissions.size}): $grantedList")
-                appendLine("  Denied runtime (${entry.deniedRuntimePermissions.size}): $deniedList")
+                appendLine("  Erteilte Laufzeitberechtigungen (${entry.grantedRuntimePermissions.size}): $grantedList")
+                appendLine("  Verweigerte Laufzeitberechtigungen (${entry.deniedRuntimePermissions.size}): $deniedList")
             }
         }.trimEnd()
     }
 
     fun exportAuditReport(report: BatchAuditReport, targetDir: File): Result<File> = runCatching {
         if (!targetDir.exists() && !targetDir.mkdirs()) {
-            throw IOException("Cannot create export directory: ${targetDir.absolutePath}")
+            throw IOException("Exportordner konnte nicht erstellt werden: ${targetDir.absolutePath}")
         }
         val fileStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US)
             .format(Date(report.generatedAtMs))

@@ -153,7 +153,7 @@ internal fun ExtractArchiveTab(
                         )
                         if (reachedScanLimit) {
                             Text(
-                                text = "Scan-Limit erreicht — nutze das Ordner-Symbol für tiefere Ordner",
+                                text = "Scan-Limit erreicht – für tiefere Ordner das Ordnersymbol verwenden",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -256,7 +256,7 @@ internal fun ExtractArchiveTab(
                             overflow = TextOverflow.Ellipsis,
                         )
                         Text(
-                            text = "${formatArchiveBytes(summary.totalCompressedBytes)} → ${formatArchiveBytes(summary.totalUncompressedBytes)} • ${summary.fileCount} Dateien, ${summary.folderCount} Ordner",
+                            text = "${formatArchiveBytes(summary.totalCompressedBytes)} → ${formatArchiveBytes(summary.totalUncompressedBytes)} • ${if (summary.fileCount == 1) "1 Datei" else "${summary.fileCount} Dateien"}, ${summary.folderCount} Ordner",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
@@ -288,7 +288,7 @@ internal fun ExtractArchiveTab(
                     }
                     if (group.isMultiVolume) {
                         BadgeChip(
-                            text = "Split · ${group.parts.size} Teile",
+                            text = "Split-Archiv • ${group.parts.size} Teile",
                             icon = Icons.Outlined.Inventory2,
                             containerColor = MaterialTheme.colorScheme.primaryContainer,
                             contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -452,7 +452,7 @@ internal fun ExtractArchiveTab(
                                     overflow = TextOverflow.Ellipsis,
                                 )
                                 val sub = if (entry.isDirectory) {
-                                    "$childrenCount Elemente"
+                                    if (childrenCount == 1) "1 Element" else "$childrenCount Elemente"
                                 } else {
                                     val rawSize = formatArchiveBytes(entry.uncompressedSize)
                                     if (entry.compressedSize > 0L) {
@@ -526,7 +526,7 @@ internal fun ExtractArchiveTab(
                         if (selectedEntryPaths.isNotEmpty()) {
                             "Auswahl entpacken (${selectedEntryPaths.size})"
                         } else {
-                            "Alle entpacken"
+                            "Alles entpacken"
                         },
                     )
                 }
@@ -588,7 +588,7 @@ private fun DiscoveredArchiveCard(
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     if (group.isMultiVolume) {
                         BadgeChip(
-                            text = "Split · ${group.parts.size} Teile",
+                            text = "Split-Archiv • ${group.parts.size} Teile",
                             icon = Icons.Outlined.Inventory2,
                             containerColor = MaterialTheme.colorScheme.primaryContainer,
                             contentColor = MaterialTheme.colorScheme.onPrimaryContainer,

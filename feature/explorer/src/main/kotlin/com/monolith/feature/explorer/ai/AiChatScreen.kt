@@ -154,7 +154,7 @@ private val THINKING_MINIMAL = ThinkingLevelOption("minimal", "Minimal")
 private val THINKING_LOW = ThinkingLevelOption("low", "Niedrig")
 private val THINKING_MEDIUM = ThinkingLevelOption("medium", "Mittel")
 private val THINKING_HIGH = ThinkingLevelOption("high", "Hoch")
-private val THINKING_XHIGH = ThinkingLevelOption("xhigh", "xHigh")
+private val THINKING_XHIGH = ThinkingLevelOption("xhigh", "Sehr hoch")
 
 private val GEMINI_MODELS = listOf(
     GeminiModelOption(
@@ -354,7 +354,7 @@ fun AiChatScreen(
                             AiChatMessage(
                                 id = nextMessageId++,
                                 role = ChatRole.ERROR,
-                                text = err.message ?: "Streaming unterbrochen",
+                                text = err.message ?: "Streaming unterbrochen.",
                             ),
                         )
                     }
@@ -650,7 +650,7 @@ fun AiChatScreen(
             },
         ) {
             Text(
-                "Für das AI-Chatfenster wird ein Gemini-API-Key benötigt. Möchtest du jetzt die API-Verwaltung öffnen?",
+                "Für den KI-Chat wird ein Gemini-API-Key benötigt. Möchtest du jetzt die API-Verwaltung öffnen?",
             )
         }
     }
@@ -1163,7 +1163,7 @@ private fun ChatBubble(
                             modifier = Modifier.size(14.dp),
                         )
                         Text(
-                            text = "Tool-Calls (${message.toolCalls.size})",
+                            text = "Tool-Aufrufe (${message.toolCalls.size})",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.secondary,
                             modifier = Modifier.weight(1f),

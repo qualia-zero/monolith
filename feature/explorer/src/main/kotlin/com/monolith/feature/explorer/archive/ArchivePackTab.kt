@@ -332,7 +332,7 @@ internal fun PackArchiveContent(
                         }
                     } else {
                         Text(
-                            text = "Verfahren: AES-256 (7z Standard)",
+                            text = "Verfahren: AES-256 (7z-Standard)",
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.primary,
                         )
@@ -380,7 +380,7 @@ internal fun PackArchiveContent(
                                     fontWeight = FontWeight.Medium,
                                 )
                                 Text(
-                                    text = "Verbirgt Dateinamen und Ordnerstruktur ohne Passwort",
+                                    text = "Verbirgt Dateinamen und Ordnerstruktur bis zur Passworteingabe",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
@@ -456,7 +456,7 @@ internal fun PackArchiveContent(
                             selected = splitCustomSelected,
                             shape = LocalMonolithButtonShape.current,
                             onClick = onSelectCustomSplit,
-                            label = { Text("Eigene MB") },
+                            label = { Text("Eigene Größe") },
                         )
                     }
                     if (splitCustomSelected) {

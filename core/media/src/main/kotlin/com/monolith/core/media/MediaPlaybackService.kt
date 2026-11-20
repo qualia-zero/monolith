@@ -296,7 +296,7 @@ class MediaPlaybackService : Service() {
         )
 
         val metadataBuilder = MediaMetadataCompat.Builder()
-            .putString(MediaMetadataCompat.METADATA_KEY_TITLE, state.title.ifBlank { "Monolith Media" })
+            .putString(MediaMetadataCompat.METADATA_KEY_TITLE, state.title.ifBlank { "Wiedergabe" })
             .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, state.artist)
             .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, state.album)
             .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, state.durationMs)
@@ -320,7 +320,7 @@ class MediaPlaybackService : Service() {
         } else {
             android.R.drawable.ic_media_play
         }
-        val playPauseLabel = if (state.isPlaying) "Pause" else "Play"
+        val playPauseLabel = if (state.isPlaying) "Pause" else "Abspielen"
 
         val contentIntent = packageManager.getLaunchIntentForPackage(packageName)?.let { launchIntent ->
             PendingIntent.getActivity(
@@ -333,7 +333,7 @@ class MediaPlaybackService : Service() {
 
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(smallIcon)
-            .setContentTitle(state.title.ifBlank { "Monolith Media" })
+            .setContentTitle(state.title.ifBlank { "Wiedergabe" })
             .setContentText(
                 listOf(state.artist, state.album)
                     .filter { it.isNotBlank() }
@@ -350,7 +350,7 @@ class MediaPlaybackService : Service() {
             .setShowWhen(state.isPlaying)
             .addAction(
                 android.R.drawable.ic_media_previous,
-                "Previous",
+                "Vorheriger Titel",
                 serviceActionIntent(ACTION_PREV, 1),
             )
             .addAction(
@@ -360,12 +360,12 @@ class MediaPlaybackService : Service() {
             )
             .addAction(
                 android.R.drawable.ic_media_next,
-                "Next",
+                "Nächster Titel",
                 serviceActionIntent(ACTION_NEXT, 3),
             )
             .addAction(
                 android.R.drawable.ic_menu_close_clear_cancel,
-                "Stop",
+                "Beenden",
                 serviceActionIntent(ACTION_STOP, 4),
             )
             .setStyle(
@@ -390,10 +390,10 @@ class MediaPlaybackService : Service() {
     private fun createNotificationChannel() {
         val channel = NotificationChannel(
             CHANNEL_ID,
-            "Media Playback",
+            "Medienwiedergabe",
             NotificationManager.IMPORTANCE_LOW,
         ).apply {
-            description = "Active audio and video playback controls"
+            description = "Steuerung für aktive Audio- und Videowiedergabe"
             setShowBadge(false)
         }
         notificationManager.createNotificationChannel(channel)

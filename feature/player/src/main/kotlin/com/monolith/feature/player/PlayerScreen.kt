@@ -287,7 +287,7 @@ private fun VideoPlayerContent(
                     IconButton(onClick = onBack) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back",
+                            contentDescription = "Zurück",
                             tint = Color.White,
                         )
                     }
@@ -304,7 +304,7 @@ private fun VideoPlayerContent(
                     IconButton(onClick = onOpenSettings) {
                         Icon(
                             imageVector = Icons.Default.Settings,
-                            contentDescription = "Settings",
+                            contentDescription = "Einstellungen",
                             tint = Color.White,
                         )
                     }
@@ -615,7 +615,7 @@ private fun TransportControlsRow(
         ) {
             Icon(
                 imageVector = Icons.Default.SkipPrevious,
-                contentDescription = "Previous",
+                contentDescription = "Vorheriger Titel",
                 tint = if (hasPrevious) iconTint else iconTint.copy(alpha = 0.35f),
             )
         }
@@ -623,7 +623,7 @@ private fun TransportControlsRow(
         IconButton(onClick = { MpvEngine.seekBy(-10_000L) }) {
             Icon(
                 imageVector = Icons.Default.Replay10,
-                contentDescription = "Rewind 10 seconds",
+                contentDescription = "10 Sekunden zurück",
                 tint = iconTint,
             )
         }
@@ -639,7 +639,7 @@ private fun TransportControlsRow(
         ) {
             Icon(
                 imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                contentDescription = if (isPlaying) "Pause" else "Play",
+                contentDescription = if (isPlaying) "Pause" else "Abspielen",
                 modifier = Modifier.size(32.dp),
             )
         }
@@ -647,7 +647,7 @@ private fun TransportControlsRow(
         IconButton(onClick = { MpvEngine.seekBy(10_000L) }) {
             Icon(
                 imageVector = Icons.Default.Forward10,
-                contentDescription = "Forward 10 seconds",
+                contentDescription = "10 Sekunden vor",
                 tint = iconTint,
             )
         }
@@ -658,7 +658,7 @@ private fun TransportControlsRow(
         ) {
             Icon(
                 imageVector = Icons.Default.SkipNext,
-                contentDescription = "Next",
+                contentDescription = "Nächster Titel",
                 tint = if (hasNext) iconTint else iconTint.copy(alpha = 0.35f),
             )
         }
@@ -831,7 +831,7 @@ private fun SettingsToggleRow(
 
 private fun buildTrackLabel(id: Int, title: String, language: String): String {
     val parts = listOf(title, language).filter { it.isNotBlank() }
-    return if (parts.isNotEmpty()) parts.joinToString(" • ") else "Track $id"
+    return if (parts.isNotEmpty()) parts.joinToString(" • ") else "Spur $id"
 }
 
 private fun formatDuration(ms: Long): String {

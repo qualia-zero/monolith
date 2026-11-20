@@ -708,9 +708,9 @@ class GoogleDriveVfsProvider(
             conn.errorStream?.bufferedReader()?.use { it.readText() }
         }.getOrNull()
         return if (errText.isNullOrBlank()) {
-            "Google Drive API Fehler: HTTP $code"
+            "Google-Drive-API-Fehler: HTTP $code"
         } else {
-            "Google Drive API Fehler (HTTP $code): $errText"
+            "Google-Drive-API-Fehler (HTTP $code): $errText"
         }
     }
 

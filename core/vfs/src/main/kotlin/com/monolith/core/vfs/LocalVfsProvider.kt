@@ -139,7 +139,7 @@ class LocalVfsProvider : VfsProvider {
                     copyRecursivelyWithProgress(source, dest, onProgress)
                     verifyTreeMatches(source, dest)
                     if (!source.deleteRecursively()) {
-                        throw IOException("Quelle konnte nach Verschieben nicht gelöscht werden: ${source.name}")
+                        throw IOException("Quelle konnte nach dem Verschieben nicht gelöscht werden: ${source.name}")
                     }
                 }
             }
@@ -155,7 +155,7 @@ class LocalVfsProvider : VfsProvider {
         if (source.isDirectory) {
             val canonical = source.canonicalPath
             if (!visitedDirs.add(canonical)) {
-                throw IOException("Symlink-Zyklus erkannt beim Kopieren: ${source.absolutePath}")
+                throw IOException("Symlink-Zyklus beim Kopieren erkannt: ${source.absolutePath}")
             }
             if (dest.exists() && !dest.isDirectory) {
                 throw IOException("Ziel existiert bereits: ${dest.absolutePath}")

@@ -469,7 +469,7 @@ fun StorageAnalysisScreen(
                         title = {
                             Column {
                                 Text(
-                                    text = "${selectedPaths.size}",
+                                    text = "${selectedPaths.size} ausgewählt",
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                 )
@@ -928,7 +928,7 @@ fun StorageAnalysisScreen(
             dismissLabel = "Abbrechen",
             dismissEnabled = !isDeleting,
             onDismissClick = { singleFileDeleteTarget = null },
-            confirmLabel = if (isDeleting) "Lösche…" else "Löschen",
+            confirmLabel = if (isDeleting) "Wird gelöscht…" else "Löschen",
             confirmEnabled = !isDeleting,
             onConfirmClick = {
                 isDeleting = true
@@ -965,7 +965,7 @@ fun StorageAnalysisScreen(
             dismissLabel = "Abbrechen",
             dismissEnabled = !isDeleting,
             onDismissClick = { showDeleteConfirm = false },
-            confirmLabel = if (isDeleting) "Lösche…" else "Löschen",
+            confirmLabel = if (isDeleting) "Wird gelöscht…" else "Löschen",
             confirmEnabled = !isDeleting && pathsToDelete.isNotEmpty(),
             onConfirmClick = {
                 isDeleting = true
@@ -991,7 +991,7 @@ fun StorageAnalysisScreen(
             val promptText = if (singleName != null) {
                 "Möchtest du „$singleName“ (${formatStorageBytes(selectedTotalBytes)}) wirklich unwiderruflich löschen?"
             } else {
-                "${pathsToDelete.size} ausgewählte Elemente (${formatStorageBytes(selectedTotalBytes)}) wirklich unwiderruflich löschen?"
+                "Möchtest du ${pathsToDelete.size} ausgewählte Elemente (${formatStorageBytes(selectedTotalBytes)}) wirklich unwiderruflich löschen?"
             }
             Text(promptText)
         }
@@ -1019,7 +1019,7 @@ private fun ScanningProgressView(
         )
         Spacer(modifier = Modifier.height(8.dp))
         Text(
-            text = "$filesCount Dateien · ${formatStorageBytes(scannedBytes)}",
+            text = "${if (filesCount == 1) "1 Datei" else "$filesCount Dateien"} · ${formatStorageBytes(scannedBytes)}",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.primary,
         )
@@ -1776,7 +1776,7 @@ private fun FilesBreakdownTab(
             }
         } else {
             Text(
-                text = "${filteredFiles.size} größte Dateien",
+                text = if (filteredFiles.size == 1) "1 größte Datei" else "${filteredFiles.size} größte Dateien",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
@@ -1852,7 +1852,7 @@ private fun DuplicateGroupCard(
                     item = file,
                     isSelected = file.path in selectedPaths,
                     nowMs = nowMs,
-                    badgeOverride = if (idx == 0) "Original/Neueste" else "Kopie",
+                    badgeOverride = if (idx == 0) "Original / Neueste" else "Kopie",
                     onToggle = { onToggleSelection(file.path) },
                     onLongClick = { onLongPressSelection(file.path) },
                 )
@@ -2027,7 +2027,7 @@ private fun formatAgeDays(lastModifiedMs: Long, nowMs: Long): String? {
     val days = (nowMs - lastModifiedMs) / 86_400_000L
     return when {
         days < 1L -> "Heute"
-        days < 30L -> "vor ${days}T"
+        days < 30L -> if (days == 1L) "vor 1 Tag" else "vor $days Tagen"
         days < 365L -> "vor ${days / 30L} Mon."
         else -> "vor ${days / 365L} J."
     }

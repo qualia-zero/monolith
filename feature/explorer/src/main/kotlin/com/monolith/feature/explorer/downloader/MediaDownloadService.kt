@@ -320,7 +320,7 @@ class MediaDownloadService : Service() {
 
             if (response.exitCode != 0) {
                 val errDetail = extractMeaningfulError(response.err, response.out)
-                    ?: "yt-dlp beendet mit Exit-Code ${response.exitCode}."
+                    ?: "yt-dlp wurde mit Exit-Code ${response.exitCode} beendet."
                 throw YoutubeDLException(errDetail)
             }
 
@@ -435,7 +435,7 @@ class MediaDownloadService : Service() {
             }
             val nextDetail = detectedDetail ?: when {
                 nextStatus == DownloadTaskStatus.DOWNLOADING && nextProgress >= 0f -> {
-                    val etaSuffix = if (nextEta > 0L) " · ETA ${formatEta(nextEta)}" else ""
+                    val etaSuffix = if (nextEta > 0L) " · Restzeit ${formatEta(nextEta)}" else ""
                     "${nextProgress.toInt()}%$etaSuffix"
                 }
                 else -> current.statusDetail
@@ -454,7 +454,7 @@ class MediaDownloadService : Service() {
         val currentTask = _tasks.value.firstOrNull { it.id == req.taskId } ?: return
         val notifTitle = currentTask.title ?: "${req.mode.label} wird heruntergeladen…"
         val queuedCount = (_tasks.value.count { it.status == DownloadTaskStatus.QUEUED })
-        val queueSuffix = if (queuedCount > 0) " · +$queuedCount in Warteschlange" else ""
+        val queueSuffix = if (queuedCount > 0) " · +$queuedCount in der Warteschlange" else ""
         val notifText = (currentTask.statusDetail ?: currentTask.status.label) + queueSuffix
         val indeterminate = currentTask.status != DownloadTaskStatus.DOWNLOADING || currentTask.progressPercent < 0f
         val progressInt = if (indeterminate) 0 else (currentTask.progressPercent * 10f).toInt().coerceIn(0, PROGRESS_NOTIFICATION_MAX)
@@ -676,7 +676,7 @@ class MediaDownloadService : Service() {
         private const val EXTRA_TASK_ID = "extra_task_id"
 
         private const val CHANNEL_ID = "monolith_media_downloads"
-        private const val CHANNEL_NAME = "Media-Downloads"
+        private const val CHANNEL_NAME = "Medien-Downloads"
         private const val NOTIFICATION_BASE_ID = 28100
         private const val REQUEST_CODE_OPEN_DOWNLOADER = 28500
         private const val REQUEST_CODE_CANCEL_BASE = 28600

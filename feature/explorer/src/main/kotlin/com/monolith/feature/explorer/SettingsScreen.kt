@@ -273,7 +273,7 @@ fun SettingsScreen(
             HorizontalDivider(thickness = 0.5.dp)
 
             Text(
-                text = "Weitermachen wo aufgehört",
+                text = "Wiedergabe fortsetzen",
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.primary,
             )
@@ -379,7 +379,7 @@ fun SettingsScreen(
                 ) {
                     Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
                         Text(
-                            text = "Android-Terminal-Zugriff",
+                            text = "Android-Terminalzugriff",
                             style = MaterialTheme.typography.bodyLarge,
                         )
                         Text(
@@ -425,14 +425,14 @@ fun SettingsScreen(
                     shape = LocalMonolithButtonShape.current,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Text("Downloads löschen")
+                    Text("Cloud-Downloads löschen")
                 }
             }
 
             if (showClearDownloadsConfirm) {
                 MonolithDialog(
                     onDismissRequest = { showClearDownloadsConfirm = false },
-                    title = "Downloads löschen",
+                    title = "Cloud-Downloads löschen",
                     dismissLabel = "Abbrechen",
                     onDismissClick = { showClearDownloadsConfirm = false },
                     confirmLabel = "Löschen",
@@ -757,7 +757,7 @@ private fun formatCacheSize(bytes: Long): String {
         bytes <= 0L -> "0 KB"
         bytes < 1024L -> "$bytes B"
         bytes < 1024L * 1024L -> "${bytes / 1024L} KB"
-        else -> String.format(java.util.Locale.US, "%.1f MB", bytes / (1024.0 * 1024.0))
+        else -> String.format(java.util.Locale.GERMAN, "%.1f MB", bytes / (1024.0 * 1024.0))
     }
 }
 

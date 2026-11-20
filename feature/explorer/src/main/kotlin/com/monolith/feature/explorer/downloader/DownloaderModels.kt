@@ -27,7 +27,7 @@ enum class VideoFormatPreset(
     ),
     CUSTOM(
         label = "Benutzerdefiniert (-f)",
-        subtitle = "Eigenen yt-dlp-Format-Ausdruck angeben",
+        subtitle = "Eigenen yt-dlp-Formatausdruck angeben",
     ),
 }
 
@@ -57,7 +57,7 @@ enum class AudioFormatPreset(
     ),
     CUSTOM(
         label = "Benutzerdefiniert (-f)",
-        subtitle = "Eigenen yt-dlp-Format-Ausdruck angeben",
+        subtitle = "Eigenen yt-dlp-Formatausdruck angeben",
     ),
 }
 
@@ -85,11 +85,11 @@ enum class ThumbnailEmbedMode(
 ) {
     AUDIO_ONLY(
         label = "Nur bei Audio",
-        subtitle = "Cover in Audio-Dateien einbetten, nicht in Videos",
+        subtitle = "Vorschaubild in Audiodateien einbetten, nicht in Videos",
     ),
     ALWAYS(
         label = "Immer",
-        subtitle = "Vorschaubild in Audio- und Video-Dateien einbetten",
+        subtitle = "Vorschaubild in Audio- und Videodateien einbetten",
     ),
     NEVER(
         label = "Nie",
@@ -119,7 +119,7 @@ enum class DownloadTaskStatus(val label: String) {
     QUEUED("Warteschlange"),
     INITIALIZING("Initialisiere…"),
     PROBING("Prüfe Format…"),
-    DOWNLOADING("Lädt…"),
+    DOWNLOADING("Lade herunter…"),
     POST_PROCESSING("Verarbeite…"),
     COMPLETED("Fertig"),
     FAILED("Fehlgeschlagen"),
@@ -150,7 +150,7 @@ val SPONSORBLOCK_CATEGORIES: List<SponsorBlockCategory> = listOf(
     SponsorBlockCategory("outro", "Outro / Abspann"),
     SponsorBlockCategory("preview", "Vorschau / Rückblick"),
     SponsorBlockCategory("music_offtopic", "Musik: Nicht-Musik-Teil"),
-    SponsorBlockCategory("filler", "Füllmaterial / Tangenten"),
+    SponsorBlockCategory("filler", "Füllmaterial / Abschweifungen"),
 )
 
 val VIDEO_HEIGHT_OPTIONS: List<Int?> = listOf(null, 2160, 1440, 1080, 720, 480)

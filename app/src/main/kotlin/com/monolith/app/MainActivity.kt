@@ -415,7 +415,7 @@ class MainActivity : ComponentActivity() {
                 if (payload == null || payload.files.isEmpty()) {
                     Toast.makeText(
                         this@MainActivity,
-                        "Datei(en) konnten nicht geladen werden.",
+                        "Dateien konnten nicht geladen werden.",
                         Toast.LENGTH_SHORT,
                     ).show()
                     return@LaunchedEffect
@@ -739,7 +739,7 @@ class MainActivity : ComponentActivity() {
                             modifier = Modifier.padding(top = 4.dp),
                         ) {
                             CircularProgressIndicator()
-                            Text("Datei(en) werden vorbereitet…")
+                            Text("Dateien werden vorbereitet…")
                         }
                     }
                 }
@@ -766,7 +766,7 @@ class MainActivity : ComponentActivity() {
                                             if (uploaded > 0) {
                                                 Toast.makeText(
                                                     this@MainActivity,
-                                                    "$uploaded Datei(en) in Google Drive gespeichert.",
+                                                    if (uploaded == 1) "1 Datei in Google Drive gespeichert." else "$uploaded Dateien in Google Drive gespeichert.",
                                                     Toast.LENGTH_SHORT,
                                                 ).show()
                                                 explorerNavState.activeLocation = LocationType.GOOGLE_DRIVE
@@ -784,7 +784,7 @@ class MainActivity : ComponentActivity() {
                                             res.onSuccess { count ->
                                                 Toast.makeText(
                                                     this@MainActivity,
-                                                    "$count Datei(en) gespeichert.",
+                                                    if (count == 1) "1 Datei gespeichert." else "$count Dateien gespeichert.",
                                                     Toast.LENGTH_SHORT,
                                                 ).show()
                                                 openLocalFolderInExplorer(targetPath)
