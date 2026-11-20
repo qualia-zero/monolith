@@ -170,7 +170,6 @@ fun DownloaderScreen(
     }
 
     BackHandler(enabled = showDownloaderSettings) {
-        MonolithHaptics.backNav(context, view)
         showDownloaderSettings = false
     }
 
@@ -180,7 +179,6 @@ fun DownloaderScreen(
     }
 
     BackHandler(enabled = !showDownloaderSettings && !starMenuExpanded && !menuExpanded) {
-        MonolithHaptics.backNav(context, view)
         onBack()
     }
 
@@ -213,7 +211,6 @@ fun DownloaderScreen(
                 }
             },
             onBack = {
-                MonolithHaptics.backNav(context, view)
                 showDownloaderSettings = false
             },
             modifier = modifier,
@@ -1051,7 +1048,6 @@ private fun DownloaderSettingsSubscreen(
         ?: if (engineState.isInitializing) "Wird geladen…" else "Nicht initialisiert"
 
     BackHandler(enabled = activeSubmenu != null) {
-        MonolithHaptics.backNav(context, view)
         activeSubmenu = null
     }
 
@@ -1071,7 +1067,6 @@ private fun DownloaderSettingsSubscreen(
                     IconButton(
                         onClick = {
                             if (activeSubmenu != null) {
-                                MonolithHaptics.backNav(context, view)
                                 activeSubmenu = null
                             } else {
                                 onBack()

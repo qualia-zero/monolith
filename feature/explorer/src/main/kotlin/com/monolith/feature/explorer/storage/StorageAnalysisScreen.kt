@@ -386,7 +386,6 @@ fun StorageAnalysisScreen(
             activeVolumeRoot
         }
         selectedPaths = emptySet()
-        MonolithHaptics.backNav(context, view)
         currentBrowsePath = targetPath
     }
 
@@ -427,7 +426,6 @@ fun StorageAnalysisScreen(
                 navigateUp()
             }
             else -> {
-                MonolithHaptics.backNav(context, view)
                 onBack()
             }
         }
@@ -727,7 +725,6 @@ fun StorageAnalysisScreen(
                                     onNavigateToFolder = { targetPath ->
                                         if (targetPath != currentBrowsePath) {
                                             selectedPaths = emptySet()
-                                            MonolithHaptics.backNav(context, view)
                                             currentBrowsePath = targetPath
                                         }
                                     },

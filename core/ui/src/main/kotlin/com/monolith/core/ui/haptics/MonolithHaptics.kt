@@ -17,12 +17,6 @@ object MonolithHaptics {
         triggerClick(context, view)
     }
 
-    fun backNav(context: Context, view: View) {
-        val settings = AppSettingsStore.settings.value
-        if (!settings.hapticsEnabled || !settings.hapticBackNav) return
-        triggerClick(context, view)
-    }
-
     fun pathChipNav(context: Context, view: View) {
         val settings = AppSettingsStore.settings.value
         if (!settings.hapticsEnabled || !settings.hapticPathChipNav) return

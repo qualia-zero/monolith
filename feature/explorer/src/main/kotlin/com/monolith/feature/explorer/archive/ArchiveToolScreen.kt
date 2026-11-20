@@ -529,16 +529,13 @@ fun ArchiveToolScreen(
                 state.selectedEntryPaths = emptySet()
             }
             state.activeMode == ArchiveToolMode.EXTRACT && state.openedSummary != null && state.archiveInternalPath.isNotEmpty() -> {
-                MonolithHaptics.backNav(context, view)
                 state.archiveInternalPath = state.archiveInternalPath.substringBeforeLast('/', "")
             }
             state.activeMode == ArchiveToolMode.EXTRACT && state.openedSummary != null -> {
-                MonolithHaptics.backNav(context, view)
                 state.openedSummary = null
                 state.selectedEntryPaths = emptySet()
             }
             else -> {
-                MonolithHaptics.backNav(context, view)
                 onBack()
             }
         }

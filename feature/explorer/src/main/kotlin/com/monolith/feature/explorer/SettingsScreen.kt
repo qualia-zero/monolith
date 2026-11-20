@@ -79,12 +79,10 @@ fun SettingsScreen(
     var showHapticsSubmenu by remember { mutableStateOf(false) }
 
     BackHandler(enabled = showHapticsSubmenu) {
-        MonolithHaptics.backNav(context, view)
         showHapticsSubmenu = false
     }
 
     BackHandler(enabled = !showHapticsSubmenu) {
-        MonolithHaptics.backNav(context, view)
         onBack()
     }
 
@@ -92,7 +90,6 @@ fun SettingsScreen(
         HapticsSubmenuScreen(
             appSettings = appSettings,
             onBack = {
-                MonolithHaptics.backNav(context, view)
                 showHapticsSubmenu = false
             },
             modifier = modifier,
@@ -113,7 +110,6 @@ fun SettingsScreen(
                 title = { Text("Einstellungen") },
                 navigationIcon = {
                     IconButton(onClick = {
-                        MonolithHaptics.backNav(context, view)
                         onBack()
                     }) {
                         Icon(

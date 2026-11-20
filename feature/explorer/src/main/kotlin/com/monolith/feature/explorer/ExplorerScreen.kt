@@ -292,7 +292,6 @@ fun ExplorerScreen(
     }
 
     fun navigateUp() {
-        MonolithHaptics.backNav(context, view)
         if (activeLocation == LocationType.GOOGLE_DRIVE) {
             if (driveStack.size > 1) {
                 driveStack = driveStack.dropLast(1)

@@ -235,7 +235,6 @@ fun AiChatScreen(
     }
 
     BackHandler(enabled = !starMenuExpanded && !menuExpanded) {
-        MonolithHaptics.backNav(context, view)
         activeJob?.cancel()
         onBack()
     }
