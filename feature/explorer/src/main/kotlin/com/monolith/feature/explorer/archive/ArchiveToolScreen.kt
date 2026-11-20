@@ -348,7 +348,7 @@ fun ArchiveToolScreen(
             state.activeJob = null
             result.onSuccess { report ->
                 completionDialog = OperationCompletionDialogState(
-                    title = "Prüfung erfolgreich",
+                    title = "Prüfung erfolgreich.",
                     message = report,
                 )
             }.onFailure { err ->
@@ -389,7 +389,7 @@ fun ArchiveToolScreen(
             result.onSuccess { mergedFile ->
                 state.scanTrigger++
                 completionDialog = OperationCompletionDialogState(
-                    title = "Zusammenführen abgeschlossen",
+                    title = "Zusammenführen abgeschlossen.",
                     message = "Einzelarchiv erstellt: „${mergedFile.name}“ (${formatArchiveBytes(mergedFile.length())}).",
                     openFolderPath = mergedFile.parent,
                     openArchivePath = mergedFile.absolutePath,
@@ -1526,7 +1526,7 @@ fun ArchiveToolScreen(
                             }
                             state.scanTrigger++
                             completionDialog = OperationCompletionDialogState(
-                                title = "Konvertierung abgeschlossen",
+                                title = "Konvertierung abgeschlossen.",
                                 message = "Erstellt: „${newFile.name}“ (${formatArchiveBytes(newFile.length())}).",
                                 openFolderPath = newFile.parent,
                                 openArchivePath = newFile.absolutePath,

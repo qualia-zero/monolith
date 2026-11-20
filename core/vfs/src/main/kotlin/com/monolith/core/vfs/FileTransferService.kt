@@ -297,9 +297,9 @@ class FileTransferService : Service() {
                                 ),
                             )
                             val doneTitle = if (operation == TransferOperation.COMPRESS) {
-                                "Packen abgeschlossen"
+                                "Packen abgeschlossen."
                             } else {
-                                "Entpacken abgeschlossen"
+                                "Entpacken abgeschlossen."
                             }
                             notificationManager.notify(
                                 resultNotificationId(taskId),
@@ -323,9 +323,9 @@ class FileTransferService : Service() {
                                 ),
                             )
                             val failTitle = if (operation == TransferOperation.COMPRESS) {
-                                "Packen fehlgeschlagen"
+                                "Packen fehlgeschlagen."
                             } else {
-                                "Entpacken fehlgeschlagen"
+                                "Entpacken fehlgeschlagen."
                             }
                             notificationManager.notify(
                                 resultNotificationId(taskId),
@@ -616,13 +616,13 @@ class FileTransferService : Service() {
 
         val resultTitle = when {
             error != null -> when {
-                job.isCloudDownload -> "Download fehlgeschlagen"
-                job.isMove -> "Verschieben fehlgeschlagen"
-                else -> "Kopieren fehlgeschlagen"
+                job.isCloudDownload -> "Download fehlgeschlagen."
+                job.isMove -> "Verschieben fehlgeschlagen."
+                else -> "Kopieren fehlgeschlagen."
             }
-            job.isCloudDownload -> "Download abgeschlossen"
-            job.isMove -> "Verschieben abgeschlossen"
-            else -> "Kopieren abgeschlossen"
+            job.isCloudDownload -> "Download abgeschlossen."
+            job.isMove -> "Verschieben abgeschlossen."
+            else -> "Kopieren abgeschlossen."
         }
         val resultText = error?.message ?: if (job.sources.size == 1) {
             "1 Element verarbeitet."

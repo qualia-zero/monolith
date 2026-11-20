@@ -353,7 +353,7 @@ class MediaDownloadService : Service() {
             notificationManager.notify(
                 resultNotificationId(req.taskId),
                 buildResultNotification(
-                    title = "Download abgeschlossen",
+                    title = "Download abgeschlossen.",
                     text = completedTitle,
                     isError = false,
                 ),
@@ -388,7 +388,7 @@ class MediaDownloadService : Service() {
                 notificationManager.notify(
                     resultNotificationId(req.taskId),
                     buildResultNotification(
-                        title = "Download fehlgeschlagen",
+                        title = "Download fehlgeschlagen.",
                         text = errMsg,
                         isError = true,
                     ),

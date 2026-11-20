@@ -1046,7 +1046,7 @@ private fun ScanErrorView(
         verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically),
     ) {
         Text(
-            text = "Analyse fehlgeschlagen",
+            text = "Analyse fehlgeschlagen.",
             style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.error,
         )

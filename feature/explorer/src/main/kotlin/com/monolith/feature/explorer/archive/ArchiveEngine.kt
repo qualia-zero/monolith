@@ -552,7 +552,7 @@ object ArchiveEngine {
 
             onProgress(
                 ArchiveOperationProgress(
-                    title = "Entpacken abgeschlossen",
+                    title = "Entpacken abgeschlossen.",
                     currentItem = effectiveTargetDir.name,
                     processedBytes = 1L,
                     totalBytes = 1L,
@@ -874,7 +874,7 @@ object ArchiveEngine {
                 }
                 onProgress(
                     ArchiveOperationProgress(
-                        title = "Zusammenführen abgeschlossen",
+                        title = "Zusammenführen abgeschlossen.",
                         currentItem = targetOut.name,
                         processedBytes = totalBytes,
                         totalBytes = totalBytes,
@@ -917,7 +917,7 @@ object ArchiveEngine {
 
             onProgress(
                 ArchiveOperationProgress(
-                    title = "Prüfung abgeschlossen",
+                    title = "Prüfung abgeschlossen.",
                     currentItem = group.displayName,
                     processedBytes = checkedBytes.coerceAtLeast(1L),
                     totalBytes = checkedBytes.coerceAtLeast(1L),
