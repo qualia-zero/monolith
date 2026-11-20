@@ -8,6 +8,7 @@ import androidx.compose.material.icons.outlined.FolderZip
 import androidx.compose.material.icons.outlined.PieChart
 import androidx.compose.material.icons.outlined.ViewInAr
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -43,12 +44,17 @@ fun MonolithToolStarMenu(
     anchorIcon: ImageVector = Icons.Outlined.ViewInAr,
     onAnchorClick: (() -> Unit)? = null,
 ) {
-    MonolithStarMenuOverlay(
-        expanded = expanded,
-        anchorCenter = anchorCenter,
-        anchorIcon = anchorIcon,
-        onAnchorClick = onAnchorClick,
-        items = listOf(
+    val items = remember(
+        activeDestination,
+        onDismiss,
+        onSelectFiles,
+        onSelectArchives,
+        onSelectStorage,
+        onSelectDownloader,
+        onSelectApps,
+        onSelectAi,
+    ) {
+        listOf(
             StarMenuItem(
                 id = "files",
                 label = "Dateien",
@@ -103,7 +109,15 @@ fun MonolithToolStarMenu(
                     if (activeDestination == MonolithToolDestination.AI) onDismiss() else onSelectAi()
                 },
             ),
-        ),
+        )
+    }
+
+    MonolithStarMenuOverlay(
+        expanded = expanded,
+        anchorCenter = anchorCenter,
+        anchorIcon = anchorIcon,
+        onAnchorClick = onAnchorClick,
+        items = items,
         onDismiss = onDismiss,
         modifier = modifier,
     )

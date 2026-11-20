@@ -12,6 +12,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.ImageBitmap
@@ -39,37 +40,30 @@ fun FileThumbnail(
         )
 
     val context = LocalContext.current
-    val thumbnail by produceState<ImageBitmap?>(
-        initialValue = if (supportsThumbnail) {
+    val initialBitmap = remember(node.path, node.lastModifiedMs, supportsThumbnail) {
+        if (supportsThumbnail) {
             ThumbnailEngine.getCachedListThumbnail(
                 path = node.path,
                 lastModifiedMs = node.lastModifiedMs,
             )?.asImageBitmap()
         } else {
             null
-        },
+        }
+    }
+    val thumbnail by produceState<ImageBitmap?>(
+        initialValue = initialBitmap,
         key1 = node.path,
         key2 = node.lastModifiedMs,
+        key3 = initialBitmap,
     ) {
-        if (!supportsThumbnail) {
-            value = null
-            return@produceState
-        }
-        val cached = ThumbnailEngine.getCachedListThumbnail(
+        if (!supportsThumbnail || initialBitmap != null) return@produceState
+        value = ThumbnailEngine.loadListThumbnail(
+            context = context,
             path = node.path,
+            category = node.category,
             lastModifiedMs = node.lastModifiedMs,
-        )
-        value = if (cached != null) {
-            cached.asImageBitmap()
-        } else {
-            ThumbnailEngine.loadListThumbnail(
-                context = context,
-                path = node.path,
-                category = node.category,
-                lastModifiedMs = node.lastModifiedMs,
-                thumbnailUrl = node.thumbnailUrl,
-            )?.asImageBitmap()
-        }
+            thumbnailUrl = node.thumbnailUrl,
+        )?.asImageBitmap()
     }
 
     Box(

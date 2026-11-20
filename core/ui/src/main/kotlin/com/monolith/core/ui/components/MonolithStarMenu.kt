@@ -30,6 +30,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -53,6 +54,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
 
+@Immutable
 data class StarMenuItem(
     val id: String,
     val label: String,
@@ -78,9 +80,9 @@ fun MonolithStarMenuOverlay(
     val expandProgressState = animateFloatAsState(
         targetValue = if (expanded) 1f else 0f,
         animationSpec = if (expanded) {
-            spring(dampingRatio = 0.78f, stiffness = Spring.StiffnessMedium)
+            tween(durationMillis = 210, easing = FastOutSlowInEasing)
         } else {
-            tween(durationMillis = 160, easing = FastOutSlowInEasing)
+            tween(durationMillis = 150, easing = FastOutSlowInEasing)
         },
         label = "monolithMenuExpand",
     )
@@ -100,6 +102,34 @@ fun MonolithStarMenuOverlay(
     val menuOffsetY = with(density) { 30.dp.toPx() }
     val menuStartX = anchorCenter.x + menuOffsetX
     val menuStartY = anchorCenter.y + menuOffsetY
+    val haloRadiusPx = ringRadiusPx * 2.8f
+    val glowBrush = remember(anchorCenter, haloRadiusPx, primaryColor) {
+        Brush.radialGradient(
+            0.0f to primaryColor.copy(alpha = 0.22f),
+            0.45f to primaryColor.copy(alpha = 0.08f),
+            0.8f to primaryColor.copy(alpha = 0.015f),
+            1.0f to Color.Transparent,
+            center = anchorCenter,
+            radius = haloRadiusPx,
+        )
+    }
+    val ringStroke = remember(density) { Stroke(width = with(density) { 1.5.dp.toPx() }) }
+    val connectorStroke = remember(density) {
+        Stroke(width = with(density) { 1.6.dp.toPx() }, cap = StrokeCap.Round)
+    }
+    val connectorPath = remember(anchorCenter, ringRadiusPx, menuStartX, menuStartY, density) {
+        val start = Offset(anchorCenter.x + ringRadiusPx * 0.45f, anchorCenter.y + ringRadiusPx * 0.88f)
+        val end = Offset(menuStartX + with(density) { 16.dp.toPx() }, menuStartY)
+        Path().apply {
+            moveTo(start.x, start.y)
+            quadraticTo(
+                start.x,
+                end.y * 0.5f + start.y * 0.5f,
+                end.x,
+                end.y,
+            )
+        }
+    }
 
     Box(modifier = modifier.fillMaxSize()) {
         // Strong scrim so the background recedes cleanly while the menu is open
@@ -122,41 +152,23 @@ fun MonolithStarMenuOverlay(
             val p = expandProgressState.value.coerceIn(0f, 1f)
 
             drawCircle(
-                brush = Brush.radialGradient(
-                    colors = listOf(
-                        primaryColor.copy(alpha = 0.24f * p),
-                        primaryColor.copy(alpha = 0.06f * p),
-                        Color.Transparent,
-                    ),
-                    center = anchorCenter,
-                    radius = ringRadiusPx * 2.3f,
-                ),
-                radius = ringRadiusPx * 2.3f,
+                brush = glowBrush,
+                radius = haloRadiusPx,
                 center = anchorCenter,
+                alpha = p,
             )
 
             drawCircle(
                 color = primaryColor.copy(alpha = 0.78f * p),
                 radius = ringRadiusPx * (0.8f + 0.2f * p),
                 center = anchorCenter,
-                style = Stroke(width = 1.5.dp.toPx()),
+                style = ringStroke,
             )
 
-            val start = Offset(anchorCenter.x + ringRadiusPx * 0.45f, anchorCenter.y + ringRadiusPx * 0.88f)
-            val end = Offset(menuStartX + 16.dp.toPx(), menuStartY)
-            val connectorPath = Path().apply {
-                moveTo(start.x, start.y)
-                quadraticTo(
-                    start.x,
-                    end.y * 0.5f + start.y * 0.5f,
-                    end.x,
-                    end.y,
-                )
-            }
             drawPath(
                 path = connectorPath,
                 color = primaryColor.copy(alpha = 0.65f * p),
-                style = Stroke(width = 1.6.dp.toPx(), cap = StrokeCap.Round),
+                style = connectorStroke,
             )
         }
 
@@ -218,7 +230,7 @@ fun MonolithStarMenuOverlay(
             color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.97f),
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
             tonalElevation = 6.dp,
-            shadowElevation = 10.dp,
+            shadowElevation = 0.dp,
         ) {
             Column(
                 modifier = Modifier
@@ -282,6 +294,7 @@ fun MonolithStarMenuOverlay(
     }
 }
 
+@Immutable
 data class CornerMenuItem(
     val id: String,
     val label: String,
@@ -393,7 +406,7 @@ fun MonolithCornerMenuOverlay(
             color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.97f),
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
             tonalElevation = 6.dp,
-            shadowElevation = 10.dp,
+            shadowElevation = 0.dp,
         ) {
             Column(
                 modifier = Modifier

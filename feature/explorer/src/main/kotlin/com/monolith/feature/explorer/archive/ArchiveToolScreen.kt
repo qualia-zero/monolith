@@ -546,33 +546,22 @@ fun ArchiveToolScreen(
             .fillMaxSize()
             .onGloballyPositioned { rootOrigin = it.positionInRoot() },
     ) {
-        val backgroundRecede by animateFloatAsState(
+        val backgroundRecedeState = animateFloatAsState(
             targetValue = if (starMenuExpanded) 1f else 0f,
             label = "archiveStarMenuRecede",
-        )
-        val cornerMenuRecede by animateFloatAsState(
-            targetValue = if (menuExpanded) 1f else 0f,
-            label = "archiveCornerMenuRecede",
         )
 
         Scaffold(
             modifier = Modifier
                 .fillMaxSize()
-                .then(
-                    when {
-                        backgroundRecede > 0.01f -> {
-                            Modifier
-                                .blur(10.dp * backgroundRecede)
-                                .graphicsLayer {
-                                    val s = 1f - 0.025f * backgroundRecede
-                                    scaleX = s
-                                    scaleY = s
-                                }
-                        }
-                        cornerMenuRecede > 0.01f -> Modifier.blur(4.dp * cornerMenuRecede)
-                        else -> Modifier
-                    },
-                ),
+                .graphicsLayer {
+                    val starP = backgroundRecedeState.value
+                    if (starP > 0.001f) {
+                        val s = 1f - 0.022f * starP
+                        scaleX = s
+                        scaleY = s
+                    }
+                },
             containerColor = if (LocalMonolithThemeMode.current == ThemeMode.OBSIDIAN) {
                 Color.Transparent
             } else {

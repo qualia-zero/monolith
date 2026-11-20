@@ -141,6 +141,8 @@ import com.monolith.core.vfs.VfsProvider
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -255,7 +257,21 @@ fun ExplorerScreen(
     var forceRefreshNextLoad by remember { mutableStateOf(false) }
     var loadRequestSeq by remember { mutableIntStateOf(0) }
 
-    val playbackState by MpvEngine.uiState.collectAsState()
+    val playbackState by remember {
+        MpvEngine.uiState
+            .map { state ->
+                MiniPlayerSummary(
+                    mediaUri = state.mediaUri,
+                    title = state.title,
+                    artist = state.artist,
+                    album = state.album,
+                    isVideo = state.isVideo,
+                    isPlaying = state.isPlaying,
+                    isEnded = state.isEnded,
+                )
+            }
+            .distinctUntilChanged()
+    }.collectAsState(initial = MiniPlayerSummary())
 
     LaunchedEffect(Unit) {
         FileTransferService.events.collect { event ->
@@ -402,28 +418,28 @@ fun ExplorerScreen(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .onGloballyPositioned { rootOrigin = it.positionInRoot() },
+            .onGloballyPositioned {
+                val origin = it.positionInRoot()
+                if ((origin - rootOrigin).getDistanceSquared() > 0.25f) {
+                    rootOrigin = origin
+                }
+            },
     ) {
         val backgroundRecedeState = animateFloatAsState(
             targetValue = if (starMenuExpanded) 1f else 0f,
+            animationSpec = androidx.compose.animation.core.tween(
+                durationMillis = if (starMenuExpanded) 210 else 150,
+                easing = androidx.compose.animation.core.FastOutSlowInEasing,
+            ),
             label = "starMenuBackgroundRecede",
-        )
-        val cornerMenuRecedeState = animateFloatAsState(
-            targetValue = if (menuExpanded) 1f else 0f,
-            label = "cornerMenuBackgroundRecede",
         )
     Scaffold(
         modifier = Modifier
             .fillMaxSize()
             .graphicsLayer {
-                val starP = backgroundRecedeState.value
-                val cornerP = cornerMenuRecedeState.value
-                val p = maxOf(starP, cornerP * 0.4f)
-                if (p > 0.001f) {
-                    val s = 1f - 0.022f * starP
-                    scaleX = s
-                    scaleY = s
-                }
+                val s = 1f - 0.022f * backgroundRecedeState.value
+                scaleX = s
+                scaleY = s
             },
         containerColor = if (LocalMonolithThemeMode.current == ThemeMode.OBSIDIAN) {
             androidx.compose.ui.graphics.Color.Transparent
@@ -609,7 +625,14 @@ fun ExplorerScreen(
                                 starMenuExpanded = !starMenuExpanded
                             },
                             modifier = Modifier.onGloballyPositioned { coords ->
-                                starAnchorCenter = coords.boundsInRoot().center - rootOrigin
+                                if (!starMenuExpanded && !menuExpanded) {
+                                    val next = coords.boundsInRoot().center - rootOrigin
+                                    if (starAnchorCenter == androidx.compose.ui.geometry.Offset.Unspecified ||
+                                        (next - starAnchorCenter).getDistanceSquared() > 0.25f
+                                    ) {
+                                        starAnchorCenter = next
+                                    }
+                                }
                             },
                         ) {
                             Icon(
@@ -632,7 +655,14 @@ fun ExplorerScreen(
                                 menuExpanded = !menuExpanded
                             },
                             modifier = Modifier.onGloballyPositioned { coords ->
-                                menuAnchorCenter = coords.boundsInRoot().center - rootOrigin
+                                if (!starMenuExpanded && !menuExpanded) {
+                                    val next = coords.boundsInRoot().center - rootOrigin
+                                    if (menuAnchorCenter == androidx.compose.ui.geometry.Offset.Unspecified ||
+                                        (next - menuAnchorCenter).getDistanceSquared() > 0.25f
+                                    ) {
+                                        menuAnchorCenter = next
+                                    }
+                                }
                             },
                         ) {
                             Icon(Icons.Outlined.MoreVert, contentDescription = "Menü")
@@ -1084,7 +1114,11 @@ fun ExplorerScreen(
                                 translationY = contentOffsetDp.dp.toPx()
                             },
                     ) {
-                    items(displayedNodes, key = { it.id }) { node ->
+                    items(
+                        items = displayedNodes,
+                        key = { it.id },
+                        contentType = { node -> if (node.isDirectory) 0 else 1 },
+                    ) { node ->
                         val isSelected = node.path in selectedPaths
                         FileRow(
                             node = node,
@@ -1691,6 +1725,16 @@ internal fun FileRow(
         }
     }
 }
+
+private data class MiniPlayerSummary(
+    val mediaUri: String = "",
+    val title: String = "",
+    val artist: String = "",
+    val album: String = "",
+    val isVideo: Boolean = false,
+    val isPlaying: Boolean = false,
+    val isEnded: Boolean = true,
+)
 
 private fun formatBytes(bytes: Long): String {
     if (bytes < 1024L) return "$bytes B"
