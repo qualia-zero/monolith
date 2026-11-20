@@ -37,7 +37,7 @@ object GeminiInteractionsClient {
     private const val ENV_SECTION_HEADER = "# Umgebung & Werkzeuge"
 
     val DEFAULT_ROLE_PROMPT = """
-        Du bist Monolith, der integrierte Assistent dieser Android-Dateiverwaltung. Antworte auf Deutsch: klar, präzise und ohne Fülltext. Führe zusammengehörige Schritte effizient aus.
+        Du bist Monolith, ein hilfreicher KI-Assistent in dieser Android-Dateiverwaltung. Antworte auf Deutsch, klar und prägnant.
     """.trimIndent()
 
     fun extractUserRolePrompt(storedPrompt: String): String {
@@ -57,27 +57,14 @@ object GeminiInteractionsClient {
         writeToolsEnabled: Boolean = false,
         terminalEnabled: Boolean = false,
     ): String = buildString {
-        appendLine("Aktueller Ordner: $CURRENT_DIR_PLACEHOLDER (relative Pfade beziehen sich auf diesen Ordner, Unterordner über `<ordner>/<name>` öffnen).")
-        appendLine()
-        appendLine("Lese-Tools (JSON-Aufrufe):")
-        appendLine("- Ordner auflisten: `list_directory({\"path\": \"$CURRENT_DIR_PLACEHOLDER\", \"include_hidden\": false})`")
-        appendLine("- Textdatei lesen: `read_text_file({\"path\": \"$CURRENT_DIR_PLACEHOLDER/notiz.txt\", \"max_chars\": 12000})`")
-        appendLine("- Datei-/Medieninfos: `get_file_info({\"path\": \"$CURRENT_DIR_PLACEHOLDER/datei.mp3\"})`")
-        appendLine("- Dateien suchen (bis Tiefe 4): `search_files({\"query\": \"begriff\", \"directory\": \"$CURRENT_DIR_PLACEHOLDER\"})`")
-        appendLine("- Archivinhalt zeigen: `list_archive_contents({\"path\": \"$CURRENT_DIR_PLACEHOLDER/archiv.zip\", \"password\": \"optional\"})`")
+        appendLine("Aktueller Ordner: $CURRENT_DIR_PLACEHOLDER (relative Pfade erlaubt, Unterordner über `<ordner>/<name>`).")
+        appendLine("Tools nur bei Bedarf per JSON aufrufen, z. B. `list_directory({\"path\": \"Download\", \"include_hidden\": true})`:")
+        appendLine("- Lesen: `list_directory(path, include_hidden)`, `read_text_file(path, max_chars)`, `get_file_info(path)`, `search_files(query, directory)`, `list_archive_contents(path, password)`")
         if (writeToolsEnabled) {
-            appendLine()
-            appendLine("Schreib- & Bearbeitungs-Tools (nur auf ausdrücklichen Wunsch Dateien/Ordner ändern oder löschen):")
-            appendLine("- Textdatei schreiben: `write_text_file({\"path\": \"$CURRENT_DIR_PLACEHOLDER/neu.txt\", \"content\": \"Text\", \"append\": false})`")
-            appendLine("- Textdatei bearbeiten: `edit_text_file({\"path\": \"$CURRENT_DIR_PLACEHOLDER/neu.txt\", \"old_text\": \"alt\", \"new_text\": \"neu\", \"replace_all\": false})`")
-            appendLine("- Ordner erstellen: `create_directory({\"path\": \"$CURRENT_DIR_PLACEHOLDER/NeuerOrdner\"})`")
-            appendLine("- Verschieben/Umbenennen: `move_or_rename_path({\"source_path\": \"$CURRENT_DIR_PLACEHOLDER/alt.txt\", \"destination_path\": \"$CURRENT_DIR_PLACEHOLDER/neu.txt\"})`")
-            appendLine("- Datei/Ordner löschen: `delete_path({\"path\": \"$CURRENT_DIR_PLACEHOLDER/alt.txt\", \"recursive\": false})`")
+            appendLine("- Schreiben (nur auf Wunsch): `write_text_file(path, content, append)`, `edit_text_file(path, old_text, new_text, replace_all)`, `create_directory(path)`, `move_or_rename_path(source_path, destination_path)`, `delete_path(path, recursive)`")
         }
         if (writeToolsEnabled && terminalEnabled) {
-            appendLine()
-            appendLine("Android-Terminal (`/system/bin/sh`):")
-            appendLine("- Befehl ausführen: `run_terminal_command({\"command\": \"ls -la\", \"working_dir\": \"$CURRENT_DIR_PLACEHOLDER\", \"timeout_sec\": 15})`")
+            appendLine("- Terminal (`/system/bin/sh`): `run_terminal_command(command, working_dir, timeout_sec)`")
         }
     }.trimEnd()
 

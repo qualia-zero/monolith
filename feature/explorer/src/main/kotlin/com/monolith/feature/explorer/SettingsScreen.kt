@@ -304,7 +304,7 @@ fun SettingsScreen(
             HorizontalDivider(thickness = 0.5.dp)
 
             Text(
-                text = "Gemini-API",
+                text = "Künstliche Intelligenz",
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.primary,
             )
