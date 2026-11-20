@@ -1,6 +1,8 @@
 package com.monolith.feature.explorer.archive
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -76,6 +78,7 @@ import com.monolith.feature.explorer.ExternalVolumeKind
 import com.monolith.feature.explorer.FileRow
 import com.monolith.feature.explorer.rememberExternalStorageVolumes
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -119,6 +122,8 @@ fun LocalPathPickerDialog(
 
     var children by remember { mutableStateOf<List<PickerItem>>(emptyList()) }
     var isLoadingChildren by remember { mutableStateOf(false) }
+    var hasLoadedOnce by remember(request) { mutableStateOf(false) }
+    var showLoadingOverlay by remember { mutableStateOf(false) }
     var isDownloadingDrive by remember { mutableStateOf(false) }
     var selectedPaths by remember(request) { mutableStateOf(request.initialSelectedPaths) }
     val selectedDriveItems = remember(request) { mutableStateMapOf<String, PickerItem>() }
@@ -192,6 +197,16 @@ fun LocalPathPickerDialog(
             }
         }
         isLoadingChildren = false
+        hasLoadedOnce = true
+    }
+
+    LaunchedEffect(isLoadingChildren) {
+        if (isLoadingChildren) {
+            delay(120L)
+            showLoadingOverlay = true
+        } else {
+            showLoadingOverlay = false
+        }
     }
 
     val filteredChildren = remember(children, searchQuery) {
@@ -224,6 +239,15 @@ fun LocalPathPickerDialog(
                     seg to acc
                 }
             }
+        }
+    }
+
+    BackHandler(enabled = canGoUp && !isDownloadingDrive) {
+        MonolithHaptics.backNav(context, view)
+        if (activeDriveEmail != null) {
+            driveStack = driveStack.dropLast(1)
+        } else {
+            currentDir = File(currentDir).parentFile?.absolutePath ?: activeRoot
         }
     }
 
@@ -516,108 +540,91 @@ fun LocalPathPickerDialog(
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(min = 180.dp, max = 340.dp),
+                .heightIn(min = 180.dp, max = 340.dp)
+                .animateContentSize(),
             shape = CutCornerShape(8.dp),
             color = MaterialTheme.colorScheme.surfaceContainerLow,
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         ) {
-            when {
-                isLoadingChildren -> {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(180.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        MonolithLoadingSpinner()
+            Box(modifier = Modifier.fillMaxWidth()) {
+                when {
+                    !hasLoadedOnce && isLoadingChildren -> {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(180.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            MonolithLoadingSpinner()
+                        }
                     }
-                }
-                filteredChildren.isEmpty() -> {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(180.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(
-                            text = if (searchQuery.isBlank()) "Keine passenden Einträge" else "Keine Treffer für „$searchQuery“",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+                    filteredChildren.isEmpty() -> {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(180.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                text = if (searchQuery.isBlank()) "Keine passenden Einträge" else "Keine Treffer für „$searchQuery“",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     }
-                }
-                else -> {
-                    LazyColumn(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(max = 340.dp),
-                    ) {
-                        items(filteredChildren, key = { it.id }) { item ->
-                            val isSelected = item.id in selectedPaths
-                            val node = remember(item) {
-                                val mime = if (item.isDirectory) "inode/directory" else MimeNormalizer.normalizeMime(item.name)
-                                val category = MimeNormalizer.categorize(
-                                    fileName = item.name,
-                                    isDirectory = item.isDirectory,
-                                    mimeType = mime,
-                                )
-                                VfsNode(
-                                    id = item.id,
-                                    name = item.name,
-                                    path = item.id,
-                                    parentPath = null,
-                                    locationType = if (item.isDrive) LocationType.GOOGLE_DRIVE else LocationType.LOCAL,
-                                    isDirectory = item.isDirectory,
-                                    sizeBytes = item.sizeBytes,
-                                    lastModifiedMs = 0L,
-                                    mimeType = mime,
-                                    category = category,
-                                )
-                            }
-                            val showSelectBox = when (request.mode) {
-                                LocalPickerMode.FILES_AND_FOLDERS_MULTI -> true
-                                LocalPickerMode.SINGLE_FILE -> !item.isDirectory
-                                LocalPickerMode.SINGLE_DIRECTORY -> false
-                            }
-                            FileRow(
-                                node = node,
-                                isSelected = isSelected,
-                                onClick = {
-                                    if (item.isDirectory) {
-                                        if (item.isDrive) {
-                                            driveStack = driveStack + (item.id to item.name)
+                    else -> {
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 340.dp),
+                        ) {
+                            items(filteredChildren, key = { it.id }) { item ->
+                                val isSelected = item.id in selectedPaths
+                                val node = remember(item) {
+                                    val mime = if (item.isDirectory) "inode/directory" else MimeNormalizer.normalizeMime(item.name)
+                                    val category = MimeNormalizer.categorize(
+                                        fileName = item.name,
+                                        isDirectory = item.isDirectory,
+                                        mimeType = mime,
+                                    )
+                                    VfsNode(
+                                        id = item.id,
+                                        name = item.name,
+                                        path = item.id,
+                                        parentPath = null,
+                                        locationType = if (item.isDrive) LocationType.GOOGLE_DRIVE else LocationType.LOCAL,
+                                        isDirectory = item.isDirectory,
+                                        sizeBytes = item.sizeBytes,
+                                        lastModifiedMs = 0L,
+                                        mimeType = mime,
+                                        category = category,
+                                    )
+                                }
+                                val showSelectBox = when (request.mode) {
+                                    LocalPickerMode.FILES_AND_FOLDERS_MULTI -> true
+                                    LocalPickerMode.SINGLE_FILE -> !item.isDirectory
+                                    LocalPickerMode.SINGLE_DIRECTORY -> false
+                                }
+                                FileRow(
+                                    node = node,
+                                    isSelected = isSelected,
+                                    onClick = {
+                                        if (item.isDirectory) {
+                                            MonolithHaptics.folderOpen(context, view)
+                                            if (item.isDrive) {
+                                                driveStack = driveStack + (item.id to item.name)
+                                            } else {
+                                                currentDir = item.id
+                                            }
                                         } else {
-                                            currentDir = item.id
-                                        }
-                                    } else {
-                                        when (request.mode) {
-                                            LocalPickerMode.SINGLE_DIRECTORY -> Unit
-                                            LocalPickerMode.SINGLE_FILE -> {
-                                                if (item.isDrive) selectedDriveItems[item.id] = item
-                                                selectedPaths = setOf(item.id)
-                                            }
-                                            LocalPickerMode.FILES_AND_FOLDERS_MULTI -> {
-                                                selectedPaths = if (isSelected) {
-                                                    selectedDriveItems.remove(item.id)
-                                                    selectedPaths - item.id
-                                                } else {
+                                            when (request.mode) {
+                                                LocalPickerMode.SINGLE_DIRECTORY -> Unit
+                                                LocalPickerMode.SINGLE_FILE -> {
                                                     if (item.isDrive) selectedDriveItems[item.id] = item
-                                                    selectedPaths + item.id
+                                                    selectedPaths = setOf(item.id)
                                                 }
-                                            }
-                                        }
-                                    }
-                                },
-                                trailingContent = if (showSelectBox) {
-                                    {
-                                        IconButton(
-                                            onClick = {
-                                                selectedPaths = when (request.mode) {
-                                                    LocalPickerMode.SINGLE_FILE -> {
-                                                        if (item.isDrive) selectedDriveItems[item.id] = item
-                                                        setOf(item.id)
-                                                    }
-                                                    else -> if (isSelected) {
+                                                LocalPickerMode.FILES_AND_FOLDERS_MULTI -> {
+                                                    selectedPaths = if (isSelected) {
                                                         selectedDriveItems.remove(item.id)
                                                         selectedPaths - item.id
                                                     } else {
@@ -625,34 +632,65 @@ fun LocalPathPickerDialog(
                                                         selectedPaths + item.id
                                                     }
                                                 }
-                                            },
-                                            modifier = Modifier.size(34.dp),
-                                        ) {
-                                            Icon(
-                                                imageVector = if (isSelected) {
-                                                    Icons.Outlined.CheckBox
-                                                } else {
-                                                    Icons.Outlined.CheckBoxOutlineBlank
-                                                },
-                                                contentDescription = "Auswählen",
-                                                tint = if (isSelected) {
-                                                    MaterialTheme.colorScheme.primary
-                                                } else {
-                                                    MaterialTheme.colorScheme.onSurfaceVariant
-                                                },
-                                                modifier = Modifier.size(20.dp),
-                                            )
+                                            }
                                         }
-                                    }
-                                } else {
-                                    null
-                                },
-                            )
-                            HorizontalDivider(
-                                thickness = 0.5.dp,
-                                color = MaterialTheme.colorScheme.outlineVariant,
-                            )
+                                    },
+                                    trailingContent = if (showSelectBox) {
+                                        {
+                                            IconButton(
+                                                onClick = {
+                                                    selectedPaths = when (request.mode) {
+                                                        LocalPickerMode.SINGLE_FILE -> {
+                                                            if (item.isDrive) selectedDriveItems[item.id] = item
+                                                            setOf(item.id)
+                                                        }
+                                                        else -> if (isSelected) {
+                                                            selectedDriveItems.remove(item.id)
+                                                            selectedPaths - item.id
+                                                        } else {
+                                                            if (item.isDrive) selectedDriveItems[item.id] = item
+                                                            selectedPaths + item.id
+                                                        }
+                                                    }
+                                                },
+                                                modifier = Modifier.size(34.dp),
+                                            ) {
+                                                Icon(
+                                                    imageVector = if (isSelected) {
+                                                        Icons.Outlined.CheckBox
+                                                    } else {
+                                                        Icons.Outlined.CheckBoxOutlineBlank
+                                                    },
+                                                    contentDescription = "Auswählen",
+                                                    tint = if (isSelected) {
+                                                        MaterialTheme.colorScheme.primary
+                                                    } else {
+                                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                                    },
+                                                    modifier = Modifier.size(20.dp),
+                                                )
+                                            }
+                                        }
+                                    } else {
+                                        null
+                                    },
+                                )
+                                HorizontalDivider(
+                                    thickness = 0.5.dp,
+                                    color = MaterialTheme.colorScheme.outlineVariant,
+                                )
+                            }
                         }
+                    }
+                }
+                if (hasLoadedOnce && showLoadingOverlay) {
+                    Box(
+                        modifier = Modifier
+                            .matchParentSize()
+                            .background(MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.65f)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        MonolithLoadingSpinner()
                     }
                 }
             }
