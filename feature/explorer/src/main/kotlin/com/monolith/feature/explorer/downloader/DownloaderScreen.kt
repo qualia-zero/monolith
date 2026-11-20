@@ -458,7 +458,7 @@ fun DownloaderScreen(
                                     modifier = Modifier.size(32.dp),
                                 )
                                 Text(
-                                    text = "Keine Downloads",
+                                    text = "Keine Downloads.",
                                     style = MaterialTheme.typography.titleSmall,
                                     fontWeight = FontWeight.Medium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1292,7 +1292,7 @@ private fun DownloaderSettingsSubscreen(
                 DownloaderSettingsSubmenu.EMBEDDING -> {
                     DialogSwitchRow(
                         title = "Metadaten einbetten",
-                        subtitle = "Titel, Kanal, Datum und Beschreibung (--embed-metadata)",
+                        subtitle = "Titel, Kanal, Datum und Beschreibung (--embed-metadata).",
                         checked = settings.embedMetadata,
                         onCheckedChange = { enabled ->
                             DownloaderSettingsStore.update { it.copy(embedMetadata = enabled) }
@@ -1300,7 +1300,7 @@ private fun DownloaderSettingsSubscreen(
                     )
                     DialogSwitchRow(
                         title = "Kapitel einbetten",
-                        subtitle = "Video- und Podcast-Kapitelmarken (--embed-chapters)",
+                        subtitle = "Video- und Podcast-Kapitelmarken (--embed-chapters).",
                         checked = settings.embedChapters,
                         onCheckedChange = { enabled ->
                             DownloaderSettingsStore.update { it.copy(embedChapters = enabled) }
@@ -1350,7 +1350,7 @@ private fun DownloaderSettingsSubscreen(
                 DownloaderSettingsSubmenu.SLEEP -> {
                     DialogSwitchRow(
                         title = "Sleep-Intervall aktiv",
-                        subtitle = "Zufällige Pause zwischen Anfragen zum Schutz vor Rate-Limits",
+                        subtitle = "Zufällige Pause zwischen Anfragen zum Schutz vor Rate-Limits.",
                         checked = settings.sleepIntervalEnabled,
                         onCheckedChange = { enabled ->
                             DownloaderSettingsStore.update { it.copy(sleepIntervalEnabled = enabled) }
@@ -1876,7 +1876,7 @@ private fun TargetDirectoryPickerDialog(
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        text = "Keine Unterordner",
+                        text = "Keine Unterordner.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

@@ -393,7 +393,7 @@ class MediaPlaybackService : Service() {
             "Medienwiedergabe",
             NotificationManager.IMPORTANCE_LOW,
         ).apply {
-            description = "Steuerung für aktive Audio- und Videowiedergabe"
+            description = "Steuerung für aktive Audio- und Videowiedergabe."
             setShowBadge(false)
         }
         notificationManager.createNotificationChannel(channel)

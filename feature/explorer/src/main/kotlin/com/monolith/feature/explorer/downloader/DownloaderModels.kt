@@ -11,19 +11,19 @@ enum class VideoFormatPreset(
 ) {
     AUTO_VP9_H264(
         label = "Auto (VP9 / H.264)",
-        subtitle = "Standard: WebM VP9 oder MP4 H.264 je nach Quelle",
+        subtitle = "Standard: WebM VP9 oder MP4 H.264 je nach Quelle.",
     ),
     MP4_H264(
         label = "MP4 (H.264 + AAC)",
-        subtitle = "Hohe Kompatibilität auf allen Geräten",
+        subtitle = "Hohe Kompatibilität auf allen Geräten.",
     ),
     WEBM_VP9(
         label = "WebM (VP9 + Opus)",
-        subtitle = "Kompakter VP9-Videostream mit Opus-Audio",
+        subtitle = "Kompakter VP9-Videostream mit Opus-Audio.",
     ),
     BEST_ANY(
         label = "Bestmöglich (alle Codecs)",
-        subtitle = "Beste Qualität inkl. AV1 und beliebiger Container",
+        subtitle = "Beste Qualität inkl. AV1 und beliebiger Container.",
     ),
     CUSTOM(
         label = "Benutzerdefiniert (-f)",
@@ -37,15 +37,15 @@ enum class AudioFormatPreset(
 ) {
     M4A_BEST(
         label = "M4A (bestaudio)",
-        subtitle = "Standard: Direkter M4A-Audiostream ohne Neukodierung",
+        subtitle = "Standard: Direkter M4A-Audiostream ohne Neukodierung.",
     ),
     OPUS_WEBM(
         label = "WebM / Opus",
-        subtitle = "Originaler Opus-Audiostream im WebM-Container",
+        subtitle = "Originaler Opus-Audiostream im WebM-Container.",
     ),
     MP3_CONVERT(
         label = "MP3 (konvertieren)",
-        subtitle = "Per FFmpeg in MP3 (höchste VBR-Qualität)",
+        subtitle = "Per FFmpeg in MP3 (höchste VBR-Qualität).",
     ),
     FLAC_CONVERT(
         label = "FLAC (verlustfrei)",
@@ -53,7 +53,7 @@ enum class AudioFormatPreset(
     ),
     BEST_ORIGINAL(
         label = "Bestes Originalformat",
-        subtitle = "Bester verfügbarer Audiostream unverändert",
+        subtitle = "Bester verfügbarer Audiostream unverändert.",
     ),
     CUSTOM(
         label = "Benutzerdefiniert (-f)",
@@ -103,15 +103,15 @@ enum class YtDlpChannel(
 ) {
     NIGHTLY(
         label = "Nightly",
-        subtitle = "Tägliche Updates mit aktuellen Extractor-Fixes (Standard)",
+        subtitle = "Tägliche Updates mit aktuellen Extractor-Fixes (Standard).",
     ),
     STABLE(
         label = "Stable",
-        subtitle = "Geprüfte stabile Release-Version",
+        subtitle = "Geprüfte stabile Release-Version.",
     ),
     MASTER(
         label = "Master",
-        subtitle = "Direkt vom Entwicklungs-Branch",
+        subtitle = "Direkt vom Entwicklungs-Branch.",
     ),
 }
 

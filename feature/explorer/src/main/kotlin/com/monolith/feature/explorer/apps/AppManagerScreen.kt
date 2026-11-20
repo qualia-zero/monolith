@@ -748,7 +748,7 @@ fun AppManagerScreen(
                     CornerMenuItem(
                         id = "usage_access",
                         label = "Nutzungszugriff",
-                        subtitle = "Für exakte App- & Cache-Größen",
+                        subtitle = "Für exakte App- & Cache-Größen.",
                         onClick = {
                             runCatching {
                                 context.startActivity(AppManagerRepository.buildUsageAccessIntent(context))
@@ -1629,7 +1629,7 @@ private fun BatchAuditReportDialog(
                             HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
                             if (entry.grantedRuntimePermissions.isEmpty() && entry.deniedRuntimePermissions.isEmpty()) {
                                 Text(
-                                    text = "Keine Laufzeitberechtigungen (${entry.totalPermissionCount} gesamt)",
+                                    text = "Keine Laufzeitberechtigungen (${entry.totalPermissionCount} gesamt).",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )

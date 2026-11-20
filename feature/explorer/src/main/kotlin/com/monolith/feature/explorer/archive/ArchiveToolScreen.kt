@@ -1557,8 +1557,8 @@ fun ArchiveToolScreen(
                 MonolithDialogOption(
                     label = fmt.label,
                     subtitle = when {
-                        fmt.supportsEncryption -> "Mit optionaler AES-256-Verschlüsselung"
-                        else -> "Ohne Verschlüsselung"
+                        fmt.supportsEncryption -> "Mit optionaler AES-256-Verschlüsselung."
+                        else -> "Ohne Verschlüsselung."
                     },
                     selected = targetFormat == fmt,
                     onClick = { targetFormat = fmt },

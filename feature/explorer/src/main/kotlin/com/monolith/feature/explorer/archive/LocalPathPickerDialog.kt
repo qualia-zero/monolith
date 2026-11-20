@@ -549,7 +549,7 @@ fun LocalPathPickerDialog(
                             contentAlignment = Alignment.Center,
                         ) {
                             Text(
-                                text = if (searchQuery.isBlank()) "Keine passenden Einträge" else "Keine Treffer für „$searchQuery“",
+                                text = if (searchQuery.isBlank()) "Keine passenden Einträge." else "Keine Treffer für „$searchQuery“.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )

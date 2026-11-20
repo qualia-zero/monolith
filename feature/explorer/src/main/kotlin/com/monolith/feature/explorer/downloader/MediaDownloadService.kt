@@ -547,7 +547,7 @@ class MediaDownloadService : Service() {
             CHANNEL_NAME,
             NotificationManager.IMPORTANCE_LOW,
         ).apply {
-            description = "Fortschritt und Status von Medien-Downloads"
+            description = "Fortschritt und Status von Medien-Downloads."
         }
         notificationManager.createNotificationChannel(channel)
     }

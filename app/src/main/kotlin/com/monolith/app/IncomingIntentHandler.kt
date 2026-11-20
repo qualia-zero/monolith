@@ -352,7 +352,7 @@ fun IncomingShareDialog(
             }
             if (files.size > previewFiles.size) {
                 Text(
-                    text = "… und ${files.size - previewFiles.size} weitere",
+                    text = "… und ${files.size - previewFiles.size} weitere.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

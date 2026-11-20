@@ -169,7 +169,7 @@ fun SettingsScreen(
                 )
                 HapticToggleRow(
                     title = "Haptisches Feedback",
-                    subtitle = "Alle taktilen Effekte in der App",
+                    subtitle = "Alle taktilen Effekte in der App.",
                     checked = appSettings.hapticsEnabled,
                     onCheckedChange = { enabled ->
                         AppSettingsStore.update { it.copy(hapticsEnabled = enabled) }
@@ -310,7 +310,7 @@ fun SettingsScreen(
             )
 
             Text(
-                text = "Aktiver API-Key für alle Gemini-Funktionen (lokal gespeichert)",
+                text = "Aktiver API-Key für alle Gemini-Funktionen (lokal gespeichert).",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -419,7 +419,7 @@ fun SettingsScreen(
                     color = MaterialTheme.colorScheme.primary,
                 )
                 Text(
-                    text = "Heruntergeladene Cloud-Dateien und Cloud-Ordnerlisten (${formatCacheSize(cachedBytes)})",
+                    text = "Heruntergeladene Cloud-Dateien und Cloud-Ordnerlisten (${formatCacheSize(cachedBytes)}).",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -467,7 +467,7 @@ fun SettingsScreen(
                     color = MaterialTheme.colorScheme.primary,
                 )
                 Text(
-                    text = "Zwischengespeicherte Vorschaubilder (${formatCacheSize(thumbBytes)})",
+                    text = "Zwischengespeicherte Vorschaubilder (${formatCacheSize(thumbBytes)}).",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
