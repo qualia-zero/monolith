@@ -634,14 +634,6 @@ private fun HapticsSubmenuScreen(
                 },
             )
             HapticToggleRow(
-                title = "Pfad-Navigation",
-                checked = appSettings.hapticPathChipNav,
-                onCheckedChange = { enabled ->
-                    AppSettingsStore.update { it.copy(hapticPathChipNav = enabled) }
-                    if (enabled) MonolithHaptics.pathChipNav(context, view)
-                },
-            )
-            HapticToggleRow(
                 title = "Monolith-Menü öffnen",
                 checked = appSettings.hapticMonolithMenuOpen,
                 onCheckedChange = { enabled ->
@@ -650,19 +642,34 @@ private fun HapticsSubmenuScreen(
                 },
             )
             HapticToggleRow(
-                title = "3-Punkte-Menü öffnen",
-                checked = appSettings.hapticCornerMenuOpen,
-                onCheckedChange = { enabled ->
-                    AppSettingsStore.update { it.copy(hapticCornerMenuOpen = enabled) }
-                    if (enabled) MonolithHaptics.cornerMenuOpen(context, view)
-                },
-            )
-            HapticToggleRow(
                 title = "Gedrückthalten",
                 checked = appSettings.hapticDragLift,
                 onCheckedChange = { enabled ->
                     AppSettingsStore.update { it.copy(hapticDragLift = enabled) }
                     if (enabled) MonolithHaptics.dragLift(view)
+                },
+            )
+            HapticToggleRow(
+                title = "Schalter umlegen",
+                checked = appSettings.hapticSwitchToggle,
+                onCheckedChange = { enabled ->
+                    AppSettingsStore.update { it.copy(hapticSwitchToggle = enabled) }
+                },
+            )
+            HapticToggleRow(
+                title = "Pfad-Navigation",
+                checked = appSettings.hapticPathChipNav,
+                onCheckedChange = { enabled ->
+                    AppSettingsStore.update { it.copy(hapticPathChipNav = enabled) }
+                    if (enabled) MonolithHaptics.pathChipNav(context, view)
+                },
+            )
+            HapticToggleRow(
+                title = "3-Punkte-Menü öffnen",
+                checked = appSettings.hapticCornerMenuOpen,
+                onCheckedChange = { enabled ->
+                    AppSettingsStore.update { it.copy(hapticCornerMenuOpen = enabled) }
+                    if (enabled) MonolithHaptics.cornerMenuOpen(context, view)
                 },
             )
             HapticToggleRow(
@@ -679,13 +686,6 @@ private fun HapticsSubmenuScreen(
                 onCheckedChange = { enabled ->
                     AppSettingsStore.update { it.copy(hapticPullRefresh = enabled) }
                     if (enabled) MonolithHaptics.refreshDetent(context, view)
-                },
-            )
-            HapticToggleRow(
-                title = "Schalter umlegen",
-                checked = appSettings.hapticSwitchToggle,
-                onCheckedChange = { enabled ->
-                    AppSettingsStore.update { it.copy(hapticSwitchToggle = enabled) }
                 },
             )
         }
