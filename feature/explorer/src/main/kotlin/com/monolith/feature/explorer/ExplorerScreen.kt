@@ -1504,7 +1504,7 @@ private fun ClipboardActionBar(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = "${if (count == 1) "1 Element" else "$count Elemente"} ${if (isMoveOperation) "ausgeschnitten" else "kopiert"}",
+                    text = "${if (count == 1) "1 Element" else "$count Elemente"} ${if (isMoveOperation) "ausgeschnitten." else "kopiert."}",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSecondaryContainer,
                     maxLines = 1,

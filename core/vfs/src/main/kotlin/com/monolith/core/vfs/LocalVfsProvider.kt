@@ -216,7 +216,7 @@ class LocalVfsProvider : VfsProvider {
                 }
             }
             if (bytesCopied != expectedSize) {
-                throw IOException("Unvollständige Kopie für ${source.name}: $bytesCopied von $expectedSize Bytes kopiert")
+                throw IOException("Unvollständige Kopie für ${source.name}: $bytesCopied von $expectedSize Bytes kopiert.")
             }
             if (!overwrite && dest.exists()) {
                 throw IOException("Ziel existiert bereits: ${dest.absolutePath}")

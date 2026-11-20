@@ -1308,7 +1308,7 @@ private fun DownloaderSettingsSubscreen(
                     )
                     DialogSwitchRow(
                         title = "Untertitel einbetten",
-                        subtitle = "Untertitel in Videocontainer einbetten (--embed-subs)",
+                        subtitle = "Untertitel in Videocontainer einbetten (--embed-subs).",
                         checked = settings.embedSubtitles,
                         onCheckedChange = { enabled ->
                             DownloaderSettingsStore.update { it.copy(embedSubtitles = enabled) }
@@ -1504,7 +1504,7 @@ private fun DownloaderSettingsSubscreen(
 
                     DialogSwitchRow(
                         title = "Playlists herunterladen",
-                        subtitle = "Bei Playlist-Links alle Titel herunterladen statt nur ein einzelnes Video",
+                        subtitle = "Bei Playlist-Links alle Titel herunterladen statt nur ein einzelnes Video.",
                         checked = settings.allowPlaylists,
                         onCheckedChange = { enabled ->
                             DownloaderSettingsStore.update { it.copy(allowPlaylists = enabled) }

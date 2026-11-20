@@ -319,7 +319,7 @@ class GoogleDriveVfsProvider(
                 }
 
                 if (bytesSent != expectedSize) {
-                    throw IOException("Unvollständiger Upload für ${localFile.name}: $bytesSent von $expectedSize Bytes gesendet")
+                    throw IOException("Unvollständiger Upload für ${localFile.name}: $bytesSent von $expectedSize Bytes gesendet.")
                 }
 
                 val code = conn.responseCode
@@ -392,7 +392,7 @@ class GoogleDriveVfsProvider(
                     }
                 }
                 if (resolvedExpectedSize >= 0L && bytesWritten != resolvedExpectedSize) {
-                    throw IOException("Unvollständiger Download für ${destFile.name}: $bytesWritten von $resolvedExpectedSize Bytes empfangen")
+                    throw IOException("Unvollständiger Download für ${destFile.name}: $bytesWritten von $resolvedExpectedSize Bytes empfangen.")
                 }
                 if (destFile.exists() && !destFile.delete()) {
                     throw IOException("Bestehende Zieldatei konnte nicht ersetzt werden: ${destFile.absolutePath}")

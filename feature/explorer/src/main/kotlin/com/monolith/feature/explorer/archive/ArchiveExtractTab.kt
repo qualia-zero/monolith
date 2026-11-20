@@ -153,7 +153,7 @@ internal fun ExtractArchiveTab(
                         )
                         if (reachedScanLimit) {
                             Text(
-                                text = "Scan-Limit erreicht – für tiefere Ordner das Ordnersymbol verwenden",
+                                text = "Scan-Limit erreicht – für tiefere Ordner das Ordnersymbol verwenden.",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )

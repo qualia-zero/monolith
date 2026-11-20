@@ -595,9 +595,9 @@ fun AppManagerScreen(
                         ) {
                             Text(
                                 text = if (searchQuery.isNotBlank()) {
-                                    "Keine Apps für „$searchQuery“ gefunden"
+                                    "Keine Apps für „$searchQuery“ gefunden."
                                 } else {
-                                    "Keine Apps in dieser Kategorie"
+                                    "Keine Apps in dieser Kategorie."
                                 },
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -908,7 +908,7 @@ fun AppManagerScreen(
                     auditReport = null
                     saveResult.onSuccess { file ->
                         val res = snackbarHostState.showSnackbar(
-                            message = "Bericht gespeichert: ${file.name}",
+                            message = "Bericht gespeichert: ${file.name}.",
                             actionLabel = "Ordner öffnen",
                             duration = SnackbarDuration.Long,
                         )
@@ -917,7 +917,7 @@ fun AppManagerScreen(
                         }
                     }.onFailure { err ->
                         snackbarHostState.showSnackbar(
-                            "Fehler beim Speichern: ${err.message ?: "Unbekannt"}",
+                            "Fehler beim Speichern: ${err.message ?: "Unbekannt."}",
                         )
                     }
                 }
@@ -1409,7 +1409,7 @@ private fun AppDetailModalSheet(
                 ) {
                     if (runtime.isEmpty() && otherPerms.isEmpty()) {
                         Text(
-                            text = "Keine Berechtigungen angefordert",
+                            text = "Keine Berechtigungen angefordert.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -1573,7 +1573,7 @@ private fun BatchAuditReportDialog(
         onConfirmClick = onSaveReport,
     ) {
         Text(
-            text = if (report.entries.size == 1) "1 App geprüft" else "${report.entries.size} Apps geprüft",
+            text = if (report.entries.size == 1) "1 App geprüft." else "${report.entries.size} Apps geprüft.",
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

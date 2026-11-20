@@ -198,7 +198,7 @@ fun SettingsScreen(
                                     style = MaterialTheme.typography.bodyLarge,
                                 )
                                 Text(
-                                    text = "Einzelne Aktionen fein einstellen",
+                                    text = "Einzelne Aktionen fein einstellen.",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
@@ -232,7 +232,7 @@ fun SettingsScreen(
                         style = MaterialTheme.typography.bodyLarge,
                     )
                     Text(
-                        text = "Untertitel standardmäßig ein- oder ausblenden",
+                        text = "Untertitel standardmäßig ein- oder ausblenden.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

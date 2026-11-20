@@ -27,7 +27,7 @@ enum class VideoFormatPreset(
     ),
     CUSTOM(
         label = "Benutzerdefiniert (-f)",
-        subtitle = "Eigenen yt-dlp-Formatausdruck angeben",
+        subtitle = "Eigenen yt-dlp-Formatausdruck angeben.",
     ),
 }
 
@@ -49,7 +49,7 @@ enum class AudioFormatPreset(
     ),
     FLAC_CONVERT(
         label = "FLAC (verlustfrei)",
-        subtitle = "Per FFmpeg verlustfrei in FLAC umwandeln",
+        subtitle = "Per FFmpeg verlustfrei in FLAC umwandeln.",
     ),
     BEST_ORIGINAL(
         label = "Bestes Originalformat",
@@ -57,7 +57,7 @@ enum class AudioFormatPreset(
     ),
     CUSTOM(
         label = "Benutzerdefiniert (-f)",
-        subtitle = "Eigenen yt-dlp-Formatausdruck angeben",
+        subtitle = "Eigenen yt-dlp-Formatausdruck angeben.",
     ),
 }
 
@@ -67,15 +67,15 @@ enum class SponsorBlockMode(
 ) {
     REMOVE(
         label = "Entfernen",
-        subtitle = "Ausgewählte Segmente direkt herausschneiden",
+        subtitle = "Ausgewählte Segmente direkt herausschneiden.",
     ),
     MARK(
         label = "Als Kapitel markieren",
-        subtitle = "Segmente behalten und als Kapitel kennzeichnen",
+        subtitle = "Segmente behalten und als Kapitel kennzeichnen.",
     ),
     OFF(
         label = "Aus",
-        subtitle = "SponsorBlock für Downloads deaktivieren",
+        subtitle = "SponsorBlock für Downloads deaktivieren.",
     ),
 }
 
@@ -85,15 +85,15 @@ enum class ThumbnailEmbedMode(
 ) {
     AUDIO_ONLY(
         label = "Nur bei Audio",
-        subtitle = "Vorschaubild in Audiodateien einbetten, nicht in Videos",
+        subtitle = "Vorschaubild in Audiodateien einbetten, nicht in Videos.",
     ),
     ALWAYS(
         label = "Immer",
-        subtitle = "Vorschaubild in Audio- und Videodateien einbetten",
+        subtitle = "Vorschaubild in Audio- und Videodateien einbetten.",
     ),
     NEVER(
         label = "Nie",
-        subtitle = "Kein Vorschaubild einbetten",
+        subtitle = "Kein Vorschaubild einbetten.",
     ),
 }
 

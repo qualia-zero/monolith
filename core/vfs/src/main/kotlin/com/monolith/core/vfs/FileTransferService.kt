@@ -559,9 +559,9 @@ class FileTransferService : Service() {
                         }
                         else -> {
                             val info = driveProvider.stat(src)
-                                ?: throw IllegalStateException("Quelle nicht gefunden")
+                                ?: throw IllegalStateException("Quelle nicht gefunden.")
                             if (info.isDirectory) {
-                                throw IllegalStateException("Ordner-Download von Drive wird noch nicht unterstützt")
+                                throw IllegalStateException("Ordner-Download von Drive wird noch nicht unterstützt.")
                             }
                             val safeName = File(info.name).name.takeIf { it.isNotBlank() && it != "." && it != ".." } ?: "download"
                             val dest = resolveUniqueLocalTarget(File(job.destinationDir), safeName)
@@ -676,7 +676,7 @@ class FileTransferService : Service() {
 
         for (src in sources) {
             val node = driveProvider.stat(src)
-                ?: throw IllegalStateException("Quelle nicht gefunden")
+                ?: throw IllegalStateException("Quelle nicht gefunden.")
             if (node.isDirectory) {
                 collectFolder(node)
             } else if (seenFileIds.add(node.id)) {

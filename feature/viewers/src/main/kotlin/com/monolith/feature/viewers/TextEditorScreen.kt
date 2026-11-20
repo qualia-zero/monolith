@@ -203,11 +203,11 @@ fun TextEditorScreen(
                 if (closeAfterSave) {
                     onNavigateBack()
                 } else {
-                    snackbarHostState.showSnackbar("Gespeichert")
+                    snackbarHostState.showSnackbar("Gespeichert.")
                 }
             } catch (e: Exception) {
                 snackbarHostState.showSnackbar(
-                    "Fehler beim Speichern: ${e.localizedMessage ?: "Unbekannter Fehler"}",
+                    "Fehler beim Speichern: ${e.localizedMessage ?: "Unbekannter Fehler."}",
                 )
             } finally {
                 isSaving = false

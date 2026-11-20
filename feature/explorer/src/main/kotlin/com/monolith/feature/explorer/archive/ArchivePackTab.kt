@@ -114,7 +114,7 @@ internal fun PackArchiveContent(
             ) {
                 Text(
                     text = if (sourcePaths.isEmpty()) {
-                        "Keine Quellen ausgewählt"
+                        "Keine Quellen ausgewählt."
                     } else {
                         "${sourcePaths.size} ausgewählt • ${formatArchiveBytes(totalSourceBytes)}"
                     },
@@ -296,9 +296,9 @@ internal fun PackArchiveContent(
                     )
                     Text(
                         text = if (format.supportsEncryption) {
-                            "Archiv mit Passwort schützen"
+                            "Archiv mit Passwort schützen."
                         } else {
-                            "Für ${format.label} nicht unterstützt"
+                            "Für ${format.label} nicht unterstützt."
                         },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -423,7 +423,7 @@ internal fun PackArchiveContent(
                             fontWeight = FontWeight.SemiBold,
                         )
                         Text(
-                            text = "Großes Archiv in handliche Teilarchive aufteilen",
+                            text = "Großes Archiv in handliche Teilarchive aufteilen.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -471,7 +471,7 @@ internal fun PackArchiveContent(
                     }
                     Text(
                         text = if (format == ArchiveFormat.ZIP) {
-                            "Erzeugt zusammenhängende Teile: .z01, .z02, … + .zip"
+                            "Erzeugt zusammenhängende Teile: .z01, .z02, … + .zip."
                         } else {
                             "Erzeugt zusammenhängende Teile: .${format.extension}.001, .${format.extension}.002, …"
                         },
@@ -497,7 +497,7 @@ internal fun PackArchiveContent(
                             fontWeight = FontWeight.SemiBold,
                         )
                         Text(
-                            text = "Dateien als zusammenhängenden Datenstrom für höhere Kompression packen",
+                            text = "Dateien als zusammenhängenden Datenstrom für höhere Kompression packen.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )

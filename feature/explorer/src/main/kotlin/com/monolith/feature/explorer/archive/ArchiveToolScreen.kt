@@ -1291,7 +1291,7 @@ fun ArchiveToolScreen(
                 if (!entry.isDirectory) {
                     MonolithDialogOption(
                         label = "Öffnen / Vorschau",
-                        subtitle = "Datei direkt aus dem Archiv anzeigen",
+                        subtitle = "Datei direkt aus dem Archiv anzeigen.",
                         selected = false,
                         onClick = {
                             entryActionTarget = null
@@ -1301,7 +1301,7 @@ fun ArchiveToolScreen(
                 }
                 MonolithDialogOption(
                     label = "Entpacken",
-                    subtitle = "In einen Zielordner entpacken",
+                    subtitle = "In einen Zielordner entpacken.",
                     selected = false,
                     onClick = {
                         entryActionTarget = null
@@ -1327,7 +1327,7 @@ fun ArchiveToolScreen(
                 if (isModifiable) {
                     MonolithDialogOption(
                         label = "Umbenennen",
-                        subtitle = "Eintrag im Archiv umbenennen",
+                        subtitle = "Eintrag im Archiv umbenennen.",
                         selected = false,
                         onClick = {
                             entryActionTarget = null
@@ -1336,7 +1336,7 @@ fun ArchiveToolScreen(
                     )
                     MonolithDialogOption(
                         label = "Aus Archiv löschen",
-                        subtitle = "Eintrag dauerhaft aus dem Archiv entfernen",
+                        subtitle = "Eintrag dauerhaft aus dem Archiv entfernen.",
                         selected = false,
                         onClick = {
                             entryActionTarget = null
