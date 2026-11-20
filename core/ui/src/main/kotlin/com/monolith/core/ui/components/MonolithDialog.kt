@@ -28,6 +28,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -112,7 +113,12 @@ fun MonolithDialog(
                                 enabled = dismissEnabled,
                                 shape = LocalMonolithButtonShape.current,
                             ) {
-                                Text(dismissLabel)
+                                Text(
+                                    text = dismissLabel,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
                             }
                         }
                         if (confirmLabel != null && onConfirmClick != null) {
@@ -129,7 +135,12 @@ fun MonolithDialog(
                                     },
                                 ),
                             ) {
-                                Text(confirmLabel)
+                                Text(
+                                    text = confirmLabel,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
                             }
                         }
                     }

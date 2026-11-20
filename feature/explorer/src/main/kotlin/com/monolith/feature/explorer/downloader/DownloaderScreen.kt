@@ -815,9 +815,10 @@ private fun DownloadTaskCard(
                 ) {
                     Text(
                         text = task.statusDetail ?: task.status.label,
-                        style = MaterialTheme.typography.labelSmall,
+                        style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
+                        softWrap = false,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f),
                     )
@@ -836,9 +837,11 @@ private fun DownloadTaskCard(
                         Spacer(Modifier.width(8.dp))
                         Text(
                             text = rightLabel,
-                            style = MaterialTheme.typography.labelSmall,
+                            style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"),
                             color = MaterialTheme.colorScheme.primary,
                             fontWeight = FontWeight.Medium,
+                            maxLines = 1,
+                            softWrap = false,
                         )
                     }
                 }
@@ -894,7 +897,7 @@ private fun DownloadTaskCard(
                                     modifier = Modifier.size(16.dp),
                                 )
                                 Spacer(Modifier.width(4.dp))
-                                Text("Abspielen")
+                                Text("Abspielen", maxLines = 1, softWrap = false)
                             }
                         }
                         TextButton(
@@ -911,7 +914,7 @@ private fun DownloadTaskCard(
                                 modifier = Modifier.size(16.dp),
                             )
                             Spacer(Modifier.width(4.dp))
-                            Text("Ordner öffnen")
+                            Text("Ordner öffnen", maxLines = 1, softWrap = false)
                         }
                         Spacer(Modifier.weight(1f))
                         IconButton(
@@ -937,7 +940,7 @@ private fun DownloadTaskCard(
                                 modifier = Modifier.size(16.dp),
                             )
                             Spacer(Modifier.width(4.dp))
-                            Text("Erneut")
+                            Text("Erneut", maxLines = 1, softWrap = false)
                         }
                         if (task.logs.isNotEmpty()) {
                             TextButton(
@@ -945,7 +948,7 @@ private fun DownloadTaskCard(
                                 shape = LocalMonolithButtonShape.current,
                                 contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
                             ) {
-                                Text(if (showLogs) "Protokoll ausblenden" else "Protokoll")
+                                Text(if (showLogs) "Protokoll ausblenden" else "Protokoll", maxLines = 1, softWrap = false)
                             }
                         }
                         Spacer(Modifier.weight(1f))

@@ -1637,14 +1637,20 @@ fun ArchiveToolScreen(
                 ) {
                     Text(
                         text = "${formatArchiveBytes(prog.processedBytes)} / ${formatArchiveBytes(prog.totalBytes)}",
-                        style = MaterialTheme.typography.labelSmall,
+                        style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
                     )
                     Text(
                         text = "${(fraction * 100f).toInt()}%",
-                        style = MaterialTheme.typography.labelSmall,
+                        style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"),
                         color = MaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        softWrap = false,
                     )
                 }
             } else {

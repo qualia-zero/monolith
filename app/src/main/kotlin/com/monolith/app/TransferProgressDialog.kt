@@ -92,7 +92,7 @@ fun TransferProgressDialog(
                         selected = task.taskId == progress.taskId,
                         shape = LocalMonolithButtonShape.current,
                         onClick = { onSelectTask(task.taskId) },
-                        label = { Text(chipLabel) },
+                        label = { Text(chipLabel, maxLines = 1, softWrap = false) },
                     )
                 }
             }
@@ -133,9 +133,10 @@ fun TransferProgressDialog(
         }
         Text(
             text = statusLine,
-            style = MaterialTheme.typography.labelMedium,
+            style = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum"),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1,
+            softWrap = false,
             overflow = TextOverflow.Ellipsis,
         )
 

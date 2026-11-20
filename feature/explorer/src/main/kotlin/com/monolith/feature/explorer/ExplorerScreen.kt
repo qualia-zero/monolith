@@ -1512,10 +1512,10 @@ private fun ClipboardActionBar(
                     modifier = Modifier.weight(1f),
                 )
                 TextButton(onClick = onPaste) {
-                    Text("Hier einfügen")
+                    Text("Hier einfügen", maxLines = 1, softWrap = false)
                 }
                 TextButton(onClick = onCancel) {
-                    Text("Abbrechen")
+                    Text("Abbrechen", maxLines = 1, softWrap = false)
                 }
             }
         }

@@ -159,6 +159,7 @@ class FileTransferService : Service() {
             ),
         )
 
+        val itemLabel = if (itemCount == 1) "Element" else "Elemente"
         val initialNotification = buildProgressNotification(
             taskId = taskId,
             title = when {
@@ -166,7 +167,8 @@ class FileTransferService : Service() {
                 isMove -> "Dateien verschieben…"
                 else -> "Dateien kopieren…"
             },
-            text = if (isInitiallyQueued) "In Warteschlange… · 0/$itemCount Elemente" else "0/$itemCount Elemente",
+            text = if (isInitiallyQueued) "In Warteschlange…" else "Vorbereitung…",
+            subText = "0/$itemCount $itemLabel",
             progress = 0,
             max = PROGRESS_NOTIFICATION_MAX,
             indeterminate = true,
@@ -480,19 +482,20 @@ class FileTransferService : Service() {
                     else -> 0
                 }
                 val indeterminate = totalBytes <= 0L && totalItems <= 1
-                val notificationText = buildString {
-                    append("$processedItems/$totalItems Elemente")
-                    if (totalBytes > 0L) {
-                        append(" · ${formatBytes(bytesProcessed)} / ${formatBytes(totalBytes)}")
-                    }
-                    if (bytesPerSecond > 0L) {
-                        append(" · ${formatBytes(bytesPerSecond)}/s")
-                    }
+                val itemLabel = if (totalItems == 1) "Element" else "Elemente"
+                val subText = "$processedItems/$totalItems $itemLabel"
+                val notificationText = when {
+                    totalBytes > 0L && bytesPerSecond > 0L ->
+                        "${formatBytes(bytesProcessed)} / ${formatBytes(totalBytes)} · ${formatBytes(bytesPerSecond)}/s"
+                    totalBytes > 0L ->
+                        "${formatBytes(bytesProcessed)} / ${formatBytes(totalBytes)}"
+                    else -> subText
                 }
                 val notif = buildProgressNotification(
                     taskId = job.taskId,
                     title = title,
                     text = notificationText,
+                    subText = if (totalBytes > 0L) subText else null,
                     progress = scaledProgress,
                     max = PROGRESS_NOTIFICATION_MAX,
                     indeterminate = indeterminate,
@@ -818,6 +821,7 @@ class FileTransferService : Service() {
         taskId: Long,
         title: String,
         text: String,
+        subText: String? = null,
         progress: Int,
         max: Int,
         indeterminate: Boolean,
@@ -826,6 +830,7 @@ class FileTransferService : Service() {
             .setSmallIcon(android.R.drawable.stat_sys_download)
             .setContentTitle(title)
             .setContentText(text)
+            .apply { if (!subText.isNullOrBlank()) setSubText(subText) }
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)

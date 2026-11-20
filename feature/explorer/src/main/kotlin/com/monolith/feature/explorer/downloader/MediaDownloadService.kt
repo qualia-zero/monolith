@@ -454,8 +454,8 @@ class MediaDownloadService : Service() {
         val currentTask = _tasks.value.firstOrNull { it.id == req.taskId } ?: return
         val notifTitle = currentTask.title ?: "${req.mode.label} wird heruntergeladen…"
         val queuedCount = (_tasks.value.count { it.status == DownloadTaskStatus.QUEUED })
-        val queueSuffix = if (queuedCount > 0) " · +$queuedCount in der Warteschlange" else ""
-        val notifText = (currentTask.statusDetail ?: currentTask.status.label) + queueSuffix
+        val subText = if (queuedCount > 0) "+$queuedCount in Warteschlange" else null
+        val notifText = currentTask.statusDetail ?: currentTask.status.label
         val indeterminate = currentTask.status != DownloadTaskStatus.DOWNLOADING || currentTask.progressPercent < 0f
         val progressInt = if (indeterminate) 0 else (currentTask.progressPercent * 10f).toInt().coerceIn(0, PROGRESS_NOTIFICATION_MAX)
 
@@ -463,6 +463,7 @@ class MediaDownloadService : Service() {
             req = req,
             title = notifTitle,
             text = notifText,
+            subText = subText,
             progress = progressInt,
             indeterminate = indeterminate,
             force = detectedDetail != null || isPostProcessing,
@@ -473,6 +474,7 @@ class MediaDownloadService : Service() {
         req: EnqueuedRequest,
         title: String,
         text: String,
+        subText: String? = null,
         progress: Int,
         indeterminate: Boolean,
         force: Boolean = false,
@@ -486,6 +488,7 @@ class MediaDownloadService : Service() {
             taskId = req.taskId,
             title = title,
             text = text,
+            subText = subText,
             progress = progress,
             indeterminate = indeterminate,
         )
@@ -556,6 +559,7 @@ class MediaDownloadService : Service() {
         taskId: Long,
         title: String,
         text: String,
+        subText: String? = null,
         progress: Int,
         indeterminate: Boolean,
         allowCancel: Boolean = true,
@@ -564,6 +568,7 @@ class MediaDownloadService : Service() {
             .setSmallIcon(android.R.drawable.stat_sys_download)
             .setContentTitle(title)
             .setContentText(text)
+            .apply { if (!subText.isNullOrBlank()) setSubText(subText) }
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
