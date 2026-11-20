@@ -39,6 +39,7 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.AudioFile
+import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.CloudQueue
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.ContentCut
@@ -53,6 +54,7 @@ import androidx.compose.material.icons.outlined.FolderZip
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.SdStorage
+import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.SelectAll
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.Unarchive
@@ -232,6 +234,8 @@ fun ExplorerScreen(
     }
 
     var nodes by remember { mutableStateOf<List<VfsNode>>(emptyList()) }
+    var searchVisible by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
     var showHidden by remember { mutableStateOf(false) }
     var sortBy by remember { mutableStateOf(SortBy.NAME) }
     var menuExpanded by remember { mutableStateOf(false) }
@@ -699,6 +703,12 @@ fun ExplorerScreen(
             val chipBounds = remember { mutableStateMapOf<String, Pair<Float, Float>>() }
             val currentAccounts by rememberUpdatedState(signedInAccounts)
 
+            val isInsideLocalSubfolder = activeLocation == LocationType.LOCAL &&
+                localPath != activeLocalRootPath &&
+                localPath.startsWith(activeLocalRootPath.trimEnd('/') + "/")
+            val isInsideDriveSubfolder = activeLocation == LocationType.GOOGLE_DRIVE && driveStack.size > 1
+            val isInsideSubfolder = isInsideLocalSubfolder || isInsideDriveSubfolder
+
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -707,6 +717,71 @@ fun ExplorerScreen(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                if (isInsideSubfolder) {
+                    if (activeLocation == LocationType.LOCAL) {
+                        val rootChipLabel = activeExternalVolume?.name ?: "Intern"
+                        FilterChip(
+                            selected = false,
+                            shape = LocalMonolithButtonShape.current,
+                            onClick = {
+                                localPath = activeLocalRootPath
+                                selectedPaths = emptySet()
+                            },
+                            label = { Text(rootChipLabel, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                        )
+                        val rel = localPath.removePrefix(activeLocalRootPath.trimEnd('/')).trim('/')
+                        val segments = rel.split('/').filter { it.isNotBlank() }
+                        var accPath = activeLocalRootPath.trimEnd('/')
+                        segments.forEachIndexed { idx, segment ->
+                            accPath = "$accPath/$segment"
+                            val target = accPath
+                            Icon(
+                                imageVector = Icons.Outlined.ChevronRight,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(16.dp),
+                            )
+                            FilterChip(
+                                selected = idx == segments.lastIndex,
+                                shape = LocalMonolithButtonShape.current,
+                                onClick = {
+                                    localPath = target
+                                    selectedPaths = emptySet()
+                                },
+                                label = { Text(segment, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                            )
+                        }
+                    } else {
+                        val rootLabel = signedInEmail?.substringBefore('@') ?: "Google Drive"
+                        FilterChip(
+                            selected = false,
+                            shape = LocalMonolithButtonShape.current,
+                            onClick = {
+                                driveStack = driveStack.take(1)
+                                selectedPaths = emptySet()
+                            },
+                            label = { Text(rootLabel, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                        )
+                        val subStack = driveStack.drop(1)
+                        subStack.forEachIndexed { idx, (_, label) ->
+                            Icon(
+                                imageVector = Icons.Outlined.ChevronRight,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(16.dp),
+                            )
+                            FilterChip(
+                                selected = idx == subStack.lastIndex,
+                                shape = LocalMonolithButtonShape.current,
+                                onClick = {
+                                    driveStack = driveStack.take(idx + 2)
+                                    selectedPaths = emptySet()
+                                },
+                                label = { Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                            )
+                        }
+                    }
+                } else {
                 FilterChip(
                     selected = activeLocation == LocationType.LOCAL && activeLocalRootPath == rootPath,
                     shape = LocalMonolithButtonShape.current,
@@ -860,6 +935,35 @@ fun ExplorerScreen(
                         )
                     },
                 )
+                }
+            }
+
+            if (searchVisible) {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    placeholder = { Text("Im Ordner suchen…") },
+                    leadingIcon = {
+                        Icon(Icons.Outlined.Search, contentDescription = null, modifier = Modifier.size(18.dp))
+                    },
+                    trailingIcon = {
+                        IconButton(
+                            onClick = {
+                                if (searchQuery.isNotEmpty()) {
+                                    searchQuery = ""
+                                } else {
+                                    searchVisible = false
+                                }
+                            },
+                        ) {
+                            Icon(Icons.Default.Close, contentDescription = "Suche schließen", modifier = Modifier.size(18.dp))
+                        }
+                    },
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                )
             }
 
             if (activeLocation == LocationType.LOCAL && !hasStoragePermission) {
@@ -965,6 +1069,10 @@ fun ExplorerScreen(
                         )
                     },
                 ) {
+                    val displayedNodes = remember(nodes, searchQuery, searchVisible) {
+                        val q = if (searchVisible) searchQuery.trim() else ""
+                        if (q.isEmpty()) nodes else nodes.filter { it.name.contains(q, ignoreCase = true) }
+                    }
                     LazyColumn(
                         modifier = Modifier
                             .fillMaxSize()
@@ -972,7 +1080,7 @@ fun ExplorerScreen(
                                 translationY = contentOffsetDp.dp.toPx()
                             },
                     ) {
-                    items(nodes, key = { it.id }) { node ->
+                    items(displayedNodes, key = { it.id }) { node ->
                         val isSelected = node.path in selectedPaths
                         FileRow(
                             node = node,
@@ -1066,6 +1174,16 @@ fun ExplorerScreen(
     )
 
     val cornerItems = buildList {
+        add(
+            CornerMenuItem(
+                id = "search",
+                label = if (searchVisible) "Suche schließen" else "Suchen",
+                onClick = {
+                    searchVisible = !searchVisible
+                    if (!searchVisible) searchQuery = ""
+                },
+            ),
+        )
         add(
             CornerMenuItem(
                 id = "new_folder",
@@ -1492,12 +1610,13 @@ private fun MiniPlayerBar(
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun FileRow(
+internal fun FileRow(
     node: VfsNode,
     isSelected: Boolean = false,
     isOfflineCached: Boolean = false,
     onClick: () -> Unit,
     onLongClick: (() -> Unit)? = null,
+    trailingContent: (@Composable () -> Unit)? = null,
 ) {
     val icon = when (node.category) {
         FileCategory.DIRECTORY -> Icons.Outlined.Folder
@@ -1562,6 +1681,9 @@ private fun FileRow(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+        }
+        if (trailingContent != null) {
+            trailingContent()
         }
     }
 }

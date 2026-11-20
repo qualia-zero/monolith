@@ -60,12 +60,16 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.monolith.core.common.MimeNormalizer
+import com.monolith.core.model.LocationType
+import com.monolith.core.model.VfsNode
 import com.monolith.core.ui.components.MonolithDialog
 import com.monolith.core.ui.components.MonolithLoadingSpinner
 import com.monolith.core.ui.theme.LocalMonolithButtonShape
 import com.monolith.core.vfs.GoogleDriveAuthManager
 import com.monolith.core.vfs.GoogleDriveVfsProvider
 import com.monolith.feature.explorer.ExternalVolumeKind
+import com.monolith.feature.explorer.FileRow
 import com.monolith.feature.explorer.rememberExternalStorageVolumes
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -302,7 +306,12 @@ fun LocalPathPickerDialog(
             }
         },
     ) {
-        // 1:1 Storage Chips matching ExplorerScreen: Intern, External Volumes, Signed-in Google Drive Accounts
+        // 1:1 Storage Chips + Breadcrumbs matching ExplorerScreen
+        val isInsideSubfolder = if (activeDriveEmail != null) {
+            driveStack.size > 1
+        } else {
+            localBreadcrumbs.isNotEmpty()
+        }
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -310,135 +319,121 @@ fun LocalPathPickerDialog(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            FilterChip(
-                selected = activeDriveEmail == null && activeRoot == defaultRootDir,
-                shape = LocalMonolithButtonShape.current,
-                onClick = {
-                    activeDriveEmail = null
-                    driveStack = emptyList()
-                    activeRoot = defaultRootDir
-                    currentDir = defaultRootDir
-                },
-                label = { Text("Intern") },
-            )
-            externalVolumes.forEach { vol ->
+            if (isInsideSubfolder) {
+                if (activeDriveEmail != null) {
+                    val accountLabel = activeDriveEmail?.substringBefore('@') ?: "Google Drive"
+                    FilterChip(
+                        selected = false,
+                        shape = LocalMonolithButtonShape.current,
+                        onClick = { driveStack = driveStack.take(1) },
+                        label = { Text(accountLabel, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    )
+                    val subStack = driveStack.drop(1)
+                    subStack.forEachIndexed { idx, (_, label) ->
+                        Icon(
+                            imageVector = Icons.Outlined.ChevronRight,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        FilterChip(
+                            selected = idx == subStack.lastIndex,
+                            shape = LocalMonolithButtonShape.current,
+                            onClick = { driveStack = driveStack.take(idx + 2) },
+                            label = { Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                        )
+                    }
+                } else {
+                    val rootChipLabel = externalVolumes.firstOrNull { it.rootPath == activeRoot }?.name ?: "Intern"
+                    FilterChip(
+                        selected = false,
+                        shape = LocalMonolithButtonShape.current,
+                        onClick = { currentDir = activeRoot },
+                        label = { Text(rootChipLabel, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    )
+                    localBreadcrumbs.forEachIndexed { index, (label, path) ->
+                        Icon(
+                            imageVector = Icons.Outlined.ChevronRight,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        FilterChip(
+                            selected = index == localBreadcrumbs.lastIndex,
+                            shape = LocalMonolithButtonShape.current,
+                            onClick = { currentDir = path },
+                            label = { Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                        )
+                    }
+                }
+            } else {
                 FilterChip(
-                    selected = activeDriveEmail == null && activeRoot == vol.rootPath,
+                    selected = activeDriveEmail == null && activeRoot == defaultRootDir,
                     shape = LocalMonolithButtonShape.current,
                     onClick = {
                         activeDriveEmail = null
                         driveStack = emptyList()
-                        activeRoot = vol.rootPath
-                        currentDir = vol.rootPath
+                        activeRoot = defaultRootDir
+                        currentDir = defaultRootDir
                     },
-                    label = { Text(vol.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    label = { Text("Intern") },
                 )
-            }
-            signedInAccounts.forEach { email ->
-                val accountLabel = email.substringBefore('@')
-                FilterChip(
-                    selected = activeDriveEmail == email,
-                    shape = LocalMonolithButtonShape.current,
-                    onClick = {
-                        GoogleDriveAuthManager.setActiveEmail(context, email)
-                        activeDriveEmail = email
-                        driveStack = listOf("gdrive://root" to accountLabel)
-                    },
-                    label = { Text(accountLabel, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                )
+                externalVolumes.forEach { vol ->
+                    FilterChip(
+                        selected = activeDriveEmail == null && activeRoot == vol.rootPath,
+                        shape = LocalMonolithButtonShape.current,
+                        onClick = {
+                            activeDriveEmail = null
+                            driveStack = emptyList()
+                            activeRoot = vol.rootPath
+                            currentDir = vol.rootPath
+                        },
+                        label = { Text(vol.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    )
+                }
+                signedInAccounts.forEach { email ->
+                    val accountLabel = email.substringBefore('@')
+                    FilterChip(
+                        selected = activeDriveEmail == email,
+                        shape = LocalMonolithButtonShape.current,
+                        onClick = {
+                            GoogleDriveAuthManager.setActiveEmail(context, email)
+                            activeDriveEmail = email
+                            driveStack = listOf("gdrive://root" to accountLabel)
+                        },
+                        label = { Text(accountLabel, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    )
+                }
             }
         }
 
-        // Breadcrumbs + Actions
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        // Actions row (only shown when needed)
+        if ((request.mode == LocalPickerMode.SINGLE_FILE && request.archiveHighlight) ||
+            (request.mode == LocalPickerMode.SINGLE_DIRECTORY && activeDriveEmail == null)
         ) {
-            if (canGoUp) {
-                IconButton(
-                    onClick = {
-                        if (activeDriveEmail != null) {
-                            if (driveStack.size > 1) driveStack = driveStack.dropLast(1)
-                        } else {
-                            File(currentDir).parentFile?.let { currentDir = it.absolutePath }
-                        }
-                    },
-                    modifier = Modifier.size(32.dp),
-                ) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Zurück")
-                }
-            }
             Row(
-                modifier = Modifier
-                    .weight(1f)
-                    .horizontalScroll(rememberScrollState()),
+                modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.End,
             ) {
-                if (activeDriveEmail != null) {
-                    val subStack = driveStack.drop(1)
-                    subStack.forEachIndexed { idx, (_, label) ->
-                        if (idx > 0) {
-                            Icon(
-                                imageVector = Icons.Outlined.ChevronRight,
-                                contentDescription = null,
-                                modifier = Modifier.size(14.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                        TextButton(
-                            onClick = { driveStack = driveStack.take(idx + 2) },
-                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
-                        ) {
-                            Text(
-                                text = label,
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = if (idx == subStack.lastIndex) FontWeight.SemiBold else FontWeight.Normal,
-                                maxLines = 1,
-                            )
-                        }
-                    }
-                } else {
-                    localBreadcrumbs.forEachIndexed { index, (label, path) ->
-                        if (index > 0) {
-                            Icon(
-                                imageVector = Icons.Outlined.ChevronRight,
-                                contentDescription = null,
-                                modifier = Modifier.size(14.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                        TextButton(
-                            onClick = { currentDir = path },
-                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
-                        ) {
-                            Text(
-                                text = label,
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = if (index == localBreadcrumbs.lastIndex) FontWeight.SemiBold else FontWeight.Normal,
-                                maxLines = 1,
-                            )
-                        }
-                    }
+                if (request.mode == LocalPickerMode.SINGLE_FILE && request.archiveHighlight) {
+                    FilterChip(
+                        selected = archivesOnlyFilter,
+                        shape = LocalMonolithButtonShape.current,
+                        onClick = { archivesOnlyFilter = !archivesOnlyFilter },
+                        label = { Text("Nur Archive") },
+                    )
                 }
-            }
-            if (request.mode == LocalPickerMode.SINGLE_FILE && request.archiveHighlight) {
-                FilterChip(
-                    selected = archivesOnlyFilter,
-                    shape = LocalMonolithButtonShape.current,
-                    onClick = { archivesOnlyFilter = !archivesOnlyFilter },
-                    label = { Text("Nur Archive") },
-                )
-            }
-            if (request.mode == LocalPickerMode.SINGLE_DIRECTORY && activeDriveEmail == null) {
-                IconButton(
-                    onClick = {
-                        newFolderName = ""
-                        showCreateFolder = !showCreateFolder
-                    },
-                    modifier = Modifier.size(34.dp),
-                ) {
-                    Icon(Icons.Outlined.CreateNewFolder, contentDescription = "Neuer Ordner")
+                if (request.mode == LocalPickerMode.SINGLE_DIRECTORY && activeDriveEmail == null) {
+                    IconButton(
+                        onClick = {
+                            newFolderName = ""
+                            showCreateFolder = !showCreateFolder
+                        },
+                        modifier = Modifier.size(34.dp),
+                    ) {
+                        Icon(Icons.Outlined.CreateNewFolder, contentDescription = "Neuer Ordner")
+                    }
                 }
             }
         }
@@ -532,90 +527,50 @@ fun LocalPathPickerDialog(
                     ) {
                         items(filteredChildren, key = { it.id }) { item ->
                             val isSelected = item.id in selectedPaths
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .then(
-                                        if (isSelected) {
-                                            Modifier.background(
-                                                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f),
-                                            )
-                                        } else {
-                                            Modifier
-                                        },
-                                    )
-                                    .clickable {
-                                        if (item.isDirectory) {
-                                            if (item.isDrive) {
-                                                driveStack = driveStack + (item.id to item.name)
-                                            } else {
-                                                currentDir = item.id
-                                            }
-                                        } else {
-                                            when (request.mode) {
-                                                LocalPickerMode.SINGLE_DIRECTORY -> Unit
-                                                LocalPickerMode.SINGLE_FILE -> {
-                                                    if (item.isDrive) selectedDriveItems[item.id] = item
-                                                    selectedPaths = setOf(item.id)
-                                                }
-                                                LocalPickerMode.FILES_AND_FOLDERS_MULTI -> {
-                                                    selectedPaths = if (isSelected) {
-                                                        selectedDriveItems.remove(item.id)
-                                                        selectedPaths - item.id
-                                                    } else {
-                                                        if (item.isDrive) selectedDriveItems[item.id] = item
-                                                        selectedPaths + item.id
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                    .padding(horizontal = 12.dp, vertical = 9.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Icon(
-                                    imageVector = when {
-                                        item.isDirectory -> Icons.Outlined.Folder
-                                        item.isArchive -> Icons.Outlined.FolderZip
-                                        else -> Icons.AutoMirrored.Outlined.InsertDriveFile
-                                    },
-                                    contentDescription = null,
-                                    tint = when {
-                                        item.isDirectory || item.isArchive -> MaterialTheme.colorScheme.primary
-                                        else -> MaterialTheme.colorScheme.onSurfaceVariant
-                                    },
-                                    modifier = Modifier.size(22.dp),
+                            val node = remember(item) {
+                                val mime = if (item.isDirectory) "inode/directory" else MimeNormalizer.normalizeMime(item.name)
+                                val category = MimeNormalizer.categorize(
+                                    fileName = item.name,
+                                    isDirectory = item.isDirectory,
+                                    mimeType = mime,
                                 )
-                                Spacer(Modifier.width(10.dp))
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = item.name,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
-                                    if (!item.isDirectory) {
-                                        Text(
-                                            text = formatArchiveBytes(item.sizeBytes),
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        )
-                                    }
-                                }
-                                val showSelectBox = when (request.mode) {
-                                    LocalPickerMode.FILES_AND_FOLDERS_MULTI -> true
-                                    LocalPickerMode.SINGLE_FILE -> !item.isDirectory
-                                    LocalPickerMode.SINGLE_DIRECTORY -> false
-                                }
-                                if (showSelectBox) {
-                                    IconButton(
-                                        onClick = {
-                                            selectedPaths = when (request.mode) {
-                                                LocalPickerMode.SINGLE_FILE -> {
-                                                    if (item.isDrive) selectedDriveItems[item.id] = item
-                                                    setOf(item.id)
-                                                }
-                                                else -> if (isSelected) {
+                                VfsNode(
+                                    id = item.id,
+                                    name = item.name,
+                                    path = item.id,
+                                    parentPath = null,
+                                    locationType = if (item.isDrive) LocationType.GOOGLE_DRIVE else LocationType.LOCAL,
+                                    isDirectory = item.isDirectory,
+                                    sizeBytes = item.sizeBytes,
+                                    lastModifiedMs = 0L,
+                                    mimeType = mime,
+                                    category = category,
+                                )
+                            }
+                            val showSelectBox = when (request.mode) {
+                                LocalPickerMode.FILES_AND_FOLDERS_MULTI -> true
+                                LocalPickerMode.SINGLE_FILE -> !item.isDirectory
+                                LocalPickerMode.SINGLE_DIRECTORY -> false
+                            }
+                            FileRow(
+                                node = node,
+                                isSelected = isSelected,
+                                onClick = {
+                                    if (item.isDirectory) {
+                                        if (item.isDrive) {
+                                            driveStack = driveStack + (item.id to item.name)
+                                        } else {
+                                            currentDir = item.id
+                                        }
+                                    } else {
+                                        when (request.mode) {
+                                            LocalPickerMode.SINGLE_DIRECTORY -> Unit
+                                            LocalPickerMode.SINGLE_FILE -> {
+                                                if (item.isDrive) selectedDriveItems[item.id] = item
+                                                selectedPaths = setOf(item.id)
+                                            }
+                                            LocalPickerMode.FILES_AND_FOLDERS_MULTI -> {
+                                                selectedPaths = if (isSelected) {
                                                     selectedDriveItems.remove(item.id)
                                                     selectedPaths - item.id
                                                 } else {
@@ -623,26 +578,49 @@ fun LocalPathPickerDialog(
                                                     selectedPaths + item.id
                                                 }
                                             }
-                                        },
-                                        modifier = Modifier.size(34.dp),
-                                    ) {
-                                        Icon(
-                                            imageVector = if (isSelected) {
-                                                Icons.Outlined.CheckBox
-                                            } else {
-                                                Icons.Outlined.CheckBoxOutlineBlank
-                                            },
-                                            contentDescription = "Auswählen",
-                                            tint = if (isSelected) {
-                                                MaterialTheme.colorScheme.primary
-                                            } else {
-                                                MaterialTheme.colorScheme.onSurfaceVariant
-                                            },
-                                            modifier = Modifier.size(20.dp),
-                                        )
+                                        }
                                     }
-                                }
-                            }
+                                },
+                                trailingContent = if (showSelectBox) {
+                                    {
+                                        IconButton(
+                                            onClick = {
+                                                selectedPaths = when (request.mode) {
+                                                    LocalPickerMode.SINGLE_FILE -> {
+                                                        if (item.isDrive) selectedDriveItems[item.id] = item
+                                                        setOf(item.id)
+                                                    }
+                                                    else -> if (isSelected) {
+                                                        selectedDriveItems.remove(item.id)
+                                                        selectedPaths - item.id
+                                                    } else {
+                                                        if (item.isDrive) selectedDriveItems[item.id] = item
+                                                        selectedPaths + item.id
+                                                    }
+                                                }
+                                            },
+                                            modifier = Modifier.size(34.dp),
+                                        ) {
+                                            Icon(
+                                                imageVector = if (isSelected) {
+                                                    Icons.Outlined.CheckBox
+                                                } else {
+                                                    Icons.Outlined.CheckBoxOutlineBlank
+                                                },
+                                                contentDescription = "Auswählen",
+                                                tint = if (isSelected) {
+                                                    MaterialTheme.colorScheme.primary
+                                                } else {
+                                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                                },
+                                                modifier = Modifier.size(20.dp),
+                                            )
+                                        }
+                                    }
+                                } else {
+                                    null
+                                },
+                            )
                             HorizontalDivider(
                                 thickness = 0.5.dp,
                                 color = MaterialTheme.colorScheme.outlineVariant,

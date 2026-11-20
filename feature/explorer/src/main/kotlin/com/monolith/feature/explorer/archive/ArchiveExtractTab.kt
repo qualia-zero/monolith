@@ -411,24 +411,24 @@ internal fun ExtractArchiveTab(
                                     onClick = { onEntryClick(entry) },
                                     onLongClick = { onEntryLongClick(entry) },
                                 )
-                                .padding(horizontal = 16.dp, vertical = 10.dp),
+                                .padding(horizontal = 16.dp, vertical = 12.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             if (isSelected) {
                                 Box(
-                                    modifier = Modifier.size(36.dp),
+                                    modifier = Modifier.size(40.dp),
                                     contentAlignment = Alignment.Center,
                                 ) {
                                     Icon(
                                         imageVector = Icons.Filled.CheckCircle,
                                         contentDescription = null,
                                         tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(22.dp),
+                                        modifier = Modifier.size(24.dp),
                                     )
                                 }
                             } else {
                                 Box(
-                                    modifier = Modifier.size(36.dp),
+                                    modifier = Modifier.size(40.dp),
                                     contentAlignment = Alignment.Center,
                                 ) {
                                     Icon(
@@ -443,7 +443,7 @@ internal fun ExtractArchiveTab(
                                     )
                                 }
                             }
-                            Spacer(Modifier.width(12.dp))
+                            Spacer(Modifier.width(16.dp))
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
                                     text = entry.name,

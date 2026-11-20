@@ -1715,11 +1715,12 @@ fun ArchiveToolScreen(
     }
 
     completionDialog?.let { done ->
+        val hasFollowUpAction = done.openArchivePath != null || done.openFolderPath != null
         MonolithDialog(
             onDismissRequest = { completionDialog = null },
             title = done.title,
-            dismissLabel = "Schließen",
-            onDismissClick = { completionDialog = null },
+            dismissLabel = if (hasFollowUpAction) "Schließen" else null,
+            onDismissClick = if (hasFollowUpAction) ({ completionDialog = null }) else null,
             confirmLabel = when {
                 done.openArchivePath != null -> "Archiv öffnen"
                 done.openFolderPath != null -> "Zielordner öffnen"
