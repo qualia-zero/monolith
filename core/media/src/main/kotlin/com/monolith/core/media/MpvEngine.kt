@@ -55,6 +55,15 @@ object MpvEngine : MPVLib.EventObserver, MPVLib.LogObserver {
     private var pendingLoadHeaders: String? = null
 
     @Volatile
+    private var pendingLoadAutoPlay: Boolean = true
+
+    @Volatile
+    private var lastHttpHeaders: Map<String, String> = emptyMap()
+
+    @Volatile
+    private var isIdleActive: Boolean = true
+
+    @Volatile
     private var playlistItems: List<Pair<String, String>> = emptyList()
 
     @Volatile
@@ -128,6 +137,7 @@ object MpvEngine : MPVLib.EventObserver, MPVLib.LogObserver {
             MPVLib.observeProperty("eof-reached", MPVLib.MpvFormat.MPV_FORMAT_FLAG)
             MPVLib.observeProperty("paused-for-cache", MPVLib.MpvFormat.MPV_FORMAT_FLAG)
             MPVLib.observeProperty("demuxer-cache-duration", MPVLib.MpvFormat.MPV_FORMAT_DOUBLE)
+            MPVLib.observeProperty("idle-active", MPVLib.MpvFormat.MPV_FORMAT_FLAG)
 
             initialized = true
             MonolithDiagnostics.logEvent("MPV_INIT")
@@ -142,11 +152,14 @@ object MpvEngine : MPVLib.EventObserver, MPVLib.LogObserver {
         startPosMs: Long = 0L,
         playlist: List<Pair<String, String>> = emptyList(),
         httpHeaders: Map<String, String> = emptyMap(),
+        autoPlay: Boolean = true,
     ) {
         val appCtx = context.applicationContext
         ensureInitialized(appCtx)
         persistCurrentPosition()
         val generation = loadGeneration.incrementAndGet()
+        lastHttpHeaders = httpHeaders
+        isIdleActive = false
 
         if (playlist.isNotEmpty()) {
             playlistItems = playlist
@@ -187,7 +200,7 @@ object MpvEngine : MPVLib.EventObserver, MPVLib.LogObserver {
                 artist = "",
                 album = "",
                 isVideo = isVideo,
-                isPlaying = true,
+                isPlaying = autoPlay,
                 isBuffering = true,
                 isEnded = false,
                 positionMs = startPosMs,
@@ -214,11 +227,11 @@ object MpvEngine : MPVLib.EventObserver, MPVLib.LogObserver {
                     .getOrNull()
                 if (generation != loadGeneration.get()) return@launch
                 val headerFields = buildHttpHeaderFields(httpHeaders, token)
-                executeLoad(target, headerFields, isVideo, _uiState.value.isBackground)
+                executeLoad(target, headerFields, isVideo, _uiState.value.isBackground, autoPlay)
             }
         } else {
             val headerFields = buildHttpHeaderFields(httpHeaders, bearerToken = null)
-            executeLoad(target, headerFields, isVideo, inBackground)
+            executeLoad(target, headerFields, isVideo, inBackground, autoPlay)
         }
 
         val currentGen = loadGeneration
@@ -250,9 +263,42 @@ object MpvEngine : MPVLib.EventObserver, MPVLib.LogObserver {
         MediaPlaybackService.startOrUpdate(appCtx)
     }
 
+    private fun isMpvIdle(): Boolean {
+        return isIdleActive || (MPVLib.getPropertyBoolean("idle-active") == true)
+    }
+
+    private fun isAtEnd(): Boolean {
+        val state = _uiState.value
+        if (state.isEnded) return true
+        if (MPVLib.getPropertyBoolean("eof-reached") == true) return true
+        return state.durationMs > 0L && state.positionMs >= state.durationMs - 200L
+    }
+
+    private fun reloadCurrentMedia(startPosMs: Long, autoPlay: Boolean): Boolean {
+        val ctx = appContext ?: return false
+        val state = _uiState.value
+        if (state.mediaUri.isBlank()) return false
+        loadMedia(
+            context = ctx,
+            uri = state.mediaUri,
+            title = state.title,
+            isVideo = state.isVideo,
+            startPosMs = startPosMs,
+            playlist = playlistItems,
+            httpHeaders = lastHttpHeaders,
+            autoPlay = autoPlay,
+        )
+        return true
+    }
+
     fun play() {
         if (!initialized) return
-        if (_uiState.value.isEnded) {
+        if (pendingLoadTarget == null && isMpvIdle()) {
+            val startMs = if (isAtEnd()) 0L else _uiState.value.positionMs
+            reloadCurrentMedia(startPosMs = startMs, autoPlay = true)
+            return
+        }
+        if (isAtEnd()) {
             seekTo(0L)
         }
         MPVLib.setPropertyBoolean("pause", false)
@@ -266,24 +312,47 @@ object MpvEngine : MPVLib.EventObserver, MPVLib.LogObserver {
 
     fun togglePlayPause() {
         if (!initialized) return
-        val state = _uiState.value
-        if (state.isEnded) {
-            seekTo(0L)
-            play()
+        if (_uiState.value.isPlaying) {
+            pause()
         } else {
-            MPVLib.setPropertyBoolean("pause", state.isPlaying)
+            play()
         }
     }
 
     fun seekTo(ms: Long) {
         if (!initialized) return
-        val sec = ms.coerceAtLeast(0L) / 1000.0
+        val targetMs = ms.coerceAtLeast(0L)
+        val wasPlaying = _uiState.value.isPlaying
+        _uiState.update {
+            it.copy(
+                positionMs = targetMs,
+                cacheDurationSec = 0.0,
+                isEnded = false,
+            )
+        }
+        if (pendingLoadTarget == null && isMpvIdle()) {
+            reloadCurrentMedia(startPosMs = targetMs, autoPlay = wasPlaying)
+            return
+        }
+        val sec = targetMs / 1000.0
         MPVLib.command(arrayOf("seek", String.format(Locale.US, "%.3f", sec), "absolute"))
-        _uiState.update { it.copy(positionMs = ms.coerceAtLeast(0L), isEnded = false) }
     }
 
     fun seekBy(deltaMs: Long) {
         if (!initialized) return
+        val state = _uiState.value
+        val maxDuration = if (state.durationMs > 0L) state.durationMs else Long.MAX_VALUE
+        val targetMs = (state.positionMs + deltaMs).coerceIn(0L, maxDuration)
+        _uiState.update {
+            it.copy(
+                cacheDurationSec = 0.0,
+                isEnded = false,
+            )
+        }
+        if (pendingLoadTarget == null && isMpvIdle()) {
+            reloadCurrentMedia(startPosMs = targetMs, autoPlay = state.isPlaying)
+            return
+        }
         val sec = deltaMs / 1000.0
         MPVLib.command(arrayOf("seek", String.format(Locale.US, "%.3f", sec), "relative+exact"))
     }
@@ -378,11 +447,14 @@ object MpvEngine : MPVLib.EventObserver, MPVLib.LogObserver {
             val pending = pendingLoadTarget
             if (pending != null) {
                 val pendingHeaders = pendingLoadHeaders
+                val autoPlay = pendingLoadAutoPlay
                 pendingLoadTarget = null
                 pendingLoadHeaders = null
+                pendingLoadAutoPlay = true
+                isIdleActive = false
                 MPVLib.setOptionString("http-header-fields", pendingHeaders ?: "")
                 MPVLib.command(arrayOf("loadfile", pending, "replace"))
-                MPVLib.setPropertyBoolean("pause", false)
+                MPVLib.setPropertyBoolean("pause", !autoPlay)
             }
         }
     }
@@ -392,10 +464,25 @@ object MpvEngine : MPVLib.EventObserver, MPVLib.LogObserver {
         MPVLib.setPropertyString("android-surface-size", "${w}x${h}")
     }
 
+    private fun pauseIfVideoOnlyBeforeDetachingVideo() {
+        val state = _uiState.value
+        if (!state.isVideo || !state.isPlaying) return
+        val hasAudioTrack = if (state.tracks.isNotEmpty()) {
+            state.tracks.any { it.type == MediaTrackType.AUDIO }
+        } else {
+            val aid = MPVLib.getPropertyString("aid")
+            aid != null && aid != "no"
+        }
+        if (!hasAudioTrack) {
+            MPVLib.setPropertyBoolean("pause", true)
+        }
+    }
+
     fun onSurfaceDestroyed() {
         currentSurface = null
         if (!initialized) return
         if (_uiState.value.isVideo) {
+            pauseIfVideoOnlyBeforeDetachingVideo()
             MPVLib.setPropertyString("vid", "no")
         }
         MPVLib.setPropertyString("force-window", "no")
@@ -406,6 +493,7 @@ object MpvEngine : MPVLib.EventObserver, MPVLib.LogObserver {
         _uiState.update { it.copy(isBackground = inBackground) }
         if (!initialized) return
         if (inBackground) {
+            pauseIfVideoOnlyBeforeDetachingVideo()
             MPVLib.setPropertyString("vid", "no")
             MPVLib.setPropertyString("force-window", "no")
             MPVLib.detachSurface()
@@ -425,11 +513,14 @@ object MpvEngine : MPVLib.EventObserver, MPVLib.LogObserver {
         loadGeneration.incrementAndGet()
         pendingLoadTarget = null
         pendingLoadHeaders = null
+        pendingLoadAutoPlay = true
+        lastHttpHeaders = emptyMap()
         persistCurrentPosition()
         if (initialized) {
             MPVLib.setOptionString("http-header-fields", "")
             MPVLib.command(arrayOf("stop"))
         }
+        isIdleActive = true
         playlistItems = emptyList()
         currentIndex = -1
         _uiState.value = PlaybackUiState()
@@ -454,16 +545,20 @@ object MpvEngine : MPVLib.EventObserver, MPVLib.LogObserver {
         headerFields: String,
         isVideo: Boolean,
         inBackground: Boolean,
+        autoPlay: Boolean = true,
     ) {
         MPVLib.setOptionString("http-header-fields", headerFields)
         if (isVideo && currentSurface == null && !inBackground) {
             pendingLoadTarget = target
             pendingLoadHeaders = headerFields
+            pendingLoadAutoPlay = autoPlay
         } else {
             pendingLoadTarget = null
             pendingLoadHeaders = null
+            pendingLoadAutoPlay = true
+            isIdleActive = false
             MPVLib.command(arrayOf("loadfile", target, "replace"))
-            MPVLib.setPropertyBoolean("pause", false)
+            MPVLib.setPropertyBoolean("pause", !autoPlay)
         }
     }
 
@@ -508,6 +603,12 @@ object MpvEngine : MPVLib.EventObserver, MPVLib.LogObserver {
                 }
             }
             "paused-for-cache" -> _uiState.update { it.copy(isBuffering = value) }
+            "idle-active" -> {
+                isIdleActive = value
+                if (value && _uiState.value.mediaUri.isNotBlank() && pendingLoadTarget == null) {
+                    _uiState.update { it.copy(isPlaying = false, isBuffering = false, isEnded = true) }
+                }
+            }
         }
     }
 
@@ -538,7 +639,11 @@ object MpvEngine : MPVLib.EventObserver, MPVLib.LogObserver {
 
     override fun event(eventId: Int) {
         when (eventId) {
+            MPVLib.MpvEvent.MPV_EVENT_START_FILE -> {
+                isIdleActive = false
+            }
             MPVLib.MpvEvent.MPV_EVENT_FILE_LOADED -> {
+                isIdleActive = false
                 if (_uiState.value.mediaUri.isBlank()) return
                 refreshTracks()
                 readMpvMetadataFallback()
@@ -547,8 +652,12 @@ object MpvEngine : MPVLib.EventObserver, MPVLib.LogObserver {
                     appContext?.let { MediaPlaybackService.startOrUpdate(it) }
                 }
             }
+            MPVLib.MpvEvent.MPV_EVENT_SEEK -> {
+                _uiState.update { it.copy(cacheDurationSec = 0.0, isEnded = false) }
+            }
             MPVLib.MpvEvent.MPV_EVENT_PLAYBACK_RESTART -> {
-                _uiState.update { it.copy(isBuffering = false, isEnded = false) }
+                val cached = (MPVLib.getPropertyDouble("demuxer-cache-duration") ?: 0.0).coerceAtLeast(0.0)
+                _uiState.update { it.copy(isBuffering = false, isEnded = false, cacheDurationSec = cached) }
             }
             MPVLib.MpvEvent.MPV_EVENT_END_FILE -> {
                 persistCurrentPosition()

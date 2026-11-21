@@ -531,7 +531,7 @@ private fun SeekBarRow(
         0f
     }
 
-    val bufferedFraction = if (showBufferIndicator && safeDuration > 0L && cacheDurationSec > 0.0) {
+    val bufferedFraction = if (!isDragging && showBufferIndicator && safeDuration > 0L && cacheDurationSec > 0.0) {
         ((positionMs + (cacheDurationSec * 1000.0)).toFloat() / safeDuration.toFloat()).coerceIn(0f, 1f)
     } else {
         0f

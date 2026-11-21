@@ -199,20 +199,20 @@ class PlayerActivity : ComponentActivity() {
 
     override fun onStop() {
         super.onStop()
-        if (!isInPictureInPictureMode) {
-            MpvEngine.onBackgroundChanged(true)
-        }
         val state = MpvEngine.uiState.value
         val settings = PlayerSettingsStore.settings.value
         if (!isFinishing && !isChangingConfigurations) {
             if (!settings.useBackgroundPlay) {
                 if (state.isPlaying) {
-                    MpvEngine.togglePlayPause()
+                    MpvEngine.pause()
                 }
             } else if (state.isPlaying) {
                 MediaPlaybackService.startOrUpdate(this)
                 saveCurrentHistory()
             }
+        }
+        if (!isInPictureInPictureMode) {
+            MpvEngine.onBackgroundChanged(true)
         }
     }
 
