@@ -787,14 +787,6 @@ class MediaDownloadService : Service() {
             }
         }
 
-        fun removeTask(taskId: Long) {
-            val existing = _tasks.value.firstOrNull { it.id == taskId } ?: return
-            if (existing.status.isActive) {
-                performCancel(taskId)
-            }
-            _tasks.update { list -> list.filterNot { it.id == taskId } }
-        }
-
         fun clearFinished() {
             _tasks.update { list -> list.filter { it.status.isActive } }
         }
