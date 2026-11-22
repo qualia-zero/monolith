@@ -41,6 +41,7 @@ import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.ContentPaste
 import androidx.compose.material.icons.outlined.CreateNewFolder
+import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.FolderOpen
@@ -410,29 +411,13 @@ fun DownloaderScreen(
                 }
 
                 item(key = "queue_header") {
-                    val hasFinished = tasks.any { it.status.isFinished }
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                    ) {
-                        Text(
-                            text = "Warteschlange & Verlauf",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.primary,
-                        )
-                        if (hasFinished) {
-                            TextButton(
-                                onClick = { MediaDownloadService.clearFinished() },
-                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                            ) {
-                                Text("Erledigte entfernen")
-                            }
-                        }
-                    }
+                    Text(
+                        text = "Warteschlange & Verlauf",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
                 }
 
                 if (tasks.isEmpty()) {
@@ -494,6 +479,7 @@ fun DownloaderScreen(
                                     settings = settings,
                                 )
                             },
+                            onRemove = { MediaDownloadService.removeTask(task.id) },
                         )
                     }
                 }
@@ -689,6 +675,7 @@ private fun DownloadTaskCard(
     onOpenFile: (String) -> Unit,
     onOpenFolder: (String) -> Unit,
     onRetry: () -> Unit,
+    onRemove: () -> Unit,
 ) {
     var showLogs by remember(task.id) { mutableStateOf(false) }
 
@@ -913,6 +900,17 @@ private fun DownloadTaskCard(
                             Spacer(Modifier.width(4.dp))
                             Text("Ordner öffnen", maxLines = 1, softWrap = false)
                         }
+                        Spacer(Modifier.weight(1f))
+                        IconButton(
+                            onClick = onRemove,
+                            modifier = Modifier.size(34.dp),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.DeleteOutline,
+                                contentDescription = "Eintrag entfernen",
+                                modifier = Modifier.size(18.dp),
+                            )
+                        }
                     }
                     else -> {
                         OutlinedButton(
@@ -936,6 +934,17 @@ private fun DownloadTaskCard(
                             ) {
                                 Text(if (showLogs) "Protokoll ausblenden" else "Protokoll", maxLines = 1, softWrap = false)
                             }
+                        }
+                        Spacer(Modifier.weight(1f))
+                        IconButton(
+                            onClick = onRemove,
+                            modifier = Modifier.size(34.dp),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.DeleteOutline,
+                                contentDescription = "Eintrag entfernen",
+                                modifier = Modifier.size(18.dp),
+                            )
                         }
                     }
                 }
