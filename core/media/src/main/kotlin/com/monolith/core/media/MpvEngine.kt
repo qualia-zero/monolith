@@ -99,6 +99,7 @@ object MpvEngine : MPVLib.EventObserver, MPVLib.LogObserver {
                 MPVLib.setOptionString("tls-verify", "yes")
             }
 
+            MPVLib.setOptionString("profile", "fast")
             MPVLib.setOptionString("vo", "gpu")
             MPVLib.setOptionString("gpu-context", "android")
             MPVLib.setOptionString("opengl-es", "yes")
@@ -107,6 +108,8 @@ object MpvEngine : MPVLib.EventObserver, MPVLib.LogObserver {
                 "hwdec",
                 if (settings.useHwDecoding) "mediacodec,mediacodec-copy" else "no",
             )
+            MPVLib.setOptionString("hwdec-codecs", "all")
+            MPVLib.setOptionString("vd-lavc-threads", "0")
             MPVLib.setOptionString("save-position-on-quit", "no")
             MPVLib.setOptionString("keep-open", "yes")
             MPVLib.setOptionString("force-window", "yes")
@@ -121,7 +124,6 @@ object MpvEngine : MPVLib.EventObserver, MPVLib.LogObserver {
             MPVLib.setOptionString("hr-seek-framedrop", "yes")
             MPVLib.setOptionString("framedrop", "vo")
             MPVLib.setOptionString("video-sync", "audio")
-            MPVLib.setOptionString("audio-stream-silence", "yes")
             MPVLib.setOptionString("network-timeout", "30")
             MPVLib.setOptionString(
                 "demuxer-lavf-o",
