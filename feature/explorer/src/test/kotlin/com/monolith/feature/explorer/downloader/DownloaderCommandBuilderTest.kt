@@ -39,22 +39,22 @@ class DownloaderCommandBuilderTest {
     }
 
     @Test
-    fun `resolveVideoFormatExpression matches bash_aliases for webm mp4 and fallback`() {
+    fun `resolveVideoFormatExpression enforces pure containers with clean fallbacks`() {
         val defaults = DownloaderSettings()
         assertEquals(
-            "bv[ext=webm][vcodec~='^vp0?9']+ba[ext=webm]",
+            "bv[ext=webm][vcodec~='^vp0?9']+ba[ext=webm]/bv[ext=mp4][vcodec~='^(avc|h264)']+ba[ext=m4a]/bv*+ba/b",
             DownloaderCommandBuilder.resolveVideoFormatExpression(defaults, "webm"),
         )
         assertEquals(
-            "bv[ext=mp4][vcodec~='^(avc|h264)']+ba[ext=m4a]",
+            "bv[ext=mp4][vcodec~='^(avc|h264)']+ba[ext=m4a]/bv[ext=webm][vcodec~='^vp0?9']+ba[ext=webm]/bv*+ba/b",
             DownloaderCommandBuilder.resolveVideoFormatExpression(defaults, "mp4"),
         )
         assertEquals(
-            "bv*+ba/b",
+            "bv[ext=webm][vcodec~='^vp0?9']+ba[ext=webm]/bv[ext=mp4][vcodec~='^(avc|h264)']+ba[ext=m4a]/bv*+ba/b",
             DownloaderCommandBuilder.resolveVideoFormatExpression(defaults, null),
         )
         assertEquals(
-            "bv*+ba/b",
+            "bv[ext=webm][vcodec~='^vp0?9']+ba[ext=webm]/bv[ext=mp4][vcodec~='^(avc|h264)']+ba[ext=m4a]/bv*+ba/b",
             DownloaderCommandBuilder.resolveVideoFormatExpression(defaults, "mkv"),
         )
     }
@@ -75,7 +75,7 @@ class DownloaderCommandBuilderTest {
                 "--sponsorblock-remove" to "sponsor,selfpromo",
                 "--min-sleep-interval" to "3",
                 "--max-sleep-interval" to "12",
-                "-f" to "bv[ext=webm][vcodec~='^vp0?9']+ba[ext=webm]",
+                "-f" to "bv[ext=webm][vcodec~='^vp0?9']+ba[ext=webm]/bv[ext=mp4][vcodec~='^(avc|h264)']+ba[ext=m4a]/bv*+ba/b",
                 "--embed-metadata" to null,
                 "--embed-chapters" to null,
                 "--no-playlist" to null,
@@ -123,11 +123,11 @@ class DownloaderCommandBuilderTest {
         )
 
         assertEquals(
-            "bv[height<=1080][ext=mp4][vcodec~='^(avc|h264)']+ba[ext=m4a]/bv*[height<=1080]+ba/b[height<=1080]/b",
+            "bv[height<=1080][ext=mp4][vcodec~='^(avc|h264)']+ba[ext=m4a]/bv[height<=1080][ext=webm][vcodec~='^vp0?9']+ba[ext=webm]/bv*[height<=1080]+ba/b[height<=1080]/b",
             DownloaderCommandBuilder.resolveVideoFormatExpression(settings1080, "mp4"),
         )
         assertEquals(
-            "bv[height<=1080][ext=webm][vcodec~='^vp0?9']+ba[ext=webm]/bv*[height<=1080]+ba/b[height<=1080]/b",
+            "bv[height<=1080][ext=webm][vcodec~='^vp0?9']+ba[ext=webm]/bv[height<=1080][ext=mp4][vcodec~='^(avc|h264)']+ba[ext=m4a]/bv*[height<=1080]+ba/b[height<=1080]/b",
             DownloaderCommandBuilder.resolveVideoFormatExpression(settings1080, "webm"),
         )
         assertEquals(
@@ -365,5 +365,42 @@ class DownloaderCommandBuilderTest {
             DownloaderCommandBuilder.parseStatusDetailFromLine("[download] Sleeping 5.42 seconds as required by the site..."),
         )
         assertNull(DownloaderCommandBuilder.parseStatusDetailFromLine("[download]  55.0% of 12.00MiB"))
+    }
+
+    @Test
+    fun `parseDownloadMetricsFromLine detectStreamLabel and isSleepLine work cleanly`() {
+        assertEquals(
+            "2.10MiB/s · 15.23MiB",
+            DownloaderCommandBuilder.parseDownloadMetricsFromLine(
+                "[download]  42.3% of   15.23MiB at    2.10MiB/s ETA 00:04",
+            ),
+        )
+        assertEquals(
+            "15.23MiB",
+            DownloaderCommandBuilder.parseDownloadMetricsFromLine(
+                "[download]  10.0% of ~15.23MiB at Unknown B/s ETA Unknown",
+            ),
+        )
+        assertNull(DownloaderCommandBuilder.parseDownloadMetricsFromLine("[Merger] Merging formats"))
+
+        assertEquals(
+            "Video-Stream",
+            DownloaderCommandBuilder.detectStreamLabel("/dl/Clip.f248.webm", DownloadMode.VIDEO, 1),
+        )
+        assertEquals(
+            "Audio-Stream",
+            DownloaderCommandBuilder.detectStreamLabel("/dl/Clip.f251.webm", DownloadMode.VIDEO, 2),
+        )
+        assertEquals(
+            "Audio-Stream",
+            DownloaderCommandBuilder.detectStreamLabel("/dl/Clip.f140.m4a", DownloadMode.VIDEO, 1),
+        )
+        assertEquals(
+            "Audio-Stream",
+            DownloaderCommandBuilder.detectStreamLabel("/dl/Track.m4a", DownloadMode.AUDIO, 1),
+        )
+
+        assertTrue(DownloaderCommandBuilder.isSleepLine("[download] Sleeping 4.21 seconds ..."))
+        assertFalse(DownloaderCommandBuilder.isSleepLine("[download] 42.0% of 10MiB"))
     }
 }

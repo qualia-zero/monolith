@@ -14,6 +14,10 @@ object DownloaderCommandBuilder {
     private val DOWNLOAD_DEST_REGEX = Regex("""^\[download]\s+Destination:\s+(.+?)\s*$""")
     private val ALREADY_DOWNLOADED_REGEX = Regex("""^\[download]\s+(.+?)\s+has already been downloaded\s*$""")
     private val SLEEP_SECONDS_REGEX = Regex("""Sleeping\s+([0-9]+(?:\.[0-9]+)?)\s+seconds""", RegexOption.IGNORE_CASE)
+    private val DOWNLOAD_METRICS_REGEX = Regex(
+        """^\[download]\s+\d+(?:\.\d+)?%\s+of\s+~?\s*([0-9.]+\s*[KMGTP]?i?B)(?:\s+at\s+([0-9.]+\s*[KMGTP]?i?B/s|Unknown\s+B/s))?""",
+        RegexOption.IGNORE_CASE,
+    )
     private val FORMAT_ID_SUFFIX_REGEX = Regex("""\.f\d+$""")
     private val FILE_EXTENSION_SUFFIX_REGEX = Regex("""\.[a-zA-Z0-9]{2,5}$""")
 
@@ -63,18 +67,20 @@ object DownloaderCommandBuilder {
 
         return when (settings.videoFormatPreset) {
             VideoFormatPreset.AUTO_VP9_H264 -> {
-                if (h == null) {
-                    when (ext) {
-                        "webm" -> "bv[ext=webm][vcodec~='^vp0?9']+ba[ext=webm]"
-                        "mp4" -> "bv[ext=mp4][vcodec~='^(avc|h264)']+ba[ext=m4a]"
-                        else -> "bv*+ba/b"
-                    }
+                val webmExpr = if (h == null) {
+                    "bv[ext=webm][vcodec~='^vp0?9']+ba[ext=webm]"
                 } else {
-                    when (ext) {
-                        "webm" -> "bv[height<=$h][ext=webm][vcodec~='^vp0?9']+ba[ext=webm]/$bestFallback"
-                        "mp4" -> "bv[height<=$h][ext=mp4][vcodec~='^(avc|h264)']+ba[ext=m4a]/$bestFallback"
-                        else -> bestFallback
-                    }
+                    "bv[height<=$h][ext=webm][vcodec~='^vp0?9']+ba[ext=webm]"
+                }
+                val mp4Expr = if (h == null) {
+                    "bv[ext=mp4][vcodec~='^(avc|h264)']+ba[ext=m4a]"
+                } else {
+                    "bv[height<=$h][ext=mp4][vcodec~='^(avc|h264)']+ba[ext=m4a]"
+                }
+                when (ext) {
+                    "webm" -> "$webmExpr/$mp4Expr/$bestFallback"
+                    "mp4" -> "$mp4Expr/$webmExpr/$bestFallback"
+                    else -> "$webmExpr/$mp4Expr/$bestFallback"
                 }
             }
             VideoFormatPreset.MP4_H264 -> {
@@ -329,6 +335,35 @@ object DownloaderCommandBuilder {
             }
             else -> null
         }
+    }
+
+    fun isSleepLine(line: String): Boolean {
+        return line.trim().contains("[download] Sleeping", ignoreCase = true)
+    }
+
+    fun parseDownloadMetricsFromLine(line: String): String? {
+        val match = DOWNLOAD_METRICS_REGEX.find(line.trim()) ?: return null
+        val size = match.groupValues[1].trim()
+        val speed = match.groupValues.getOrNull(2)?.trim().orEmpty()
+        val cleanSpeed = if (speed.isEmpty() || speed.startsWith("Unknown", ignoreCase = true)) {
+            null
+        } else {
+            speed
+        }
+        return listOfNotNull(cleanSpeed, size).joinToString(" · ").ifEmpty { null }
+    }
+
+    fun detectStreamLabel(
+        destinationPath: String,
+        mode: DownloadMode,
+        streamIndex: Int,
+    ): String {
+        if (mode == DownloadMode.AUDIO) return "Audio-Stream"
+        val lower = destinationPath.lowercase()
+        if (lower.endsWith(".m4a") || lower.endsWith(".opus") || lower.endsWith(".mp3") || lower.endsWith(".flac")) {
+            return "Audio-Stream"
+        }
+        return if (streamIndex >= 2) "Audio-Stream" else "Video-Stream"
     }
 
     fun isPostProcessingLine(line: String): Boolean {

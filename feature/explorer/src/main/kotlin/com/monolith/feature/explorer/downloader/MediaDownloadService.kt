@@ -51,6 +51,8 @@ class MediaDownloadService : Service() {
     private val executionSemaphore = Semaphore(1)
     private val activeProgressNotifications = ConcurrentHashMap<Long, Notification>()
     private val lastNotificationUpdateMs = ConcurrentHashMap<Long, Long>()
+    private val taskStreamCounters = ConcurrentHashMap<Long, Int>()
+    private val taskStreamLabels = ConcurrentHashMap<Long, String>()
 
     @Volatile
     private var foregroundAnchorTaskId: Long? = null
@@ -406,10 +408,24 @@ class MediaDownloadService : Service() {
         line: String,
     ) {
         val cleanLine = line.trim()
+        val isDestinationLine = cleanLine.startsWith("[download] Destination:", ignoreCase = true)
         val detectedPath = DownloaderCommandBuilder.parseOutputFilePathFromLine(cleanLine)
         val detectedTitle = DownloaderCommandBuilder.parseTitleFromPathOrLine(detectedPath ?: cleanLine)
         val detectedDetail = DownloaderCommandBuilder.parseStatusDetailFromLine(cleanLine)
         val isPostProcessing = DownloaderCommandBuilder.isPostProcessingLine(cleanLine)
+        val isSleep = DownloaderCommandBuilder.isSleepLine(cleanLine)
+        val downloadMetrics = DownloaderCommandBuilder.parseDownloadMetricsFromLine(cleanLine)
+
+        if (isDestinationLine && detectedPath != null) {
+            val nextIdx = (taskStreamCounters[req.taskId] ?: 0) + 1
+            taskStreamCounters[req.taskId] = nextIdx
+            taskStreamLabels[req.taskId] = DownloaderCommandBuilder.detectStreamLabel(
+                destinationPath = detectedPath,
+                mode = req.mode,
+                streamIndex = nextIdx,
+            )
+        }
+        val activeStreamLabel = taskStreamLabels[req.taskId]
 
         updateTask(req.taskId) { current ->
             if (!current.status.isActive) return@updateTask current
@@ -419,12 +435,14 @@ class MediaDownloadService : Service() {
                 DownloadTaskStatus.DOWNLOADING
             }
             val nextProgress = when {
-                isPostProcessing -> current.progressPercent
+                isPostProcessing || isSleep -> -1f
+                isDestinationLine -> 0f
                 progress >= 0f -> progress.coerceIn(0f, 100f)
                 else -> current.progressPercent
             }
             val nextEta = when {
-                isPostProcessing -> -1L
+                isPostProcessing || isSleep -> -1L
+                isDestinationLine -> -1L
                 etaSeconds >= 0L -> etaSeconds
                 else -> current.etaSeconds
             }
@@ -433,11 +451,13 @@ class MediaDownloadService : Service() {
             } else {
                 current.logs
             }
-            val nextDetail = detectedDetail ?: when {
-                nextStatus == DownloadTaskStatus.DOWNLOADING && nextProgress >= 0f -> {
-                    val etaSuffix = if (nextEta > 0L) " · Restzeit ${formatEta(nextEta)}" else ""
-                    "${nextProgress.toInt()}%$etaSuffix"
-                }
+            val nextDetail = when {
+                detectedDetail != null -> detectedDetail
+                isPostProcessing -> current.statusDetail ?: "Verarbeitung läuft…"
+                isDestinationLine && activeStreamLabel != null -> "$activeStreamLabel wird geladen…"
+                downloadMetrics != null -> listOfNotNull(activeStreamLabel, downloadMetrics).joinToString(" · ")
+                nextStatus == DownloadTaskStatus.DOWNLOADING && activeStreamLabel != null ->
+                    current.statusDetail?.takeIf { it.isNotBlank() } ?: "$activeStreamLabel wird geladen…"
                 else -> current.statusDetail
             }
             current.copy(
@@ -455,9 +475,18 @@ class MediaDownloadService : Service() {
         val notifTitle = currentTask.title ?: "${req.mode.label} wird heruntergeladen…"
         val queuedCount = (_tasks.value.count { it.status == DownloadTaskStatus.QUEUED })
         val subText = if (queuedCount > 0) "+$queuedCount in Warteschlange" else null
-        val notifText = currentTask.statusDetail ?: currentTask.status.label
         val indeterminate = currentTask.status != DownloadTaskStatus.DOWNLOADING || currentTask.progressPercent < 0f
         val progressInt = if (indeterminate) 0 else (currentTask.progressPercent * 10f).toInt().coerceIn(0, PROGRESS_NOTIFICATION_MAX)
+        val notifPct = if (!indeterminate) {
+            val etaPart = if (currentTask.etaSeconds > 0L) " · ${formatEta(currentTask.etaSeconds)}" else ""
+            "${currentTask.progressPercent.toInt()}%$etaPart"
+        } else {
+            null
+        }
+        val notifText = listOfNotNull(
+            currentTask.statusDetail?.takeIf { it.isNotBlank() },
+            notifPct,
+        ).joinToString(" · ").ifEmpty { currentTask.status.label }
 
         postProgressNotification(
             req = req,
@@ -466,7 +495,7 @@ class MediaDownloadService : Service() {
             subText = subText,
             progress = progressInt,
             indeterminate = indeterminate,
-            force = detectedDetail != null || isPostProcessing,
+            force = detectedDetail != null || isPostProcessing || isDestinationLine || isSleep,
         )
     }
 
@@ -513,6 +542,8 @@ class MediaDownloadService : Service() {
         cancelledTaskIds.remove(taskId)
         lastNotificationUpdateMs.remove(taskId)
         activeProgressNotifications.remove(taskId)
+        taskStreamCounters.remove(taskId)
+        taskStreamLabels.remove(taskId)
 
         val nextEntry = activeProgressNotifications.entries.firstOrNull()
         if (nextEntry != null) {
