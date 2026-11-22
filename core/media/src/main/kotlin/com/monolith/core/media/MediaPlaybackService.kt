@@ -76,6 +76,12 @@ class MediaPlaybackService : Service() {
     private var albumArt480p: Bitmap? = null
     private var artJob: Job? = null
     private var stateJob: Job? = null
+    private var lastSessionPbState: Int = -1
+    private var lastSessionSpeed: Float = -1f
+    private var lastSessionPosMs: Long = -1L
+    private var lastSessionUpdateWallMs: Long = 0L
+    private var lastMetadataKey: String = ""
+    private var lastNotifKey: String = ""
 
     private val noisyReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -240,7 +246,9 @@ class MediaPlaybackService : Service() {
             releaseLocks()
             lastLoadedArtUri = ""
             albumArt480p = null
-            updateMediaSession(state)
+            lastMetadataKey = ""
+            lastNotifKey = ""
+            updateMediaSession(state, force = true)
             ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
             notificationManager.cancel(NOTIF_ID)
             stopSelf()
@@ -259,8 +267,12 @@ class MediaPlaybackService : Service() {
             loadArtworkAndTags(state.mediaUri, state.isVideo)
         }
 
-        updateMediaSession(state)
-        notificationManager.notify(NOTIF_ID, buildNotification(state))
+        updateMediaSession(state, force = false)
+        val notifKey = "${state.mediaUri}|${state.title}|${state.artist}|${state.album}|${state.isVideo}|${state.isPlaying}|${state.isBuffering}|${state.isEnded}"
+        if (notifKey != lastNotifKey) {
+            lastNotifKey = notifKey
+            notificationManager.notify(NOTIF_ID, buildNotification(state))
+        }
     }
 
     private fun loadArtworkAndTags(uri: String, isVideo: Boolean) {
@@ -282,13 +294,13 @@ class MediaPlaybackService : Service() {
                 } else {
                     current
                 }
-                updateMediaSession(enriched)
+                updateMediaSession(enriched, force = true)
                 notificationManager.notify(NOTIF_ID, buildNotification(enriched))
             }
         }
     }
 
-    private fun updateMediaSession(state: PlaybackUiState) {
+    private fun updateMediaSession(state: PlaybackUiState, force: Boolean = false) {
         val pbState = when {
             state.isBuffering -> PlaybackStateCompat.STATE_BUFFERING
             state.isPlaying -> PlaybackStateCompat.STATE_PLAYING
@@ -305,25 +317,43 @@ class MediaPlaybackService : Service() {
             PlaybackStateCompat.ACTION_SKIP_TO_NEXT or
             PlaybackStateCompat.ACTION_STOP
 
-        mediaSession.setPlaybackState(
-            PlaybackStateCompat.Builder()
-                .setActions(actions)
-                .setState(pbState, state.positionMs, state.speed)
-                .build(),
-        )
+        val now = System.currentTimeMillis()
+        val posDelta = kotlin.math.abs(state.positionMs - lastSessionPosMs)
+        val shouldUpdateState = force ||
+            pbState != lastSessionPbState ||
+            state.speed != lastSessionSpeed ||
+            posDelta >= 1_500L ||
+            (now - lastSessionUpdateWallMs >= 1_000L && state.positionMs != lastSessionPosMs)
 
-        val metadataBuilder = MediaMetadataCompat.Builder()
-            .putString(MediaMetadataCompat.METADATA_KEY_TITLE, state.title.ifBlank { "Wiedergabe" })
-            .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, state.artist)
-            .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, state.album)
-            .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, state.durationMs)
-
-        albumArt480p?.let {
-            metadataBuilder.putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, it)
-            metadataBuilder.putBitmap(MediaMetadataCompat.METADATA_KEY_DISPLAY_ICON, it)
+        if (shouldUpdateState) {
+            lastSessionPbState = pbState
+            lastSessionSpeed = state.speed
+            lastSessionPosMs = state.positionMs
+            lastSessionUpdateWallMs = now
+            mediaSession.setPlaybackState(
+                PlaybackStateCompat.Builder()
+                    .setActions(actions)
+                    .setState(pbState, state.positionMs, state.speed)
+                    .build(),
+            )
         }
 
-        mediaSession.setMetadata(metadataBuilder.build())
+        val metadataKey = "${state.mediaUri}|${state.title}|${state.artist}|${state.album}|${state.durationMs}|${albumArt480p != null}"
+        if (force || metadataKey != lastMetadataKey) {
+            lastMetadataKey = metadataKey
+            val metadataBuilder = MediaMetadataCompat.Builder()
+                .putString(MediaMetadataCompat.METADATA_KEY_TITLE, state.title.ifBlank { "Wiedergabe" })
+                .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, state.artist)
+                .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, state.album)
+                .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, state.durationMs)
+
+            albumArt480p?.let {
+                metadataBuilder.putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, it)
+                metadataBuilder.putBitmap(MediaMetadataCompat.METADATA_KEY_DISPLAY_ICON, it)
+            }
+
+            mediaSession.setMetadata(metadataBuilder.build())
+        }
     }
 
     private fun buildNotification(state: PlaybackUiState): Notification {
