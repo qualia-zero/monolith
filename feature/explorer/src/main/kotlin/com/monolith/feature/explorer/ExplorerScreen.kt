@@ -47,6 +47,7 @@ import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.ContentCut
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.outlined.Dns
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Explore
@@ -139,6 +140,10 @@ import com.monolith.feature.explorer.archive.ArchiveToolMode
 import com.monolith.core.vfs.GoogleDriveAuthManager
 import com.monolith.core.vfs.GoogleDriveVfsProvider
 import com.monolith.core.vfs.LocalVfsProvider
+import com.monolith.core.vfs.SmbAuthRequiredException
+import com.monolith.core.vfs.SmbConnectionStore
+import com.monolith.core.vfs.SmbServerConfig
+import com.monolith.core.vfs.SmbVfsProvider
 import com.monolith.core.vfs.VfsProvider
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -154,6 +159,8 @@ class ExplorerNavigationState(rootPath: String) {
     var activeLocalRootPath by mutableStateOf(rootPath)
     var localPath by mutableStateOf(rootPath)
     var driveStack by mutableStateOf(listOf("gdrive://root" to "Google Drive"))
+    var activeSmbServerId by mutableStateOf<String?>(null)
+    var smbStack by mutableStateOf<List<Pair<String, String>>>(emptyList())
 }
 
 @Composable
@@ -187,6 +194,7 @@ fun ExplorerScreen(
     val view = LocalView.current
     val localProvider = remember { LocalVfsProvider() }
     val driveProvider = remember(context) { GoogleDriveVfsProvider(context.applicationContext) }
+    val smbProvider = remember(context) { SmbVfsProvider(context.applicationContext) }
     val rootPath = remember { Environment.getExternalStorageDirectory().absolutePath }
     val externalVolumes = rememberExternalStorageVolumes(context)
 
@@ -194,7 +202,19 @@ fun ExplorerScreen(
     var activeLocalRootPath by navState::activeLocalRootPath
     var localPath by navState::localPath
     var driveStack by navState::driveStack
+    var activeSmbServerId by navState::activeSmbServerId
+    var smbStack by navState::smbStack
     val activeExternalVolume = externalVolumes.firstOrNull { it.rootPath == activeLocalRootPath }
+
+    var smbServers by remember { mutableStateOf(SmbConnectionStore.getServers(context)) }
+    var smbAuthErrorServerId by remember { mutableStateOf<String?>(null) }
+    var showAddStorageDialog by remember { mutableStateOf(false) }
+    var showSmbConnectionDialog by remember { mutableStateOf(false) }
+    var editingSmbConfig by remember { mutableStateOf<SmbServerConfig?>(null) }
+
+    val activeSmbServer = remember(smbServers, activeSmbServerId) {
+        smbServers.firstOrNull { it.id == activeSmbServerId }
+    }
 
     LaunchedEffect(externalVolumes, activeLocalRootPath) {
         if (activeLocalRootPath != rootPath && externalVolumes.none { it.rootPath == activeLocalRootPath }) {
@@ -202,15 +222,15 @@ fun ExplorerScreen(
             localPath = rootPath
         }
     }
-    val currentPath = if (activeLocation == LocationType.GOOGLE_DRIVE) {
-        driveStack.last().first
-    } else {
-        localPath
+    val currentPath = when (activeLocation) {
+        LocationType.GOOGLE_DRIVE -> driveStack.last().first
+        LocationType.SMB -> smbStack.lastOrNull()?.first ?: activeSmbServer?.rootPath().orEmpty()
+        else -> localPath
     }
-    val activeProvider: VfsProvider = if (activeLocation == LocationType.GOOGLE_DRIVE) {
-        driveProvider
-    } else {
-        localProvider
+    val activeProvider: VfsProvider = when (activeLocation) {
+        LocationType.GOOGLE_DRIVE -> driveProvider
+        LocationType.SMB -> smbProvider
+        else -> localProvider
     }
 
     var signedInAccounts by remember { mutableStateOf(GoogleDriveAuthManager.getSignedInAccounts(context)) }
@@ -303,19 +323,27 @@ fun ExplorerScreen(
         }
     }
 
-    val canNavigateUp = if (activeLocation == LocationType.GOOGLE_DRIVE) {
-        driveStack.size > 1
-    } else {
-        localPath != activeLocalRootPath
+    val canNavigateUp = when (activeLocation) {
+        LocationType.GOOGLE_DRIVE -> driveStack.size > 1
+        LocationType.SMB -> smbStack.size > 1
+        else -> localPath != activeLocalRootPath
     }
 
     fun navigateUp() {
-        if (activeLocation == LocationType.GOOGLE_DRIVE) {
-            if (driveStack.size > 1) {
-                driveStack = driveStack.dropLast(1)
+        when (activeLocation) {
+            LocationType.GOOGLE_DRIVE -> {
+                if (driveStack.size > 1) {
+                    driveStack = driveStack.dropLast(1)
+                }
             }
-        } else {
-            localPath = localPath.substringBeforeLast('/', activeLocalRootPath).ifEmpty { activeLocalRootPath }
+            LocationType.SMB -> {
+                if (smbStack.size > 1) {
+                    smbStack = smbStack.dropLast(1)
+                }
+            }
+            else -> {
+                localPath = localPath.substringBeforeLast('/', activeLocalRootPath).ifEmpty { activeLocalRootPath }
+            }
         }
     }
 
@@ -344,13 +372,14 @@ fun ExplorerScreen(
         sortBy,
         hasStoragePermission,
         signedInEmail,
+        activeSmbServerId,
         refreshTrigger,
     ) {
         val requestId = ++loadRequestSeq
-        val ready = if (activeLocation == LocationType.GOOGLE_DRIVE) {
-            signedInEmail != null
-        } else {
-            hasStoragePermission
+        val ready = when (activeLocation) {
+            LocationType.GOOGLE_DRIVE -> signedInEmail != null
+            LocationType.SMB -> activeSmbServer != null && currentPath.isNotBlank()
+            else -> hasStoragePermission
         }
         if (!ready) {
             nodes = emptyList()
@@ -359,18 +388,19 @@ fun ExplorerScreen(
         }
         val forceRefresh = forceRefreshNextLoad
         forceRefreshNextLoad = false
-        isLoading = if (activeLocation == LocationType.GOOGLE_DRIVE) {
-            forceRefresh || !driveProvider.hasCachedList(currentPath, showHidden)
-        } else {
-            false
+        isLoading = when (activeLocation) {
+            LocationType.GOOGLE_DRIVE -> forceRefresh || !driveProvider.hasCachedList(currentPath, showHidden)
+            LocationType.SMB -> forceRefresh || !smbProvider.hasCachedList(currentPath, showHidden)
+            else -> false
         }
         try {
-            val raw = if (activeLocation == LocationType.GOOGLE_DRIVE) {
-                driveProvider.list(currentPath, showHidden, forceRefresh = forceRefresh)
-            } else {
-                activeProvider.list(currentPath, showHidden)
+            val raw = when (activeLocation) {
+                LocationType.GOOGLE_DRIVE -> driveProvider.list(currentPath, showHidden, forceRefresh = forceRefresh)
+                LocationType.SMB -> smbProvider.list(currentPath, showHidden, forceRefresh = forceRefresh)
+                else -> activeProvider.list(currentPath, showHidden)
             }
             if (requestId != loadRequestSeq) return@LaunchedEffect
+            smbAuthErrorServerId = null
             nodes = withContext(Dispatchers.Default) {
                 raw.sortedWith(
                     compareByDescending<VfsNode> { it.isDirectory }.thenBy {
@@ -386,6 +416,11 @@ fun ExplorerScreen(
             isLoading = false
         } catch (e: CancellationException) {
             throw e
+        } catch (authErr: SmbAuthRequiredException) {
+            if (requestId != loadRequestSeq) return@LaunchedEffect
+            nodes = emptyList()
+            isLoading = false
+            smbAuthErrorServerId = authErr.serverId
         } catch (err: Exception) {
             if (requestId != loadRequestSeq) return@LaunchedEffect
             nodes = emptyList()
@@ -405,7 +440,10 @@ fun ExplorerScreen(
     ) {
         value = withContext(Dispatchers.IO) {
             nodes.asSequence()
-                .filter { it.locationType == LocationType.GOOGLE_DRIVE && CloudCacheManager.isNodeCached(context, it) }
+                .filter {
+                    (it.locationType == LocationType.GOOGLE_DRIVE || it.locationType == LocationType.SMB) &&
+                        CloudCacheManager.isNodeCached(context, it)
+                }
                 .map { it.path }
                 .toSet()
         }
@@ -485,7 +523,7 @@ fun ExplorerScreen(
                         }) {
                             Icon(Icons.Outlined.ContentCut, contentDescription = "Ausschneiden")
                         }
-                        if (activeLocation == LocationType.GOOGLE_DRIVE) {
+                        if (activeLocation == LocationType.GOOGLE_DRIVE || activeLocation == LocationType.SMB) {
                             val allSelectedCached = remember(selectedNodes, cacheVersionTick) {
                                 selectedNodes.isNotEmpty() && selectedNodes.all {
                                     CloudCacheManager.isNodeCached(context, it)
@@ -534,7 +572,9 @@ fun ExplorerScreen(
                                 if (!singleNode.isDirectory) {
                                     IconButton(onClick = {
                                         selectedPaths = emptySet()
-                                        if (singleNode.locationType == LocationType.GOOGLE_DRIVE) {
+                                        if (singleNode.locationType == LocationType.GOOGLE_DRIVE ||
+                                            singleNode.locationType == LocationType.SMB
+                                        ) {
                                             if (CloudCacheManager.isNodeCached(context, singleNode)) {
                                                 runCatching {
                                                     shareLocalFile(
@@ -636,6 +676,7 @@ fun ExplorerScreen(
                             Icon(
                                 imageVector = when {
                                     activeLocation == LocationType.GOOGLE_DRIVE -> Icons.Outlined.CloudQueue
+                                    activeLocation == LocationType.SMB -> Icons.Outlined.Dns
                                     activeExternalVolume?.kind == ExternalVolumeKind.USB -> Icons.Outlined.Usb
                                     activeExternalVolume?.kind == ExternalVolumeKind.SD_CARD -> Icons.Outlined.SdStorage
                                     else -> Icons.Outlined.FolderOpen
@@ -721,14 +762,20 @@ fun ExplorerScreen(
             val chipBounds = remember { mutableStateMapOf<String, Pair<Float, Float>>() }
             val currentAccounts by rememberUpdatedState(signedInAccounts)
 
+            var draggingSmbId by remember { mutableStateOf<String?>(null) }
+            var smbDragOffsetX by remember { mutableFloatStateOf(0f) }
+            val smbChipBounds = remember { mutableStateMapOf<String, Pair<Float, Float>>() }
+            val currentSmbServers by rememberUpdatedState(smbServers)
+
             val isInsideLocalSubfolder = activeLocation == LocationType.LOCAL &&
                 localPath != activeLocalRootPath &&
                 localPath.startsWith(activeLocalRootPath.trimEnd('/') + "/")
             val isInsideDriveSubfolder = activeLocation == LocationType.GOOGLE_DRIVE && driveStack.size > 1
-            val isInsideSubfolder = isInsideLocalSubfolder || isInsideDriveSubfolder
+            val isInsideSmbSubfolder = activeLocation == LocationType.SMB && smbStack.size > 1
+            val isInsideSubfolder = isInsideLocalSubfolder || isInsideDriveSubfolder || isInsideSmbSubfolder
 
             val chipScrollState = rememberScrollState()
-            LaunchedEffect(localPath, driveStack, activeLocation, activeLocalRootPath) {
+            LaunchedEffect(localPath, driveStack, smbStack, activeLocation, activeLocalRootPath) {
                 if (isInsideSubfolder) {
                     chipScrollState.animateScrollTo(chipScrollState.maxValue)
                 }
@@ -776,6 +823,37 @@ fun ExplorerScreen(
                                     selectedPaths = emptySet()
                                 },
                                 label = { Text(segment, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                            )
+                        }
+                    } else if (activeLocation == LocationType.SMB) {
+                        val rootLabel = activeSmbServer?.effectiveDisplayName() ?: "SMB"
+                        FilterChip(
+                            selected = false,
+                            shape = LocalMonolithButtonShape.current,
+                            onClick = {
+                                MonolithHaptics.pathChipNav(context, view)
+                                smbStack = smbStack.take(1)
+                                selectedPaths = emptySet()
+                            },
+                            label = { Text(rootLabel, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                        )
+                        val subStack = smbStack.drop(1)
+                        subStack.forEachIndexed { idx, (_, label) ->
+                            Icon(
+                                imageVector = Icons.Outlined.ChevronRight,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(16.dp),
+                            )
+                            FilterChip(
+                                selected = idx == subStack.lastIndex,
+                                shape = LocalMonolithButtonShape.current,
+                                onClick = {
+                                    MonolithHaptics.pathChipNav(context, view)
+                                    smbStack = smbStack.take(idx + 2)
+                                    selectedPaths = emptySet()
+                                },
+                                label = { Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                             )
                         }
                     } else {
@@ -951,18 +1029,121 @@ fun ExplorerScreen(
                         }
                     }
                 }
+                smbServers.forEach { server ->
+                    key(server.id) {
+                        val serverLabel = server.effectiveDisplayName()
+                        val isDragging = draggingSmbId == server.id
+                        val dragScale by animateFloatAsState(
+                            targetValue = if (isDragging) 1.07f else 1f,
+                            label = "smbChipScale",
+                        )
+                        val canReorder = smbServers.size > 1
+
+                        Box(
+                            modifier = Modifier
+                                .zIndex(if (isDragging) 1f else 0f)
+                                .onGloballyPositioned { coords ->
+                                    smbChipBounds[server.id] = coords.positionInParent().x to coords.size.width.toFloat()
+                                }
+                                .graphicsLayer {
+                                    translationX = if (isDragging) smbDragOffsetX else 0f
+                                    scaleX = dragScale
+                                    scaleY = dragScale
+                                    alpha = if (isDragging) 0.92f else 1f
+                                }
+                                .pointerInput(server.id, canReorder) {
+                                    if (!canReorder) return@pointerInput
+                                    detectDragGesturesAfterLongPress(
+                                        onDragStart = {
+                                            MonolithHaptics.dragLift(view)
+                                            draggingSmbId = server.id
+                                            smbDragOffsetX = 0f
+                                        },
+                                        onDrag = { change, dragAmount ->
+                                            change.consume()
+                                            smbDragOffsetX += dragAmount.x
+                                            val list = currentSmbServers
+                                            val idx = list.indexOfFirst { it.id == server.id }
+                                            if (idx != -1) {
+                                                val (myX, myW) = smbChipBounds[server.id] ?: return@detectDragGesturesAfterLongPress
+                                                val draggedCenter = myX + (myW / 2f) + smbDragOffsetX
+
+                                                var swapped = false
+                                                if (idx < list.lastIndex) {
+                                                    val nextServer = list[idx + 1]
+                                                    val (nextX, nextW) = smbChipBounds[nextServer.id] ?: return@detectDragGesturesAfterLongPress
+                                                    val nextCenter = nextX + (nextW / 2f)
+                                                    if (draggedCenter > nextCenter) {
+                                                        val updated = list.toMutableList().apply {
+                                                            add(idx + 1, removeAt(idx))
+                                                        }
+                                                        smbServers = updated
+                                                        smbDragOffsetX -= (nextX - myX)
+                                                        swapped = true
+                                                    }
+                                                }
+                                                if (!swapped && idx > 0) {
+                                                    val prevServer = list[idx - 1]
+                                                    val (prevX, prevW) = smbChipBounds[prevServer.id] ?: return@detectDragGesturesAfterLongPress
+                                                    val prevCenter = prevX + (prevW / 2f)
+                                                    if (draggedCenter < prevCenter) {
+                                                        val updated = list.toMutableList().apply {
+                                                            add(idx - 1, removeAt(idx))
+                                                        }
+                                                        smbServers = updated
+                                                        smbDragOffsetX += (myX - prevX)
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        onDragEnd = {
+                                            draggingSmbId = null
+                                            smbDragOffsetX = 0f
+                                            SmbConnectionStore.saveServerOrder(context, currentSmbServers.map { it.id })
+                                        },
+                                        onDragCancel = {
+                                            draggingSmbId = null
+                                            smbDragOffsetX = 0f
+                                        },
+                                    )
+                                },
+                        ) {
+                            FilterChip(
+                                selected = activeLocation == LocationType.SMB && activeSmbServerId == server.id,
+                                shape = LocalMonolithButtonShape.current,
+                                onClick = {
+                                    MonolithHaptics.pathChipNav(context, view)
+                                    SmbConnectionStore.setActiveServerId(context, server.id)
+                                    activeSmbServerId = server.id
+                                    smbStack = listOf(server.rootPath() to serverLabel)
+                                    smbAuthErrorServerId = null
+                                    activeLocation = LocationType.SMB
+                                    selectedPaths = emptySet()
+                                },
+                                elevation = FilterChipDefaults.filterChipElevation(
+                                    elevation = if (isDragging) 6.dp else 0.dp,
+                                ),
+                                label = {
+                                    Text(
+                                        text = serverLabel,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                },
+                            )
+                        }
+                    }
+                }
                 FilterChip(
                     selected = false,
                     shape = LocalMonolithButtonShape.current,
                     onClick = {
-                        scope.launch {
-                            signInLauncher.launch(GoogleDriveAuthManager.getAddAccountIntent(context))
-                        }
+                        showAddStorageDialog = true
                     },
                     label = {
                         Icon(
                             imageVector = Icons.Outlined.Add,
-                            contentDescription = "Google Drive hinzufügen",
+                            contentDescription = "Speicher hinzufügen",
                             modifier = Modifier.size(18.dp),
                         )
                     },
@@ -1044,6 +1225,39 @@ fun ExplorerScreen(
                         },
                     ) {
                         Text("Mit Google anmelden")
+                    }
+                }
+            } else if (activeLocation == LocationType.SMB && smbAuthErrorServerId != null) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(24.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Dns,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(48.dp),
+                    )
+                    Text(
+                        text = "Anmeldung erforderlich",
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    Text(
+                        text = "Für „${activeSmbServer?.effectiveDisplayName() ?: "SMB"}“ werden Zugangsdaten benötigt oder die Anmeldung ist fehlgeschlagen.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Button(
+                        shape = LocalMonolithButtonShape.current,
+                        onClick = {
+                            editingSmbConfig = activeSmbServer
+                            showSmbConnectionDialog = true
+                        },
+                    ) {
+                        Text("Zugangsdaten eingeben")
                     }
                 }
             } else if (isLoading) {
@@ -1133,10 +1347,10 @@ fun ExplorerScreen(
                                     when {
                                         node.isDirectory -> {
                                             MonolithHaptics.folderOpen(context, view)
-                                            if (activeLocation == LocationType.GOOGLE_DRIVE) {
-                                                driveStack = driveStack + (node.path to node.name)
-                                            } else {
-                                                localPath = node.path
+                                            when (activeLocation) {
+                                                LocationType.GOOGLE_DRIVE -> driveStack = driveStack + (node.path to node.name)
+                                                LocationType.SMB -> smbStack = smbStack + (node.path to node.name)
+                                                else -> localPath = node.path
                                             }
                                         }
                                         node.category == FileCategory.VIDEO || node.category == FileCategory.AUDIO -> {
@@ -1182,6 +1396,7 @@ fun ExplorerScreen(
 
     val currentAnchorIcon = when {
         activeLocation == LocationType.GOOGLE_DRIVE -> Icons.Outlined.CloudQueue
+        activeLocation == LocationType.SMB -> Icons.Outlined.Dns
         activeExternalVolume?.kind == ExternalVolumeKind.USB -> Icons.Outlined.Usb
         activeExternalVolume?.kind == ExternalVolumeKind.SD_CARD -> Icons.Outlined.SdStorage
         else -> Icons.Outlined.FolderOpen
@@ -1220,13 +1435,18 @@ fun ExplorerScreen(
                 },
             ),
         )
-        add(
-            CornerMenuItem(
-                id = "new_folder",
-                label = "Neuer Ordner",
-                onClick = { showCreateFolderDialog = true },
-            ),
-        )
+        val canCreateFolderHere = activeLocation != LocationType.SMB ||
+            smbStack.size > 1 ||
+            !activeSmbServer?.share.isNullOrBlank()
+        if (canCreateFolderHere) {
+            add(
+                CornerMenuItem(
+                    id = "new_folder",
+                    label = "Neuer Ordner",
+                    onClick = { showCreateFolderDialog = true },
+                ),
+            )
+        }
         add(
             CornerMenuItem(
                 id = "sort",
@@ -1261,6 +1481,43 @@ fun ExplorerScreen(
                                 activeLocation = LocationType.LOCAL
                                 nodes = emptyList()
                             }
+                        }
+                    },
+                ),
+            )
+        }
+        if (activeLocation == LocationType.SMB && activeSmbServer != null) {
+            add(
+                CornerMenuItem(
+                    id = "smb_edit",
+                    label = "SMB bearbeiten",
+                    subtitle = "(${activeSmbServer.effectiveDisplayName()})",
+                    onClick = {
+                        editingSmbConfig = activeSmbServer
+                        showSmbConnectionDialog = true
+                    },
+                ),
+            )
+            add(
+                CornerMenuItem(
+                    id = "smb_remove",
+                    label = "SMB entfernen",
+                    subtitle = "(${activeSmbServer.effectiveDisplayName()})",
+                    onClick = {
+                        val removingId = activeSmbServer.id
+                        SmbConnectionStore.removeServer(context, removingId)
+                        smbServers = SmbConnectionStore.getServers(context)
+                        val nextServer = SmbConnectionStore.getActiveServer(context)
+                        if (nextServer != null) {
+                            activeSmbServerId = nextServer.id
+                            smbStack = listOf(nextServer.rootPath() to nextServer.effectiveDisplayName())
+                            smbAuthErrorServerId = null
+                        } else {
+                            activeSmbServerId = null
+                            smbStack = emptyList()
+                            smbAuthErrorServerId = null
+                            activeLocation = LocationType.LOCAL
+                            nodes = emptyList()
                         }
                     },
                 ),
@@ -1308,7 +1565,12 @@ fun ExplorerScreen(
                                 target.sizeBytes > 0L &&
                                 outFile.length() == target.sizeBytes
                             if (!alreadyCached) {
-                                driveProvider.openInputStream(target.path).use { input ->
+                                val remoteProvider = if (target.locationType == LocationType.SMB) {
+                                    smbProvider
+                                } else {
+                                    driveProvider
+                                }
+                                remoteProvider.openInputStream(target.path).use { input ->
                                     outFile.outputStream().use { output ->
                                         input.copyTo(output)
                                     }
@@ -1346,9 +1608,67 @@ fun ExplorerScreen(
                     Text("„${target.name}“ wird zwischengespeichert…")
                 }
             } else {
-                Text("„${target.name}“ liegt auf Google Drive. Zum Teilen kurz zwischenspeichern?")
+                val originLabel = if (target.locationType == LocationType.SMB) "im SMB-Netzwerk" else "auf Google Drive"
+                Text("„${target.name}“ liegt $originLabel. Zum Teilen kurz zwischenspeichern?")
             }
         }
+    }
+
+    if (showAddStorageDialog) {
+        AddStorageTypeDialog(
+            onSelectGoogleDrive = {
+                showAddStorageDialog = false
+                scope.launch {
+                    signInLauncher.launch(GoogleDriveAuthManager.getAddAccountIntent(context))
+                }
+            },
+            onSelectSmb = {
+                showAddStorageDialog = false
+                editingSmbConfig = null
+                showSmbConnectionDialog = true
+            },
+            onDismiss = { showAddStorageDialog = false },
+        )
+    }
+
+    if (showSmbConnectionDialog) {
+        SmbConnectionDialog(
+            editingConfig = editingSmbConfig,
+            existingServers = smbServers,
+            onAutoAddDiscovered = { discoveredConfigs ->
+                val added = SmbConnectionStore.addServersIfMissing(context, discoveredConfigs)
+                if (added.isNotEmpty()) {
+                    smbServers = SmbConnectionStore.getServers(context)
+                }
+            },
+            onOpenServer = { server ->
+                showSmbConnectionDialog = false
+                editingSmbConfig = null
+                SmbConnectionStore.setActiveServerId(context, server.id)
+                activeSmbServerId = server.id
+                smbStack = listOf(server.rootPath() to server.effectiveDisplayName())
+                smbAuthErrorServerId = null
+                activeLocation = LocationType.SMB
+                selectedPaths = emptySet()
+            },
+            onSaveServer = { config ->
+                val saved = SmbConnectionStore.addOrUpdateServer(context, config)
+                smbServers = SmbConnectionStore.getServers(context)
+                activeSmbServerId = saved.id
+                smbStack = listOf(saved.rootPath() to saved.effectiveDisplayName())
+                smbAuthErrorServerId = null
+                activeLocation = LocationType.SMB
+                selectedPaths = emptySet()
+                showSmbConnectionDialog = false
+                editingSmbConfig = null
+                smbProvider.invalidateCache(null)
+                refreshTrigger++
+            },
+            onDismiss = {
+                showSmbConnectionDialog = false
+                editingSmbConfig = null
+            },
+        )
     }
 
     if (showSortDialog) {

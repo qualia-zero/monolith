@@ -57,6 +57,9 @@ import com.monolith.core.ui.haptics.MonolithHaptics
 import com.monolith.core.ui.theme.LocalMonolithButtonShape
 import com.monolith.core.vfs.GoogleDriveAuthManager
 import com.monolith.core.vfs.GoogleDriveVfsProvider
+import com.monolith.core.vfs.SmbConnectionStore
+import com.monolith.core.vfs.SmbServerConfig
+import com.monolith.core.vfs.SmbVfsProvider
 import com.monolith.feature.explorer.FileRow
 import com.monolith.feature.explorer.rememberExternalStorageVolumes
 import kotlinx.coroutines.Dispatchers
@@ -73,6 +76,7 @@ private data class PickerItem(
     val sizeBytes: Long,
     val isArchive: Boolean,
     val isDrive: Boolean,
+    val isSmb: Boolean = false,
 )
 
 @Composable
@@ -87,6 +91,8 @@ fun LocalPathPickerDialog(
     val externalVolumes = rememberExternalStorageVolumes(context)
     val signedInAccounts = remember(request) { GoogleDriveAuthManager.getSignedInAccounts(context) }
     val driveProvider = remember(context) { GoogleDriveVfsProvider(context.applicationContext) }
+    val smbServers = remember(request) { SmbConnectionStore.getServers(context) }
+    val smbProvider = remember(context) { SmbVfsProvider(context.applicationContext) }
 
     var activeRoot by remember(request) {
         val matchingExternal = externalVolumes.firstOrNull {
@@ -96,6 +102,8 @@ fun LocalPathPickerDialog(
     }
     var activeDriveEmail by remember(request) { mutableStateOf<String?>(null) }
     var driveStack by remember(request) { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
+    var activeSmbServer by remember(request) { mutableStateOf<SmbServerConfig?>(null) }
+    var smbStack by remember(request) { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
     var currentDir by remember(request) {
         val initial = File(request.initialDirectory)
         mutableStateOf(if (initial.isDirectory) initial.absolutePath else defaultRootDir)
@@ -114,14 +122,21 @@ fun LocalPathPickerDialog(
     var newFolderName by remember { mutableStateOf("") }
     var reloadTick by remember { mutableIntStateOf(0) }
 
-    LaunchedEffect(currentDir, activeDriveEmail, driveStack, archivesOnlyFilter, reloadTick, request.mode) {
+    LaunchedEffect(currentDir, activeDriveEmail, driveStack, activeSmbServer, smbStack, archivesOnlyFilter, reloadTick, request.mode) {
         isLoadingChildren = true
         try {
             children = withContext(Dispatchers.IO) {
-            if (activeDriveEmail != null) {
-                val targetPath = driveStack.lastOrNull()?.first ?: "gdrive://root"
-                val nodes = runCatching { driveProvider.list(targetPath, showHidden = false) }
-                    .getOrDefault(emptyList())
+            if (activeDriveEmail != null || activeSmbServer != null) {
+                val isSmbMode = activeSmbServer != null
+                val targetPath = if (isSmbMode) {
+                    smbStack.lastOrNull()?.first ?: activeSmbServer!!.rootPath()
+                } else {
+                    driveStack.lastOrNull()?.first ?: "gdrive://root"
+                }
+                val nodes = runCatching {
+                    if (isSmbMode) smbProvider.list(targetPath, showHidden = false)
+                    else driveProvider.list(targetPath, showHidden = false)
+                }.getOrDefault(emptyList())
                 nodes.asSequence()
                     .filter { node ->
                         when (request.mode) {
@@ -144,7 +159,8 @@ fun LocalPathPickerDialog(
                             isDirectory = node.isDirectory,
                             sizeBytes = node.sizeBytes,
                             isArchive = !node.isDirectory && ArchiveEngine.isSupportedArchiveFile(File(node.name)),
-                            isDrive = true,
+                            isDrive = !isSmbMode,
+                            isSmb = isSmbMode,
                         )
                     }
                     .toList()
@@ -199,17 +215,19 @@ fun LocalPathPickerDialog(
         else children.filter { it.name.contains(q, ignoreCase = true) }
     }
 
-    val canGoUp = remember(currentDir, activeRoot, activeDriveEmail, driveStack) {
-        if (activeDriveEmail != null) {
-            driveStack.size > 1
-        } else {
-            val current = File(currentDir)
-            currentDir != activeRoot && current.parentFile != null && currentDir.startsWith(activeRoot)
+    val canGoUp = remember(currentDir, activeRoot, activeDriveEmail, driveStack, activeSmbServer, smbStack) {
+        when {
+            activeDriveEmail != null -> driveStack.size > 1
+            activeSmbServer != null -> smbStack.size > 1
+            else -> {
+                val current = File(currentDir)
+                currentDir != activeRoot && current.parentFile != null && currentDir.startsWith(activeRoot)
+            }
         }
     }
 
-    val localBreadcrumbs = remember(currentDir, activeRoot, activeDriveEmail) {
-        if (activeDriveEmail != null) {
+    val localBreadcrumbs = remember(currentDir, activeRoot, activeDriveEmail, activeSmbServer) {
+        if (activeDriveEmail != null || activeSmbServer != null) {
             emptyList()
         } else {
             val relative = currentDir.removePrefix(activeRoot).trim('/')
@@ -227,10 +245,10 @@ fun LocalPathPickerDialog(
     }
 
     BackHandler(enabled = canGoUp && !isDownloadingDrive) {
-        if (activeDriveEmail != null) {
-            driveStack = driveStack.dropLast(1)
-        } else {
-            currentDir = File(currentDir).parentFile?.absolutePath ?: activeRoot
+        when {
+            activeDriveEmail != null -> driveStack = driveStack.dropLast(1)
+            activeSmbServer != null -> smbStack = smbStack.dropLast(1)
+            else -> currentDir = File(currentDir).parentFile?.absolutePath ?: activeRoot
         }
     }
 
@@ -253,16 +271,16 @@ fun LocalPathPickerDialog(
         },
         onConfirmClick = {
             if (request.mode == LocalPickerMode.SINGLE_DIRECTORY) {
-                val chosenDir = if (activeDriveEmail != null) {
-                    driveStack.lastOrNull()?.first ?: "gdrive://root"
-                } else {
-                    currentDir
+                val chosenDir = when {
+                    activeDriveEmail != null -> driveStack.lastOrNull()?.first ?: "gdrive://root"
+                    activeSmbServer != null -> smbStack.lastOrNull()?.first ?: activeSmbServer!!.rootPath()
+                    else -> currentDir
                 }
                 onDismiss()
                 request.onConfirm(listOf(chosenDir))
             } else {
-                val hasDriveSelection = selectedPaths.any { it.startsWith("gdrive://") }
-                if (!hasDriveSelection) {
+                val hasRemoteSelection = selectedPaths.any { it.startsWith("gdrive://") || it.startsWith("smb://") }
+                if (!hasRemoteSelection) {
                     val result = selectedPaths.toList()
                     onDismiss()
                     request.onConfirm(result)
@@ -270,22 +288,30 @@ fun LocalPathPickerDialog(
                     isDownloadingDrive = true
                     scope.launch {
                         val resolved = withContext(Dispatchers.IO) {
-                            suspend fun downloadDriveRecursive(remotePath: String, destFile: File): Boolean {
+                            suspend fun downloadRemoteRecursive(remotePath: String, destFile: File): Boolean {
+                                val isSmb = remotePath.startsWith("smb://")
                                 val item = selectedDriveItems[remotePath]
                                 val isDir = item?.isDirectory == true
                                 if (!isDir) {
                                     destFile.parentFile?.mkdirs()
-                                    return driveProvider.downloadToFile(remotePath, destFile).isSuccess
+                                    return if (isSmb) {
+                                        smbProvider.downloadToFile(remotePath, destFile).isSuccess
+                                    } else {
+                                        driveProvider.downloadToFile(remotePath, destFile).isSuccess
+                                    }
                                 }
                                 destFile.mkdirs()
-                                val subNodes = runCatching { driveProvider.list(remotePath, showHidden = false) }
-                                    .getOrDefault(emptyList())
+                                val subNodes = runCatching {
+                                    if (isSmb) smbProvider.list(remotePath, showHidden = false)
+                                    else driveProvider.list(remotePath, showHidden = false)
+                                }.getOrDefault(emptyList())
                                 for (child in subNodes) {
                                     val childDest = File(destFile, child.name)
                                     if (child.isDirectory) {
-                                        downloadDriveRecursive(child.path, childDest)
+                                        downloadRemoteRecursive(child.path, childDest)
                                     } else {
-                                        driveProvider.downloadToFile(child.path, childDest)
+                                        if (isSmb) smbProvider.downloadToFile(child.path, childDest)
+                                        else driveProvider.downloadToFile(child.path, childDest)
                                     }
                                 }
                                 return true
@@ -293,18 +319,20 @@ fun LocalPathPickerDialog(
 
                             val cacheDir = File(context.cacheDir, "drive_picker").apply { mkdirs() }
                             selectedPaths.mapNotNull { path ->
-                                if (!path.startsWith("gdrive://")) {
+                                if (!path.startsWith("gdrive://") && !path.startsWith("smb://")) {
                                     path
                                 } else {
+                                    val isSmb = path.startsWith("smb://")
                                     val item = selectedDriveItems[path]
                                     val matchName = item?.name
                                         ?: children.firstOrNull { it.id == path }?.name
-                                        ?: "drive_file_${path.hashCode().toUInt().toString(16)}"
+                                        ?: "remote_file_${path.hashCode().toUInt().toString(16)}"
                                     val dest = File(cacheDir, matchName)
                                     if (item?.isDirectory == true) {
-                                        if (downloadDriveRecursive(path, dest)) dest.absolutePath else null
+                                        if (downloadRemoteRecursive(path, dest)) dest.absolutePath else null
                                     } else {
-                                        driveProvider.downloadToFile(path, dest).getOrNull()?.absolutePath
+                                        if (isSmb) smbProvider.downloadToFile(path, dest).getOrNull()?.absolutePath
+                                        else driveProvider.downloadToFile(path, dest).getOrNull()?.absolutePath
                                     }
                                 }
                             }
@@ -320,13 +348,13 @@ fun LocalPathPickerDialog(
         },
     ) {
         // 1:1 Storage Chips + Breadcrumbs matching ExplorerScreen
-        val isInsideSubfolder = if (activeDriveEmail != null) {
-            driveStack.size > 1
-        } else {
-            localBreadcrumbs.isNotEmpty()
+        val isInsideSubfolder = when {
+            activeDriveEmail != null -> driveStack.size > 1
+            activeSmbServer != null -> smbStack.size > 1
+            else -> localBreadcrumbs.isNotEmpty()
         }
         val chipScrollState = rememberScrollState()
-        LaunchedEffect(currentDir, driveStack, activeDriveEmail, activeRoot) {
+        LaunchedEffect(currentDir, driveStack, activeDriveEmail, smbStack, activeSmbServer, activeRoot) {
             if (isInsideSubfolder) {
                 chipScrollState.animateScrollTo(chipScrollState.maxValue)
             }
@@ -368,6 +396,35 @@ fun LocalPathPickerDialog(
                             label = { Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                         )
                     }
+                } else if (activeSmbServer != null) {
+                    val serverLabel = activeSmbServer?.effectiveDisplayName() ?: "SMB"
+                    FilterChip(
+                        selected = false,
+                        shape = LocalMonolithButtonShape.current,
+                        onClick = {
+                            MonolithHaptics.pathChipNav(context, view)
+                            smbStack = smbStack.take(1)
+                        },
+                        label = { Text(serverLabel, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    )
+                    val subStack = smbStack.drop(1)
+                    subStack.forEachIndexed { idx, (_, label) ->
+                        Icon(
+                            imageVector = Icons.Outlined.ChevronRight,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        FilterChip(
+                            selected = idx == subStack.lastIndex,
+                            shape = LocalMonolithButtonShape.current,
+                            onClick = {
+                                MonolithHaptics.pathChipNav(context, view)
+                                smbStack = smbStack.take(idx + 2)
+                            },
+                            label = { Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                        )
+                    }
                 } else {
                     val rootChipLabel = externalVolumes.firstOrNull { it.rootPath == activeRoot }?.name ?: "Intern"
                     FilterChip(
@@ -399,12 +456,14 @@ fun LocalPathPickerDialog(
                 }
             } else {
                 FilterChip(
-                    selected = activeDriveEmail == null && activeRoot == defaultRootDir,
+                    selected = activeDriveEmail == null && activeSmbServer == null && activeRoot == defaultRootDir,
                     shape = LocalMonolithButtonShape.current,
                     onClick = {
                         MonolithHaptics.pathChipNav(context, view)
                         activeDriveEmail = null
                         driveStack = emptyList()
+                        activeSmbServer = null
+                        smbStack = emptyList()
                         activeRoot = defaultRootDir
                         currentDir = defaultRootDir
                     },
@@ -412,12 +471,14 @@ fun LocalPathPickerDialog(
                 )
                 externalVolumes.forEach { vol ->
                     FilterChip(
-                        selected = activeDriveEmail == null && activeRoot == vol.rootPath,
+                        selected = activeDriveEmail == null && activeSmbServer == null && activeRoot == vol.rootPath,
                         shape = LocalMonolithButtonShape.current,
                         onClick = {
                             MonolithHaptics.pathChipNav(context, view)
                             activeDriveEmail = null
                             driveStack = emptyList()
+                            activeSmbServer = null
+                            smbStack = emptyList()
                             activeRoot = vol.rootPath
                             currentDir = vol.rootPath
                         },
@@ -432,10 +493,27 @@ fun LocalPathPickerDialog(
                         onClick = {
                             MonolithHaptics.pathChipNav(context, view)
                             GoogleDriveAuthManager.setActiveEmail(context, email)
+                            activeSmbServer = null
+                            smbStack = emptyList()
                             activeDriveEmail = email
                             driveStack = listOf("gdrive://root" to accountLabel)
                         },
                         label = { Text(accountLabel, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    )
+                }
+                smbServers.forEach { server ->
+                    val serverLabel = server.effectiveDisplayName()
+                    FilterChip(
+                        selected = activeSmbServer?.id == server.id,
+                        shape = LocalMonolithButtonShape.current,
+                        onClick = {
+                            MonolithHaptics.pathChipNav(context, view)
+                            activeDriveEmail = null
+                            driveStack = emptyList()
+                            activeSmbServer = server
+                            smbStack = listOf(server.rootPath() to serverLabel)
+                        },
+                        label = { Text(serverLabel, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                     )
                 }
             }
@@ -443,7 +521,7 @@ fun LocalPathPickerDialog(
 
         // Actions row (only shown when needed)
         if ((request.mode == LocalPickerMode.SINGLE_FILE && request.archiveHighlight) ||
-            (request.mode == LocalPickerMode.SINGLE_DIRECTORY && activeDriveEmail == null)
+            (request.mode == LocalPickerMode.SINGLE_DIRECTORY && activeDriveEmail == null && activeSmbServer == null)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -458,7 +536,7 @@ fun LocalPathPickerDialog(
                         label = { Text("Nur Archive") },
                     )
                 }
-                if (request.mode == LocalPickerMode.SINGLE_DIRECTORY && activeDriveEmail == null) {
+                if (request.mode == LocalPickerMode.SINGLE_DIRECTORY && activeDriveEmail == null && activeSmbServer == null) {
                     IconButton(
                         onClick = {
                             newFolderName = ""
@@ -575,7 +653,11 @@ fun LocalPathPickerDialog(
                                         name = item.name,
                                         path = item.id,
                                         parentPath = null,
-                                        locationType = if (item.isDrive) LocationType.GOOGLE_DRIVE else LocationType.LOCAL,
+                                        locationType = when {
+                                            item.isSmb -> LocationType.SMB
+                                            item.isDrive -> LocationType.GOOGLE_DRIVE
+                                            else -> LocationType.LOCAL
+                                        },
                                         isDirectory = item.isDirectory,
                                         sizeBytes = item.sizeBytes,
                                         lastModifiedMs = 0L,
@@ -594,16 +676,17 @@ fun LocalPathPickerDialog(
                                     onClick = {
                                         if (item.isDirectory) {
                                             MonolithHaptics.folderOpen(context, view)
-                                            if (item.isDrive) {
-                                                driveStack = driveStack + (item.id to item.name)
-                                            } else {
-                                                currentDir = item.id
+                                            when {
+                                                item.isDrive -> driveStack = driveStack + (item.id to item.name)
+                                                item.isSmb -> smbStack = smbStack + (item.id to item.name)
+                                                else -> currentDir = item.id
                                             }
                                         } else {
+                                            val isRemote = item.isDrive || item.isSmb
                                             when (request.mode) {
                                                 LocalPickerMode.SINGLE_DIRECTORY -> Unit
                                                 LocalPickerMode.SINGLE_FILE -> {
-                                                    if (item.isDrive) selectedDriveItems[item.id] = item
+                                                    if (isRemote) selectedDriveItems[item.id] = item
                                                     selectedPaths = setOf(item.id)
                                                 }
                                                 LocalPickerMode.FILES_AND_FOLDERS_MULTI -> {
@@ -611,7 +694,7 @@ fun LocalPathPickerDialog(
                                                         selectedDriveItems.remove(item.id)
                                                         selectedPaths - item.id
                                                     } else {
-                                                        if (item.isDrive) selectedDriveItems[item.id] = item
+                                                        if (isRemote) selectedDriveItems[item.id] = item
                                                         selectedPaths + item.id
                                                     }
                                                 }
@@ -622,16 +705,17 @@ fun LocalPathPickerDialog(
                                         {
                                             IconButton(
                                                 onClick = {
+                                                    val isRemote = item.isDrive || item.isSmb
                                                     selectedPaths = when (request.mode) {
                                                         LocalPickerMode.SINGLE_FILE -> {
-                                                            if (item.isDrive) selectedDriveItems[item.id] = item
+                                                            if (isRemote) selectedDriveItems[item.id] = item
                                                             setOf(item.id)
                                                         }
                                                         else -> if (isSelected) {
                                                             selectedDriveItems.remove(item.id)
                                                             selectedPaths - item.id
                                                         } else {
-                                                            if (item.isDrive) selectedDriveItems[item.id] = item
+                                                            if (isRemote) selectedDriveItems[item.id] = item
                                                             selectedPaths + item.id
                                                         }
                                                     }

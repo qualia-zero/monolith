@@ -46,6 +46,10 @@ import com.monolith.core.ui.theme.MonolithTheme
 import com.monolith.core.vfs.FileTransferService
 import com.monolith.core.vfs.GoogleDriveAuthManager
 import com.monolith.core.vfs.GoogleDriveVfsProvider
+import com.monolith.core.vfs.SmbConnectionStore
+import com.monolith.core.vfs.SmbPathParser
+import com.monolith.core.vfs.SmbStreamProxy
+import com.monolith.core.vfs.SmbVfsProvider
 import com.monolith.feature.explorer.CloudCacheManager
 import com.monolith.feature.explorer.ExplorerScreen
 import com.monolith.feature.explorer.ExternalStorageDetector
@@ -109,6 +113,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             val appSettings by AppSettingsStore.settings.collectAsState()
             val driveProvider = remember { GoogleDriveVfsProvider(applicationContext) }
+            val smbProvider = remember { SmbVfsProvider(applicationContext) }
             val scope = rememberCoroutineScope()
             var activeDestination by remember { mutableStateOf(MainDestination.EXPLORER) }
             var settingsReturnDestination by remember { mutableStateOf(MainDestination.EXPLORER) }
@@ -123,7 +128,7 @@ class MainActivity : ComponentActivity() {
             var pendingShareFiles by remember { mutableStateOf<List<IncomingSharedFile>?>(null) }
             var shareSavePickerRequest by remember { mutableStateOf<LocalPickerRequest?>(null) }
             var isResolvingExternalIntent by remember { mutableStateOf(false) }
-            var downloadingDriveFile by remember { mutableStateOf<String?>(null) }
+            var downloadingRemoteFile by remember { mutableStateOf<Pair<String, String>?>(null) }
             val transferProgress by FileTransferService.progress.collectAsState()
             val transferTasks by FileTransferService.tasks.collectAsState()
             val latestCreatedTaskId by FileTransferService.latestCreatedTaskId.collectAsState()
@@ -186,8 +191,8 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            fun resolveOfflineDriveFile(node: VfsNode): File? {
-                if (!node.path.startsWith("gdrive://")) return null
+            fun resolveOfflineRemoteFile(node: VfsNode): File? {
+                if (!node.path.startsWith("gdrive://") && !node.path.startsWith("smb://")) return null
                 return if (CloudCacheManager.isNodeCached(this@MainActivity, node)) {
                     CloudCacheManager.cachedFileFor(this@MainActivity, node)
                 } else {
@@ -215,20 +220,18 @@ class MainActivity : ComponentActivity() {
                     HANDLER_INTERNAL_VIDEO, HANDLER_INTERNAL_AUDIO -> {
                         val isVideo = handlerId == HANDLER_INTERNAL_VIDEO || node.category == FileCategory.VIDEO
                         val playlist = siblings.ifEmpty { listOf(node) }
-                        val uri = if (node.path.startsWith("gdrive://")) {
-                            resolveOfflineDriveFile(node)?.let { Uri.fromFile(it).toString() }
-                                ?: driveProvider.streamUrl(node.path)
-                        } else {
-                            Uri.fromFile(File(node.path)).toString()
-                        }
-                        val pairs = playlist.map { item ->
-                            val itemUri = if (item.path.startsWith("gdrive://")) {
-                                resolveOfflineDriveFile(item)?.let { Uri.fromFile(it).toString() }
+                        fun resolveMediaUri(item: VfsNode): String = when {
+                            item.path.startsWith("gdrive://") ->
+                                resolveOfflineRemoteFile(item)?.let { Uri.fromFile(it).toString() }
                                     ?: driveProvider.streamUrl(item.path)
-                            } else {
-                                Uri.fromFile(File(item.path)).toString()
-                            }
-                            itemUri to item.name
+                            item.path.startsWith("smb://") ->
+                                resolveOfflineRemoteFile(item)?.let { Uri.fromFile(it).toString() }
+                                    ?: SmbStreamProxy.registerUrl(applicationContext, item.path, item.name)
+                            else -> Uri.fromFile(File(item.path)).toString()
+                        }
+                        val uri = resolveMediaUri(node)
+                        val pairs = playlist.map { item ->
+                            resolveMediaUri(item) to item.name
                         }
                         PlayerActivity.launch(
                             context = this@MainActivity,
@@ -268,15 +271,17 @@ class MainActivity : ComponentActivity() {
                 activityName: String?,
             ): Boolean {
                 val isMediaStream = handlerId == HANDLER_INTERNAL_VIDEO || handlerId == HANDLER_INTERNAL_AUDIO
-                if (node.path.startsWith("gdrive://") && !isMediaStream) {
-                    val offlineFile = resolveOfflineDriveFile(node)
+                val isDrive = node.path.startsWith("gdrive://")
+                val isSmb = node.path.startsWith("smb://")
+                if ((isDrive || isSmb) && !isMediaStream) {
+                    val offlineFile = resolveOfflineRemoteFile(node)
                     if (offlineFile != null) {
                         val localNode = node.copy(path = offlineFile.absolutePath)
                         val localSiblings = siblings.mapNotNull { sibling ->
                             if (sibling.path == node.path) {
                                 localNode
-                            } else if (sibling.path.startsWith("gdrive://")) {
-                                resolveOfflineDriveFile(sibling)?.let { sibling.copy(path = it.absolutePath) }
+                            } else if (sibling.path.startsWith("gdrive://") || sibling.path.startsWith("smb://")) {
+                                resolveOfflineRemoteFile(sibling)?.let { sibling.copy(path = it.absolutePath) }
                             } else {
                                 sibling
                             }
@@ -290,11 +295,16 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                     scope.launch {
-                        downloadingDriveFile = node.name
-                        val cacheDir = File(cacheDir, "drive_preview").apply { mkdirs() }
+                        downloadingRemoteFile = (if (isSmb) "SMB" else "Google Drive") to node.name
+                        val previewDirName = if (isSmb) "smb_preview" else "drive_preview"
+                        val cacheDir = File(cacheDir, previewDirName).apply { mkdirs() }
                         val destFile = File(cacheDir, node.name)
-                        val result = driveProvider.downloadToFile(node.path, destFile)
-                        downloadingDriveFile = null
+                        val result = if (isSmb) {
+                            smbProvider.downloadToFile(node.path, destFile)
+                        } else {
+                            driveProvider.downloadToFile(node.path, destFile)
+                        }
+                        downloadingRemoteFile = null
                         result.onSuccess { downloaded ->
                             val localNode = node.copy(path = downloaded.absolutePath)
                             openLocalWithAssociation(
@@ -304,6 +314,12 @@ class MainActivity : ComponentActivity() {
                                 packageName = packageName,
                                 activityName = activityName,
                             )
+                        }.onFailure { err ->
+                            Toast.makeText(
+                                this@MainActivity,
+                                err.message ?: "Datei konnte nicht geladen werden.",
+                                Toast.LENGTH_LONG,
+                            ).show()
                         }
                     }
                     return true
@@ -712,10 +728,10 @@ class MainActivity : ComponentActivity() {
                     )
                 }
 
-                downloadingDriveFile?.let { fileName ->
+                downloadingRemoteFile?.let { (sourceTitle, fileName) ->
                     MonolithDialog(
                         onDismissRequest = {},
-                        title = "Google Drive",
+                        title = sourceTitle,
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -776,6 +792,35 @@ class MainActivity : ComponentActivity() {
                                                 Toast.makeText(
                                                     this@MainActivity,
                                                     lastErr?.message ?: "Upload fehlgeschlagen.",
+                                                    Toast.LENGTH_LONG,
+                                                ).show()
+                                            }
+                                        } else if (targetPath.startsWith("smb://")) {
+                                            var uploaded = 0
+                                            var lastErr: Throwable? = null
+                                            for (item in sharedFiles) {
+                                                val res = smbProvider.uploadFile(item.file, targetPath)
+                                                if (res.isSuccess) uploaded++ else lastErr = res.exceptionOrNull()
+                                            }
+                                            if (uploaded > 0) {
+                                                Toast.makeText(
+                                                    this@MainActivity,
+                                                    if (uploaded == 1) "1 Datei im SMB-Netzwerk gespeichert." else "$uploaded Dateien im SMB-Netzwerk gespeichert.",
+                                                    Toast.LENGTH_SHORT,
+                                                ).show()
+                                                val parsed = SmbPathParser.parse(targetPath)
+                                                val server = parsed?.let { SmbConnectionStore.getServer(this@MainActivity, it.serverId) }
+                                                if (server != null) {
+                                                    SmbConnectionStore.setActiveServerId(this@MainActivity, server.id)
+                                                    explorerNavState.activeSmbServerId = server.id
+                                                    explorerNavState.smbStack = listOf(targetPath to server.effectiveDisplayName())
+                                                    explorerNavState.activeLocation = LocationType.SMB
+                                                    activeDestination = MainDestination.EXPLORER
+                                                }
+                                            } else {
+                                                Toast.makeText(
+                                                    this@MainActivity,
+                                                    lastErr?.message ?: "SMB-Upload fehlgeschlagen.",
                                                     Toast.LENGTH_LONG,
                                                 ).show()
                                             }

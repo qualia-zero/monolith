@@ -140,7 +140,11 @@ class FileTransferService : Service() {
             else -> TransferOperation.COPY
         }
         val firstName = sources.firstOrNull()?.let {
-            if (it.startsWith("gdrive://")) it.removePrefix("gdrive://") else File(it).name.ifBlank { it }
+            when {
+                it.startsWith("gdrive://") -> it.removePrefix("gdrive://")
+                it.startsWith("smb://") -> it.trimEnd('/').substringAfterLast('/').ifBlank { it }
+                else -> File(it).name.ifBlank { it }
+            }
         }.orEmpty()
         val isInitiallyQueued = taskJobs.size >= MAX_CONCURRENT_JOBS
         val itemCount = sources.size.coerceAtLeast(1)
@@ -409,6 +413,7 @@ class FileTransferService : Service() {
     private suspend fun executeJob(job: TransferJob) {
         val localProvider = LocalVfsProvider()
         val driveProvider = GoogleDriveVfsProvider(applicationContext)
+        val smbProvider = SmbVfsProvider(applicationContext)
         val operation = when {
             job.isCloudDownload -> TransferOperation.DOWNLOAD
             job.isMove -> TransferOperation.MOVE
@@ -424,20 +429,28 @@ class FileTransferService : Service() {
         var scannedItems = 0
         if (!job.isCloudDownload) {
             for (src in job.sources) {
-                if (src.startsWith("gdrive://")) {
-                    val info = runCatching { driveProvider.stat(src) }.getOrNull()
-                    totalBytes += info?.sizeBytes ?: 0L
-                    scannedItems += 1
-                } else {
-                    val (bytes, items) = scanLocalSource(File(src))
-                    totalBytes += bytes
-                    scannedItems += items
+                when {
+                    src.startsWith("gdrive://") -> {
+                        val info = runCatching { driveProvider.stat(src) }.getOrNull()
+                        totalBytes += info?.sizeBytes ?: 0L
+                        scannedItems += 1
+                    }
+                    src.startsWith("smb://") -> {
+                        val info = runCatching { smbProvider.stat(src) }.getOrNull()
+                        totalBytes += info?.sizeBytes ?: 0L
+                        scannedItems += 1
+                    }
+                    else -> {
+                        val (bytes, items) = scanLocalSource(File(src))
+                        totalBytes += bytes
+                        scannedItems += items
+                    }
                 }
             }
         }
         var totalItems = scannedItems.coerceAtLeast(job.sources.size).coerceAtLeast(1)
 
-        var currentFileName = resolveDisplayName(job.sources.first(), driveProvider)
+        var currentFileName = resolveDisplayName(job.sources.first(), driveProvider, smbProvider)
         var bytesProcessed = 0L
         var processedItems = 0
         var bytesPerSecond = 0L
@@ -526,6 +539,7 @@ class FileTransferService : Service() {
                     taskId = job.taskId,
                     sources = job.sources,
                     driveProvider = driveProvider,
+                    smbProvider = smbProvider,
                     onTotalsReady = { bytes, items ->
                         totalBytes = bytes
                         totalItems = items
@@ -535,14 +549,16 @@ class FileTransferService : Service() {
                 )
             } else {
                 job.sources.forEach { src ->
-                    val displayName = resolveDisplayName(src, driveProvider)
+                    val displayName = resolveDisplayName(src, driveProvider, smbProvider)
                     if (displayName != currentFileName) {
                         currentFileName = displayName
                         publishProgress()
                     }
 
                     val srcIsDrive = src.startsWith("gdrive://")
+                    val srcIsSmb = src.startsWith("smb://")
                     val dstIsDrive = job.destinationDir.startsWith("gdrive://")
+                    val dstIsSmb = job.destinationDir.startsWith("smb://")
                     val singleList = listOf(src)
 
                     when {
@@ -550,17 +566,27 @@ class FileTransferService : Service() {
                             if (job.isMove) driveProvider.move(singleList, job.destinationDir, onProgress).getOrThrow()
                             else driveProvider.copy(singleList, job.destinationDir, onProgress).getOrThrow()
                         }
-                        !srcIsDrive && !dstIsDrive -> {
+                        srcIsSmb && dstIsSmb -> {
+                            if (job.isMove) smbProvider.move(singleList, job.destinationDir, onProgress).getOrThrow()
+                            else smbProvider.copy(singleList, job.destinationDir, onProgress).getOrThrow()
+                        }
+                        !srcIsDrive && !srcIsSmb && !dstIsDrive && !dstIsSmb -> {
                             if (job.isMove) localProvider.move(singleList, job.destinationDir, onProgress).getOrThrow()
                             else localProvider.copy(singleList, job.destinationDir, onProgress).getOrThrow()
                         }
-                        !srcIsDrive && dstIsDrive -> {
+                        !srcIsDrive && !srcIsSmb && dstIsDrive -> {
                             driveProvider.copy(singleList, job.destinationDir, onProgress).getOrThrow()
                             if (job.isMove) {
                                 localProvider.delete(singleList).getOrThrow()
                             }
                         }
-                        else -> {
+                        !srcIsDrive && !srcIsSmb && dstIsSmb -> {
+                            smbProvider.copy(singleList, job.destinationDir, onProgress).getOrThrow()
+                            if (job.isMove) {
+                                localProvider.delete(singleList).getOrThrow()
+                            }
+                        }
+                        srcIsDrive && !dstIsDrive && !dstIsSmb -> {
                             val info = driveProvider.stat(src)
                                 ?: throw IllegalStateException("Quelle nicht gefunden.")
                             if (info.isDirectory) {
@@ -576,6 +602,46 @@ class FileTransferService : Service() {
                             ).getOrThrow()
                             if (job.isMove) {
                                 driveProvider.delete(singleList).getOrThrow()
+                            }
+                        }
+                        srcIsSmb && !dstIsDrive && !dstIsSmb -> {
+                            downloadSmbNodeToLocal(src, File(job.destinationDir), smbProvider, onProgress)
+                            if (job.isMove) {
+                                smbProvider.delete(singleList).getOrThrow()
+                            }
+                        }
+                        srcIsDrive && dstIsSmb -> {
+                            val info = driveProvider.stat(src)
+                                ?: throw IllegalStateException("Quelle nicht gefunden.")
+                            if (info.isDirectory) {
+                                throw IllegalStateException("Ordner-Transfer zwischen Drive und SMB wird noch nicht unterstützt.")
+                            }
+                            val safeName = File(info.name).name.takeIf { it.isNotBlank() && it != "." && it != ".." } ?: "transfer"
+                            val tmpDir = File(applicationContext.cacheDir, "transfer_bridge_${job.taskId}").apply { mkdirs() }
+                            val tmpFile = File(tmpDir, safeName)
+                            try {
+                                driveProvider.downloadToFile(src, tmpFile, onProgress, info.sizeBytes).getOrThrow()
+                                smbProvider.uploadFile(tmpFile, job.destinationDir, onProgress).getOrThrow()
+                                if (job.isMove) driveProvider.delete(singleList).getOrThrow()
+                            } finally {
+                                tmpDir.deleteRecursively()
+                            }
+                        }
+                        srcIsSmb && dstIsDrive -> {
+                            val info = smbProvider.stat(src)
+                                ?: throw IllegalStateException("Quelle nicht gefunden.")
+                            if (info.isDirectory) {
+                                throw IllegalStateException("Ordner-Transfer zwischen SMB und Drive wird noch nicht unterstützt.")
+                            }
+                            val safeName = File(info.name).name.takeIf { it.isNotBlank() && it != "." && it != ".." } ?: "transfer"
+                            val tmpDir = File(applicationContext.cacheDir, "transfer_bridge_${job.taskId}").apply { mkdirs() }
+                            val tmpFile = File(tmpDir, safeName)
+                            try {
+                                smbProvider.downloadToFile(src, tmpFile, onProgress, info.sizeBytes).getOrThrow()
+                                driveProvider.uploadFile(tmpFile, job.destinationDir, onProgress).getOrThrow()
+                                if (job.isMove) smbProvider.delete(singleList).getOrThrow()
+                            } finally {
+                                tmpDir.deleteRecursively()
                             }
                         }
                     }
@@ -647,30 +713,69 @@ class FileTransferService : Service() {
         )
     }
 
+    private suspend fun downloadSmbNodeToLocal(
+        sourcePath: String,
+        targetDir: File,
+        smbProvider: SmbVfsProvider,
+        onProgress: (VfsTransferUpdate) -> Unit,
+    ) {
+        currentCoroutineContext().ensureActive()
+        val info = smbProvider.stat(sourcePath)
+            ?: throw IllegalStateException("SMB-Quelle nicht gefunden: $sourcePath")
+        val safeName = File(info.name).name.takeIf { it.isNotBlank() && it != "." && it != ".." } ?: "download"
+        if (info.isDirectory) {
+            val destDir = resolveUniqueLocalTarget(targetDir, safeName)
+            if (!destDir.exists() && !destDir.mkdirs()) {
+                throw IllegalStateException("Zielordner konnte nicht erstellt werden: ${destDir.absolutePath}")
+            }
+            val children = smbProvider.list(sourcePath, showHidden = true)
+            if (children.isEmpty()) {
+                onProgress(VfsTransferUpdate(currentFileName = safeName, itemsDelta = 1))
+                return
+            }
+            for (child in children) {
+                downloadSmbNodeToLocal(child.path, destDir, smbProvider, onProgress)
+            }
+        } else {
+            val dest = resolveUniqueLocalTarget(targetDir, safeName)
+            smbProvider.downloadToFile(
+                path = sourcePath,
+                destFile = dest,
+                onProgress = onProgress,
+                expectedSize = info.sizeBytes,
+            ).getOrThrow()
+        }
+    }
+
     private suspend fun executeCloudDownload(
         taskId: Long,
         sources: List<String>,
         driveProvider: GoogleDriveVfsProvider,
+        smbProvider: SmbVfsProvider,
         onTotalsReady: (bytes: Long, items: Int) -> Unit,
         onProgress: (VfsTransferUpdate) -> Unit,
     ) {
         val cacheFolder = File(applicationContext.cacheDir, "shared_drive").apply { mkdirs() }
         val filesToDownload = mutableListOf<VfsNode>()
-        val seenFileIds = HashSet<String>()
+        val seenKeys = HashSet<String>()
         val folderFiles = LinkedHashMap<String, MutableList<String>>()
         val visitedFolders = HashSet<String>()
 
+        fun providerFor(path: String): VfsProvider =
+            if (path.startsWith("smb://")) smbProvider else driveProvider
+
         suspend fun collectFolder(folderNode: VfsNode) {
-            if (!visitedFolders.add(folderNode.id)) return
-            val cachedNames = folderFiles.getOrPut(folderNode.id) { mutableListOf() }
-            val children = driveProvider.list(folderNode.path, showHidden = true)
+            val folderMarker = CloudCacheKey.folderMarkerName(folderNode)
+            if (!visitedFolders.add(folderMarker)) return
+            val cachedNames = folderFiles.getOrPut(folderMarker) { mutableListOf() }
+            val children = providerFor(folderNode.path).list(folderNode.path, showHidden = true)
             for (child in children) {
                 if (child.isDirectory) {
                     collectFolder(child)
                 } else {
-                    val cachedName = "${child.id}_${child.name.replace('/', '_')}"
+                    val cachedName = CloudCacheKey.cachedFileName(child)
                     cachedNames.add(cachedName)
-                    if (seenFileIds.add(child.id)) {
+                    if (seenKeys.add(cachedName)) {
                         filesToDownload.add(child)
                     }
                 }
@@ -678,12 +783,15 @@ class FileTransferService : Service() {
         }
 
         for (src in sources) {
-            val node = driveProvider.stat(src)
+            val node = providerFor(src).stat(src)
                 ?: throw IllegalStateException("Quelle nicht gefunden.")
             if (node.isDirectory) {
                 collectFolder(node)
-            } else if (seenFileIds.add(node.id)) {
-                filesToDownload.add(node)
+            } else {
+                val cachedName = CloudCacheKey.cachedFileName(node)
+                if (seenKeys.add(cachedName)) {
+                    filesToDownload.add(node)
+                }
             }
         }
 
@@ -696,7 +804,7 @@ class FileTransferService : Service() {
             val displayName = fileNode.name.ifBlank { fileNode.id }
             onProgress(VfsTransferUpdate(currentFileName = displayName))
 
-            val cachedName = "${fileNode.id}_${fileNode.name.replace('/', '_')}"
+            val cachedName = CloudCacheKey.cachedFileName(fileNode)
             val targetFile = File(cacheFolder, cachedName)
 
             if (targetFile.exists() && fileNode.sizeBytes >= 0L && targetFile.length() == fileNode.sizeBytes) {
@@ -715,7 +823,7 @@ class FileTransferService : Service() {
             taskTemps.add(tmpFile)
             var renamed = false
             try {
-                driveProvider.openInputStream(fileNode.path).use { input ->
+                providerFor(fileNode.path).openInputStream(fileNode.path).use { input ->
                     tmpFile.outputStream().use { output ->
                         while (true) {
                             currentCoroutineContext().ensureActive()
@@ -747,8 +855,8 @@ class FileTransferService : Service() {
             onProgress(VfsTransferUpdate(currentFileName = displayName, itemsDelta = 1))
         }
 
-        for ((folderId, cachedNames) in folderFiles) {
-            val markerFile = File(cacheFolder, "folder_$folderId.json")
+        for ((markerName, cachedNames) in folderFiles) {
+            val markerFile = File(cacheFolder, markerName)
             val jsonArray = JSONArray()
             cachedNames.forEach { jsonArray.put(it) }
             markerFile.writeText(jsonArray.toString())
@@ -792,12 +900,20 @@ class FileTransferService : Service() {
         return bytes to items
     }
 
-    private suspend fun resolveDisplayName(path: String, driveProvider: GoogleDriveVfsProvider): String {
-        if (!path.startsWith("gdrive://")) {
-            return File(path).name.ifBlank { path }
+    private suspend fun resolveDisplayName(
+        path: String,
+        driveProvider: GoogleDriveVfsProvider,
+        smbProvider: SmbVfsProvider,
+    ): String {
+        return when {
+            path.startsWith("gdrive://") ->
+                runCatching { driveProvider.stat(path)?.name }.getOrNull()?.takeIf { it.isNotBlank() }
+                    ?: path.removePrefix("gdrive://")
+            path.startsWith("smb://") ->
+                runCatching { smbProvider.stat(path)?.name }.getOrNull()?.takeIf { it.isNotBlank() }
+                    ?: path.trimEnd('/').substringAfterLast('/').ifBlank { path }
+            else -> File(path).name.ifBlank { path }
         }
-        return runCatching { driveProvider.stat(path)?.name }.getOrNull()?.takeIf { it.isNotBlank() }
-            ?: path.removePrefix("gdrive://")
     }
 
     private fun ensureNotificationChannel() {

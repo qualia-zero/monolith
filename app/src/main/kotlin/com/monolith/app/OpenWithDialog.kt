@@ -146,7 +146,7 @@ internal fun buildOpenWithOptions(context: Context, node: VfsNode): List<OpenWit
 
     val pm = context.packageManager
     val mimeType = resolveMimeType(node)
-    val queryUri = if (node.path.startsWith("gdrive://")) {
+    val queryUri = if (node.path.startsWith("gdrive://") || node.path.startsWith("smb://")) {
         Uri.Builder()
             .scheme("content")
             .authority("${context.packageName}.fileprovider")

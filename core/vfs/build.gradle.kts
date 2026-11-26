@@ -28,5 +28,6 @@ dependencies {
     implementation(libs.androidx.documentfile)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.play.services.auth)
+    implementation(libs.jcifs.ng)
     testImplementation(libs.junit)
 }

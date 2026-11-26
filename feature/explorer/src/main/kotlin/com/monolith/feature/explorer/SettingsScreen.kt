@@ -409,7 +409,10 @@ fun SettingsScreen(
             val cachedBytes = remember(cacheRefreshTick) {
                 val shareDir = File(context.cacheDir, "shared_drive")
                 val driveDir = File(context.cacheDir, "gdrive_dir_cache")
-                folderSizeBytes(shareDir) + folderSizeBytes(driveDir)
+                val smbDir = File(context.cacheDir, "smb_dir_cache")
+                val smbPreviewDir = File(context.cacheDir, "smb_preview")
+                folderSizeBytes(shareDir) + folderSizeBytes(driveDir) +
+                    folderSizeBytes(smbDir) + folderSizeBytes(smbPreviewDir)
             }
 
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -444,6 +447,8 @@ fun SettingsScreen(
                         showClearDownloadsConfirm = false
                         File(context.cacheDir, "shared_drive").deleteRecursively()
                         File(context.cacheDir, "gdrive_dir_cache").deleteRecursively()
+                        File(context.cacheDir, "smb_dir_cache").deleteRecursively()
+                        File(context.cacheDir, "smb_preview").deleteRecursively()
                         cacheRefreshTick++
                     },
                 ) {

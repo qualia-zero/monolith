@@ -1,8 +1,12 @@
 package com.monolith.feature.explorer
 
 import android.content.Context
+import com.monolith.core.model.LocationType
 import com.monolith.core.model.VfsNode
+import com.monolith.core.vfs.CloudCacheKey
 import com.monolith.core.vfs.GoogleDriveVfsProvider
+import com.monolith.core.vfs.SmbVfsProvider
+import com.monolith.core.vfs.VfsProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -14,10 +18,10 @@ object CloudCacheManager {
         File(context.cacheDir, "shared_drive")
 
     fun cachedFileFor(context: Context, node: VfsNode): File =
-        File(cacheDir(context), "${node.id}_${node.name.replace('/', '_')}")
+        File(cacheDir(context), CloudCacheKey.cachedFileName(node))
 
     fun folderMarkerFor(context: Context, folder: VfsNode): File =
-        File(cacheDir(context), "folder_${folder.id}.json")
+        File(cacheDir(context), CloudCacheKey.folderMarkerName(folder))
 
     fun isNodeCached(context: Context, node: VfsNode): Boolean {
         return if (node.isDirectory) {
@@ -32,16 +36,24 @@ object CloudCacheManager {
         context: Context,
         nodes: List<VfsNode>,
         driveProvider: GoogleDriveVfsProvider,
+        smbProvider: SmbVfsProvider? = null,
     ): Int = withContext(Dispatchers.IO) {
         cacheDir(context).mkdirs()
         var cachedCount = 0
+
+        fun providerFor(node: VfsNode): VfsProvider =
+            if (node.locationType == LocationType.SMB && smbProvider != null) {
+                smbProvider
+            } else {
+                driveProvider
+            }
 
         suspend fun cacheSingleFile(fileNode: VfsNode): File {
             val outFile = cachedFileFor(context, fileNode)
             if (!isNodeCached(context, fileNode)) {
                 val tempFile = File(outFile.parentFile, "${outFile.name}.tmp")
                 try {
-                    driveProvider.openInputStream(fileNode.path).use { input ->
+                    providerFor(fileNode).openInputStream(fileNode.path).use { input ->
                         tempFile.outputStream().use { output ->
                             input.copyTo(output)
                         }
@@ -63,7 +75,7 @@ object CloudCacheManager {
         }
 
         suspend fun cacheFolderRecursively(folder: VfsNode): List<String> {
-            val children = driveProvider.list(folder.path, showHidden = true)
+            val children = providerFor(folder).list(folder.path, showHidden = true)
             val cachedNames = mutableListOf<String>()
             for (child in children) {
                 if (child.isDirectory) {

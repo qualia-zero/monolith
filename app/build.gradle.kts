@@ -12,8 +12,8 @@ android {
         applicationId = "com.monolith.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 34
-        versionName = "1.6.2"
+        versionCode = 35
+        versionName = "1.7.0"
 
         ndk {
             abiFilters += "arm64-v8a"
@@ -61,6 +61,15 @@ android {
     packaging {
         jniLibs {
             useLegacyPackaging = true
+        }
+        resources {
+            excludes += setOf(
+                "META-INF/DEPENDENCIES",
+                "META-INF/LICENSE*",
+                "META-INF/NOTICE*",
+                "META-INF/INDEX.LIST",
+                "META-INF/versions/9/OSGI-INF/MANIFEST.MF",
+            )
         }
     }
 }

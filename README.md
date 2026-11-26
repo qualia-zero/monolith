@@ -7,10 +7,11 @@
 ## Highlights
 
 - **File Explorer & Virtual Filesystem (`:feature:explorer`, `:core:vfs`):**
-  - Fast local storage, SD card / USB OTG (with product-name labels), and Google Drive integration (multi-account support with drag-to-reorder account chips).
-  - Auto-scrolling chip breadcrumbs (`Intern` / volume / Drive account -> subfolder segments), inline directory search, and unified `FileRow` & `LocalPathPickerDialog` across Explorer, Archive Manager, and Share-In flows.
-  - Per-folder Drive directory caching with pull-to-refresh invalidation.
-  - Background `FileTransferService` with byte-integrity checks, live transfer progress overlay (`TransferProgressDialog`), system notifications, persistent Google Drive offline downloads (files & folders), and incoming `ACTION_VIEW` / `ACTION_SEND` / `ACTION_SEND_MULTIPLE` intent handling (open directly or save to local storage / Google Drive).
+  - Fast local storage, SD card / USB OTG (with product-name labels), Google Drive (multi-account support with drag-to-reorder account chips), and **SMB/CIFS (SMB1/SMB2/SMB3)** network shares.
+  - Automatic LAN SMB discovery (mDNS `_smb._tcp.` + parallel port-445 subnet scan) that auto-adds discovered servers, plus manual host/port/share/credentials configuration and drag-to-reorder server chips.
+  - Auto-scrolling chip breadcrumbs (`Intern` / volume / Drive account / SMB server -> subfolder segments), inline directory search, and unified `FileRow` & `LocalPathPickerDialog` across Explorer, Archive Manager, and Share-In flows.
+  - Per-folder Drive & SMB directory caching with pull-to-refresh invalidation, plus a loopback HTTP/1.1 Range streaming proxy (`SmbStreamProxy`) for direct `libmpv` media playback from SMB shares.
+  - Background `FileTransferService` with byte-integrity checks, live transfer progress overlay (`TransferProgressDialog`), system notifications, persistent offline downloads (files & folders) for Google Drive and SMB, and incoming `ACTION_VIEW` / `ACTION_SEND` / `ACTION_SEND_MULTIPLE` intent handling (open directly or save to local storage, Google Drive, or SMB).
 - **Archive Manager (`:feature:explorer` — `ArchiveToolScreen`, `ArchiveEngine`):**
   - 2-tab **Extract / Pack** (`Entpacken` / `Packen`) workflow supporting **ZIP**, **7z**, **RAR**, **TAR.GZ**, and **TAR.XZ** archives with background archive discovery across internal and external storage.
   - **Encryption:** AES-256 (ZIP & 7z), ZipCrypto (ZIP), and 7z filename/header encryption (`encryptFilenames`) with password prompts and encrypted entry indicators.
@@ -43,7 +44,7 @@
 - `:core:model` — Shared domain models (`VfsNode`, `VfsLocation`, `TransferProgress`, `FileCategory`, `AppSettings`)
 - `:core:common` — MIME normalization (`MimeNormalizer`), settings persistence (`AppSettingsStore`), local rotating diagnostics (`MonolithDiagnostics`, zero telemetry)
 - `:core:ui` — Material 3 themes (`Obsidian`, `Phosphor`), `MonolithDialog`, `MonolithStarMenu`, `MonolithSwitch`, `MonolithRefreshIndicator`, and `MonolithHaptics`
-- `:core:vfs` — Virtual filesystem abstraction (`VfsProvider`), `LocalVfsProvider`, `GoogleDriveVfsProvider`, `GoogleDriveAuthManager`, and `FileTransferService`
+- `:core:vfs` — Virtual filesystem abstraction (`VfsProvider`), `LocalVfsProvider`, `GoogleDriveVfsProvider`, `GoogleDriveAuthManager`, `SmbVfsProvider`, `SmbConnectionStore`, `SmbNetworkDiscovery`, `SmbStreamProxy`, and `FileTransferService`
 - `:core:media` — `libmpv` / FFmpeg (`arm64-v8a`) JNI bridge (`is.xyz.mpv.MPVLib`), `MpvEngine`, `MediaPlaybackService`, and `ThumbnailEngine`
 - `:feature:explorer` — File explorer UI, archive manager, app manager, hierarchical storage analyzer, `yt-dlp` media downloader, Gemini AI chat, and settings & haptics customization
 - `:feature:viewers` — Built-in viewers (Text Editor, Image Viewer)
