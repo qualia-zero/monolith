@@ -1635,22 +1635,6 @@ fun ExplorerScreen(
         SmbConnectionDialog(
             editingConfig = editingSmbConfig,
             existingServers = smbServers,
-            onAutoAddDiscovered = { discoveredConfigs ->
-                val added = SmbConnectionStore.addServersIfMissing(context, discoveredConfigs)
-                if (added.isNotEmpty()) {
-                    smbServers = SmbConnectionStore.getServers(context)
-                }
-            },
-            onOpenServer = { server ->
-                showSmbConnectionDialog = false
-                editingSmbConfig = null
-                SmbConnectionStore.setActiveServerId(context, server.id)
-                activeSmbServerId = server.id
-                smbStack = listOf(server.rootPath() to server.effectiveDisplayName())
-                smbAuthErrorServerId = null
-                activeLocation = LocationType.SMB
-                selectedPaths = emptySet()
-            },
             onSaveServer = { config ->
                 val saved = SmbConnectionStore.addOrUpdateServer(context, config)
                 smbServers = SmbConnectionStore.getServers(context)

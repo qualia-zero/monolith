@@ -114,9 +114,12 @@ object SmbNetworkDiscovery {
                                 }.getOrDefault(false)
                                 if (reachable) {
                                     val resolvedName = runCatching {
-                                        InetAddress.getByName(candidateIp).hostName
-                                            .substringBefore('.')
-                                            .takeIf { it.isNotBlank() && it != candidateIp }
+                                        val raw = InetAddress.getByName(candidateIp).hostName?.trim().orEmpty()
+                                        if (raw.isBlank() || raw == candidateIp || raw.matches(Regex("""\d+\.\d+\.\d+\.\d+"""))) {
+                                            null
+                                        } else {
+                                            raw.substringBefore('.')
+                                        }
                                     }.getOrNull()
                                     resultsByIp.compute(candidateIp) { _, existing ->
                                         if (existing != null && existing.source == "mDNS") {
