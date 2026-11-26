@@ -16,6 +16,7 @@ import java.util.concurrent.Executors
 
 object SmbStreamProxy {
     private val registrations = ConcurrentHashMap<String, String>()
+    private val pathToToken = ConcurrentHashMap<String, String>()
     private val executor = Executors.newCachedThreadPool()
 
     @Volatile
@@ -30,11 +31,22 @@ object SmbStreamProxy {
     fun registerUrl(context: Context, smbPath: String, fileName: String): String {
         appContext = context.applicationContext
         val port = ensureStarted()
-        val token = UUID.randomUUID().toString().replace("-", "")
+        val token = pathToToken.getOrPut(smbPath) {
+            UUID.randomUUID().toString().replace("-", "").also { newToken ->
+                registrations[newToken] = smbPath
+            }
+        }
         registrations[token] = smbPath
         val encodedName = URLEncoder.encode(fileName.ifBlank { "media" }, Charsets.UTF_8.name())
             .replace("+", "%20")
         return "http://127.0.0.1:$port/stream/$token/$encodedName"
+    }
+
+    fun resolveSmbPath(streamUrl: String): String? {
+        val path = streamUrl.substringAfter("://", "").substringAfter('/', "").substringBefore('?')
+        val segments = path.trim('/').split('/')
+        if (segments.size < 2 || segments[0] != "stream") return null
+        return registrations[segments[1]]
     }
 
     @Synchronized

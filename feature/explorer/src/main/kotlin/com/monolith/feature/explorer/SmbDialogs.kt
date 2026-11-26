@@ -284,11 +284,19 @@ fun SmbConnectionDialog(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable {
+                                    val prevHost = host.trim()
+                                    val shouldUpdateDisplayName = displayName.isBlank() ||
+                                        displayName.trim() == prevHost ||
+                                        discoveredHosts.any { it.displayName == displayName.trim() || it.ip == displayName.trim() }
                                     activeEditId = matchingSaved?.id
                                     host = matchingSaved?.host ?: discovered.ip
                                     portText = (matchingSaved?.port ?: discovered.port).toString()
                                     share = matchingSaved?.share.orEmpty()
-                                    displayName = matchingSaved?.displayName ?: discovered.displayName
+                                    if (matchingSaved != null) {
+                                        displayName = matchingSaved.displayName
+                                    } else if (shouldUpdateDisplayName) {
+                                        displayName = discovered.displayName
+                                    }
                                     isGuest = matchingSaved?.isGuest ?: true
                                     username = matchingSaved?.username.orEmpty()
                                     password = matchingSaved?.password.orEmpty()
@@ -350,6 +358,14 @@ fun SmbConnectionDialog(
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
         )
+        OutlinedTextField(
+            value = displayName,
+            onValueChange = { displayName = it },
+            label = { Text("Name (optional)") },
+            placeholder = { Text("z. B. NAS oder Wohnzimmer-PC") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -370,13 +386,6 @@ fun SmbConnectionDialog(
                 modifier = Modifier.weight(1f),
             )
         }
-        OutlinedTextField(
-            value = displayName,
-            onValueChange = { displayName = it },
-            label = { Text("Anzeigename (optional)") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-        )
         Row(
             modifier = Modifier
                 .fillMaxWidth()

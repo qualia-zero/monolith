@@ -61,6 +61,9 @@ object ThumbnailEngine {
         if (uriOrPath.startsWith("file://")) {
             return Uri.parse(uriOrPath).path ?: uriOrPath
         }
+        if (uriOrPath.startsWith("http://127.0.0.1:")) {
+            return smbPathResolver?.invoke(uriOrPath) ?: uriOrPath
+        }
         if (uriOrPath.startsWith(DRIVE_FILES_URL_PREFIX)) {
             val tail = uriOrPath.removePrefix(DRIVE_FILES_URL_PREFIX)
             val encodedId = tail.substringBefore('?').substringBefore('/').trim()
@@ -101,6 +104,12 @@ object ThumbnailEngine {
     @Volatile
     var cloudTokenProvider: (() -> String?)? = null
 
+    @Volatile
+    var smbStreamUrlProvider: ((String) -> String?)? = null
+
+    @Volatile
+    var smbPathResolver: ((String) -> String?)? = null
+
     /**
      * Loads, downsamples, and caches a square-cropped thumbnail for list rows on [Dispatchers.IO].
      */
@@ -129,15 +138,16 @@ object ThumbnailEngine {
         }
 
         val isDriveFile = normalizedPath.startsWith("gdrive://")
+        val isSmbFile = normalizedPath.startsWith("smb://")
         val isDriveVideo = isDriveFile && category == FileCategory.VIDEO
         var effectiveThumbnailUrl = thumbnailUrl?.takeIf { it.isNotBlank() }
             ?: knownThumbnailUrls[normalizedPath]
 
-        if (!isDriveFile && isRemoteUri(normalizedPath) && effectiveThumbnailUrl.isNullOrBlank()) {
+        if (!isDriveFile && !isSmbFile && isRemoteUri(normalizedPath) && effectiveThumbnailUrl.isNullOrBlank()) {
             MonolithDiagnostics.logWarn("ThumbnailEngine", "Cloud item has no thumbnailUrl: $normalizedPath (category=$category)")
             return@withContext null
         }
-        if (!isDriveFile && !isRemoteUri(normalizedPath) &&
+        if (!isDriveFile && !isSmbFile && !isRemoteUri(normalizedPath) &&
             category != FileCategory.IMAGE &&
             category != FileCategory.VIDEO &&
             category != FileCategory.AUDIO
@@ -147,6 +157,27 @@ object ThumbnailEngine {
 
         val decoded = try {
             when {
+                isSmbFile -> {
+                    val streamUrl = smbStreamUrlProvider?.invoke(normalizedPath)
+                    if (streamUrl.isNullOrBlank()) {
+                        null
+                    } else {
+                        remoteExtractSemaphore.withPermit {
+                            when (category) {
+                                FileCategory.IMAGE -> decodeRemoteImageSampled(streamUrl, targetPx)
+                                FileCategory.VIDEO -> runRetrieverWithTimeout(FALLBACK_GENERATE_TIMEOUT_MS) { retriever ->
+                                    retriever.setDataSource(streamUrl, emptyMap())
+                                    decodeEmbeddedPicture(retriever, targetPx) ?: extractNonBlackVideoFrame(retriever, targetPx)
+                                }
+                                FileCategory.AUDIO -> runRetrieverWithTimeout(FALLBACK_GENERATE_TIMEOUT_MS) { retriever ->
+                                    retriever.setDataSource(streamUrl, emptyMap())
+                                    decodeEmbeddedPicture(retriever, targetPx)
+                                }
+                                else -> null
+                            }
+                        }
+                    }
+                }
                 isDriveVideo -> {
                     val extracted = remoteExtractSemaphore.withPermit {
                         decodeDriveVideoFallback(normalizedPath, targetPx)
@@ -253,6 +284,27 @@ object ThumbnailEngine {
         }
     }
 
+    private fun decodeRemoteImageSampled(urlString: String, targetPx: Int): Bitmap? {
+        val conn = (URL(urlString).openConnection() as HttpURLConnection).apply {
+            connectTimeout = 5_000
+            readTimeout = 10_000
+        }
+        return try {
+            if (conn.responseCode !in 200..299) return null
+            val bytes = conn.inputStream.use { it.readBytes() }
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+            if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+            val opts = BitmapFactory.Options().apply {
+                inSampleSize = calculateInSampleSize(bounds.outWidth, bounds.outHeight, targetPx, targetPx)
+                inPreferredConfig = Bitmap.Config.ARGB_8888
+            }
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
+        } finally {
+            conn.disconnect()
+        }
+    }
+
     private fun decodeRemoteThumbnail(urlString: String): Bitmap? {
         fun fetch(token: String?): Pair<Int, Bitmap?> {
             val conn = (java.net.URL(urlString).openConnection() as java.net.HttpURLConnection).apply {
@@ -338,30 +390,40 @@ object ThumbnailEngine {
         if (uriString.isBlank()) return@withContext null
         val isRemote = isRemoteUri(uriString)
         val isDriveStream = isRemote && uriString.contains("googleapis.com/drive/")
-        if (isRemote && !isDriveStream) return@withContext null
+        val isLocalProxyStream = uriString.startsWith("http://127.0.0.1:")
+        if (isRemote && !isDriveStream && !isLocalProxyStream) return@withContext null
 
-        val raw = if (isDriveStream) {
-            val token = cloudTokenProvider?.invoke()?.takeIf { it.isNotBlank() }
-                ?: return@withContext null
-            runRetrieverWithTimeout(FALLBACK_GENERATE_TIMEOUT_MS) { retriever ->
-                retriever.setDataSource(uriString, mapOf("Authorization" to "Bearer $token"))
-                extractRetrieverMediaArt(retriever, isVideo)
-            } ?: run {
-                val gdrivePath = resolveMediaPath(uriString)
-                val thumbUrl = knownThumbnailUrls[gdrivePath]
-                    ?: fetchDriveThumbnailLink(gdrivePath)?.also { knownThumbnailUrls[gdrivePath] = it }
-                thumbUrl?.let { decodeRemoteThumbnail(it) }
+        val raw = when {
+            isLocalProxyStream -> {
+                runRetrieverWithTimeout(FALLBACK_GENERATE_TIMEOUT_MS) { retriever ->
+                    retriever.setDataSource(uriString, emptyMap())
+                    extractRetrieverMediaArt(retriever, isVideo)
+                }
             }
-        } else {
-            val retriever = MediaMetadataRetriever()
-            try {
-                setDataSource(context, retriever, uriString)
-                extractRetrieverMediaArt(retriever, isVideo)
-            } catch (t: Throwable) {
-                MonolithDiagnostics.logWarn("ThumbnailEngine", "Thumbnail load failed for $uriString: ${t.message}")
-                null
-            } finally {
-                runCatching { retriever.release() }
+            isDriveStream -> {
+                val token = cloudTokenProvider?.invoke()?.takeIf { it.isNotBlank() }
+                    ?: return@withContext null
+                runRetrieverWithTimeout(FALLBACK_GENERATE_TIMEOUT_MS) { retriever ->
+                    retriever.setDataSource(uriString, mapOf("Authorization" to "Bearer $token"))
+                    extractRetrieverMediaArt(retriever, isVideo)
+                } ?: run {
+                    val gdrivePath = resolveMediaPath(uriString)
+                    val thumbUrl = knownThumbnailUrls[gdrivePath]
+                        ?: fetchDriveThumbnailLink(gdrivePath)?.also { knownThumbnailUrls[gdrivePath] = it }
+                    thumbUrl?.let { decodeRemoteThumbnail(it) }
+                }
+            }
+            else -> {
+                val retriever = MediaMetadataRetriever()
+                try {
+                    setDataSource(context, retriever, uriString)
+                    extractRetrieverMediaArt(retriever, isVideo)
+                } catch (t: Throwable) {
+                    MonolithDiagnostics.logWarn("ThumbnailEngine", "Thumbnail load failed for $uriString: ${t.message}")
+                    null
+                } finally {
+                    runCatching { retriever.release() }
+                }
             }
         }
 

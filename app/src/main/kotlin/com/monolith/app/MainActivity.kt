@@ -109,6 +109,13 @@ class MainActivity : ComponentActivity() {
         ThumbnailEngine.cloudTokenProvider = {
             runBlocking { GoogleDriveAuthManager.getAccessToken(applicationContext) }
         }
+        ThumbnailEngine.smbStreamUrlProvider = { smbPath ->
+            val fileName = smbPath.trimEnd('/').substringAfterLast('/').ifBlank { "media" }
+            SmbStreamProxy.registerUrl(applicationContext, smbPath, fileName)
+        }
+        ThumbnailEngine.smbPathResolver = { streamUrl ->
+            SmbStreamProxy.resolveSmbPath(streamUrl)
+        }
         refreshPermission()
         setContent {
             val appSettings by AppSettingsStore.settings.collectAsState()
