@@ -61,7 +61,7 @@ object SmbStreamProxy {
     @Synchronized
     private fun ensureStarted(): Int {
         if (serverSocket != null && serverPort > 0) return serverPort
-        val socket = ServerSocket(0, 16, InetAddress.getLoopbackAddress())
+        val socket = ServerSocket(0, 64, InetAddress.getByAddress(byteArrayOf(127, 0, 0, 1)))
         serverSocket = socket
         serverPort = socket.localPort
         Thread(
