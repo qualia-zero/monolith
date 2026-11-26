@@ -93,7 +93,7 @@ fun ImageViewerScreen(
     )
     val scope = rememberCoroutineScope()
 
-    var showOverlay by remember { mutableStateOf(false) }
+    var showOverlay by remember { mutableStateOf(true) }
     var currentPageScale by remember { mutableFloatStateOf(1f) }
     var rotationTrigger by remember { mutableIntStateOf(0) }
 
