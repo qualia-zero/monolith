@@ -217,10 +217,20 @@ class MainActivity : ComponentActivity() {
                 return when (handlerId) {
                     HANDLER_INTERNAL_IMAGE -> {
                         val images = siblings.ifEmpty { listOf(node) }
+                        fun resolveImageTarget(item: VfsNode): String = when {
+                            item.path.startsWith("gdrive://") ->
+                                resolveOfflineRemoteFile(item)?.absolutePath
+                                    ?: driveProvider.streamUrl(item.path)
+                            item.path.startsWith("smb://") ->
+                                resolveOfflineRemoteFile(item)?.absolutePath
+                                    ?: SmbStreamProxy.registerUrl(applicationContext, item.path, item.name)
+                            else -> item.path
+                        }
                         ImageViewerActivity.launch(
                             context = this@MainActivity,
-                            path = node.path,
-                            imagePaths = images.map { it.path },
+                            path = resolveImageTarget(node),
+                            imagePaths = images.map { resolveImageTarget(it) },
+                            imageNames = images.map { it.name },
                         )
                         true
                     }
@@ -277,10 +287,12 @@ class MainActivity : ComponentActivity() {
                 packageName: String?,
                 activityName: String?,
             ): Boolean {
-                val isMediaStream = handlerId == HANDLER_INTERNAL_VIDEO || handlerId == HANDLER_INTERNAL_AUDIO
+                val isDirectRemoteViewer = handlerId == HANDLER_INTERNAL_VIDEO ||
+                    handlerId == HANDLER_INTERNAL_AUDIO ||
+                    handlerId == HANDLER_INTERNAL_IMAGE
                 val isDrive = node.path.startsWith("gdrive://")
                 val isSmb = node.path.startsWith("smb://")
-                if ((isDrive || isSmb) && !isMediaStream) {
+                if ((isDrive || isSmb) && !isDirectRemoteViewer) {
                     val offlineFile = resolveOfflineRemoteFile(node)
                     if (offlineFile != null) {
                         val localNode = node.copy(path = offlineFile.absolutePath)

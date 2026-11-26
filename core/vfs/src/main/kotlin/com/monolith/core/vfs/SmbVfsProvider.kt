@@ -49,19 +49,24 @@ class SmbVfsProvider(
     override val locationType: LocationType = LocationType.SMB
 
     private val memoryCache = ConcurrentHashMap<String, List<VfsNode>>()
+    private val memoryCacheTimestamps = ConcurrentHashMap<String, Long>()
     private val cacheDir by lazy {
         File(context.applicationContext.cacheDir, "smb_dir_cache").apply { mkdirs() }
     }
 
     fun hasCachedList(path: String, showHidden: Boolean): Boolean {
         val key = cacheKey(path, showHidden)
-        if (memoryCache.containsKey(key)) return true
-        return cacheFileForKey(key).isFile
+        val now = System.currentTimeMillis()
+        val memTs = memoryCacheTimestamps[key]
+        if (memoryCache.containsKey(key) && memTs != null && (now - memTs) < CACHE_TTL_MS) return true
+        val diskFile = cacheFileForKey(key)
+        return diskFile.isFile && (now - diskFile.lastModified()) < CACHE_TTL_MS
     }
 
     fun invalidateCache(path: String? = null) {
         if (path == null) {
             memoryCache.clear()
+            memoryCacheTimestamps.clear()
             cacheDir.listFiles()?.forEach { it.delete() }
             return
         }
@@ -69,6 +74,7 @@ class SmbVfsProvider(
         listOf(true, false).forEach { hidden ->
             val key = "$normalized|$hidden"
             memoryCache.remove(key)
+            memoryCacheTimestamps.remove(key)
             cacheFileForKey(key).delete()
         }
     }
@@ -80,9 +86,14 @@ class SmbVfsProvider(
         withContext(Dispatchers.IO) {
             val key = cacheKey(path, showHidden)
             if (!forceRefresh) {
-                memoryCache[key]?.let { return@withContext it }
+                val now = System.currentTimeMillis()
+                val memTs = memoryCacheTimestamps[key]
+                if (memTs != null && (now - memTs) < CACHE_TTL_MS) {
+                    memoryCache[key]?.let { return@withContext it }
+                }
                 readDiskCache(key)?.let { diskNodes ->
                     memoryCache[key] = diskNodes
+                    memoryCacheTimestamps[key] = cacheFileForKey(key).lastModified()
                     return@withContext diskNodes
                 }
             }
@@ -148,6 +159,7 @@ class SmbVfsProvider(
             }
 
             memoryCache[key] = nodes
+            memoryCacheTimestamps[key] = System.currentTimeMillis()
             writeDiskCache(key, nodes)
             nodes
         }
@@ -798,25 +810,37 @@ class SmbVfsProvider(
     }
 
     private fun buildContext(config: SmbServerConfig, guestFallback: Boolean): CIFSContext {
-        val props = Properties().apply {
-            put("jcifs.smb.client.minVersion", "SMB1")
-            put("jcifs.smb.client.maxVersion", "SMB311")
-            put("jcifs.smb.client.useSMB2Negotiation", "true")
-            put("jcifs.smb.client.dfs.disabled", "true")
-            put("jcifs.smb.client.connTimeout", "10000")
-            put("jcifs.smb.client.responseTimeout", "15000")
-            put("jcifs.smb.client.soTimeout", "20000")
+        val poolKey = listOf(
+            config.id,
+            config.host,
+            config.port.toString(),
+            config.username,
+            config.password,
+            config.domain,
+            config.isGuest.toString(),
+            guestFallback.toString(),
+        ).joinToString("|")
+        return contextPool.getOrPut(poolKey) {
+            val props = Properties().apply {
+                put("jcifs.smb.client.minVersion", "SMB1")
+                put("jcifs.smb.client.maxVersion", "SMB311")
+                put("jcifs.smb.client.useSMB2Negotiation", "true")
+                put("jcifs.smb.client.dfs.disabled", "true")
+                put("jcifs.smb.client.connTimeout", "10000")
+                put("jcifs.smb.client.responseTimeout", "15000")
+                put("jcifs.smb.client.soTimeout", "20000")
+            }
+            val base = BaseContext(PropertyConfiguration(props))
+            val auth = when {
+                !config.isGuest && config.username.isNotBlank() ->
+                    NtlmPasswordAuthenticator(config.domain, config.username, config.password)
+                guestFallback ->
+                    NtlmPasswordAuthenticator("", "guest", "")
+                else ->
+                    NtlmPasswordAuthenticator(null, null, null)
+            }
+            base.withCredentials(auth)
         }
-        val base = BaseContext(PropertyConfiguration(props))
-        val auth = when {
-            !config.isGuest && config.username.isNotBlank() ->
-                NtlmPasswordAuthenticator(config.domain, config.username, config.password)
-            guestFallback ->
-                NtlmPasswordAuthenticator("", "guest", "")
-            else ->
-                NtlmPasswordAuthenticator(null, null, null)
-        }
-        return base.withCredentials(auth)
     }
 
     private fun requireServer(serverId: String): SmbServerConfig =
@@ -882,6 +906,7 @@ class SmbVfsProvider(
     private fun readDiskCache(key: String): List<VfsNode>? {
         val file = cacheFileForKey(key)
         if (!file.isFile) return null
+        if (System.currentTimeMillis() - file.lastModified() >= CACHE_TTL_MS) return null
         return runCatching {
             val arr = JSONArray(file.readText(Charsets.UTF_8))
             buildList(arr.length()) {
@@ -934,5 +959,7 @@ class SmbVfsProvider(
 
     private companion object {
         const val TRANSFER_BUFFER_SIZE = 64 * 1024
+        const val CACHE_TTL_MS = 90_000L
+        val contextPool = ConcurrentHashMap<String, CIFSContext>()
     }
 }

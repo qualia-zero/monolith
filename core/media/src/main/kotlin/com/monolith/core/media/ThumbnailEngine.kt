@@ -287,10 +287,14 @@ object ThumbnailEngine {
     private fun decodeRemoteImageSampled(urlString: String, targetPx: Int): Bitmap? {
         val conn = (URL(urlString).openConnection() as HttpURLConnection).apply {
             connectTimeout = 5_000
-            readTimeout = 10_000
+            readTimeout = 15_000
         }
         return try {
-            if (conn.responseCode !in 200..299) return null
+            val code = conn.responseCode
+            if (code !in 200..299) {
+                MonolithDiagnostics.logWarn("ThumbnailEngine", "Remote image thumb failed (http=$code) for $urlString")
+                return null
+            }
             val bytes = conn.inputStream.use { it.readBytes() }
             val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
             BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)

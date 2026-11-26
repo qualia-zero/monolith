@@ -116,6 +116,7 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
+import com.monolith.core.common.FolderHiddenPrefsStore
 import com.monolith.core.media.MpvEngine
 import com.monolith.core.media.ThumbnailEngine
 import com.monolith.core.model.FileCategory
@@ -262,7 +263,15 @@ fun ExplorerScreen(
     var nodes by remember { mutableStateOf<List<VfsNode>>(emptyList()) }
     var searchVisible by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
-    var showHidden by remember { mutableStateOf(false) }
+    var hiddenPrefsVersion by remember { mutableIntStateOf(0) }
+    val currentAncestors = when (activeLocation) {
+        LocationType.GOOGLE_DRIVE -> driveStack.map { it.first }
+        LocationType.SMB -> smbStack.map { it.first }
+        else -> emptyList()
+    }
+    val showHidden = remember(currentPath, activeLocation, driveStack, smbStack, hiddenPrefsVersion) {
+        FolderHiddenPrefsStore.isShowHidden(context, currentPath, currentAncestors)
+    }
     var sortBy by remember { mutableStateOf(SortBy.NAME) }
     var menuExpanded by remember { mutableStateOf(false) }
     var showSortDialog by remember { mutableStateOf(false) }
@@ -297,10 +306,48 @@ fun ExplorerScreen(
 
     LaunchedEffect(Unit) {
         FileTransferService.events.collect { event ->
+            driveProvider.invalidateCache(null)
+            smbProvider.invalidateCache(null)
+            forceRefreshNextLoad = true
             refreshTrigger++
             cacheVersionTick++
             if (event.errorMessage != null) {
                 snackbarHostState.showSnackbar(event.errorMessage ?: "Übertragung fehlgeschlagen.")
+            }
+        }
+    }
+
+    LaunchedEffect(activeLocation, currentPath, showHidden, sortBy, signedInEmail, activeSmbServerId) {
+        val isRemoteLocation = activeLocation == LocationType.GOOGLE_DRIVE || activeLocation == LocationType.SMB
+        if (!isRemoteLocation || currentPath.isBlank()) return@LaunchedEffect
+        while (true) {
+            delay(60_000L)
+            runCatching {
+                val raw = when (activeLocation) {
+                    LocationType.GOOGLE_DRIVE -> {
+                        if (signedInEmail == null) return@runCatching null
+                        driveProvider.list(currentPath, showHidden, forceRefresh = true)
+                    }
+                    LocationType.SMB -> {
+                        if (activeSmbServer == null) return@runCatching null
+                        smbProvider.list(currentPath, showHidden, forceRefresh = true)
+                    }
+                    else -> null
+                }
+                if (raw != null) {
+                    nodes = withContext(Dispatchers.Default) {
+                        raw.sortedWith(
+                            compareByDescending<VfsNode> { it.isDirectory }.thenBy {
+                                when (sortBy) {
+                                    SortBy.NAME -> it.name.lowercase()
+                                    SortBy.SIZE -> it.sizeBytes.toString().padStart(20, '0')
+                                    SortBy.DATE_MODIFIED -> it.lastModifiedMs.toString().padStart(20, '0')
+                                    SortBy.TYPE -> it.category.name
+                                }
+                            },
+                        )
+                    }
+                }
             }
         }
     }
@@ -313,6 +360,12 @@ fun ExplorerScreen(
             block()
                 .onSuccess {
                     onSuccess()
+                    when (activeLocation) {
+                        LocationType.GOOGLE_DRIVE -> driveProvider.invalidateCache(null)
+                        LocationType.SMB -> smbProvider.invalidateCache(null)
+                        else -> Unit
+                    }
+                    forceRefreshNextLoad = true
                     refreshTrigger++
                 }
                 .onFailure { error ->
@@ -1458,7 +1511,10 @@ fun ExplorerScreen(
             CornerMenuItem(
                 id = "hidden",
                 label = if (showHidden) "Versteckte ausblenden" else "Versteckte anzeigen",
-                onClick = { showHidden = !showHidden },
+                onClick = {
+                    FolderHiddenPrefsStore.setShowHidden(context, currentPath, !showHidden)
+                    hiddenPrefsVersion++
+                },
             ),
         )
         if (activeLocation == LocationType.GOOGLE_DRIVE && signedInEmail != null) {

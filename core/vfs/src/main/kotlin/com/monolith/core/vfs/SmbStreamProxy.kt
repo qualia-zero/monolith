@@ -1,6 +1,8 @@
 package com.monolith.core.vfs
 
 import android.content.Context
+import com.monolith.core.common.MonolithDiagnostics
+import com.monolith.core.model.VfsNode
 import kotlinx.coroutines.runBlocking
 import java.io.BufferedReader
 import java.io.IOException
@@ -15,9 +17,16 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 
 object SmbStreamProxy {
+    private data class CachedStat(
+        val node: VfsNode,
+        val cachedAtMs: Long,
+    )
+
     private val registrations = ConcurrentHashMap<String, String>()
     private val pathToToken = ConcurrentHashMap<String, String>()
+    private val statCache = ConcurrentHashMap<String, CachedStat>()
     private val executor = Executors.newCachedThreadPool()
+    private const val STAT_CACHE_TTL_MS = 60_000L
 
     @Volatile
     private var appContext: Context? = null
@@ -107,7 +116,11 @@ object SmbStreamProxy {
                 }
 
                 val provider = SmbVfsProvider(ctx)
-                val node = runBlocking { provider.stat(smbPath) } ?: run {
+                val now = System.currentTimeMillis()
+                val cached = statCache[token]?.takeIf { now - it.cachedAtMs < STAT_CACHE_TTL_MS }
+                val node = cached?.node ?: runBlocking { provider.stat(smbPath) }?.also {
+                    statCache[token] = CachedStat(it, now)
+                } ?: run {
                     writeStatus(sock.getOutputStream(), "404 Not Found")
                     return
                 }
@@ -185,8 +198,8 @@ object SmbStreamProxy {
                 }
             } catch (_: IOException) {
                 // Client disconnected (e.g., player seek abort) - ignore cleanly.
-            } catch (_: Throwable) {
-                // Ignore unexpected stream errors per socket.
+            } catch (t: Throwable) {
+                MonolithDiagnostics.logWarn("SmbStreamProxy", "Stream error: ${t.message}")
             }
         }
     }

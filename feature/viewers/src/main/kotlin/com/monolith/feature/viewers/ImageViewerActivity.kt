@@ -28,6 +28,7 @@ class ImageViewerActivity : ComponentActivity() {
 
         val path = intent.getStringExtra(EXTRA_PATH).orEmpty()
         val rawPaths = intent.getStringArrayListExtra(EXTRA_IMAGE_PATHS).orEmpty()
+        val rawNames = intent.getStringArrayListExtra(EXTRA_IMAGE_NAMES).orEmpty()
         val imagePaths = when {
             rawPaths.isNotEmpty() -> rawPaths
             path.isNotBlank() -> listOf(path)
@@ -51,6 +52,7 @@ class ImageViewerActivity : ComponentActivity() {
             ) {
                 ImageViewerScreen(
                     imagePaths = imagePaths,
+                    imageNames = rawNames,
                     initialIndex = initialIndex,
                     onNavigateBack = { finish() },
                 )
@@ -61,6 +63,7 @@ class ImageViewerActivity : ComponentActivity() {
     companion object {
         private const val EXTRA_PATH = "extra_path"
         private const val EXTRA_IMAGE_PATHS = "extra_image_paths"
+        private const val EXTRA_IMAGE_NAMES = "extra_image_names"
 
         /**
          * Launches [ImageViewerActivity] for [path], optionally allowing swiping across [imagePaths].
@@ -69,10 +72,14 @@ class ImageViewerActivity : ComponentActivity() {
             context: Context,
             path: String,
             imagePaths: List<String> = listOf(path),
+            imageNames: List<String> = emptyList(),
         ) {
             val intent = Intent(context, ImageViewerActivity::class.java).apply {
                 putExtra(EXTRA_PATH, path)
                 putStringArrayListExtra(EXTRA_IMAGE_PATHS, ArrayList(imagePaths))
+                if (imageNames.isNotEmpty()) {
+                    putStringArrayListExtra(EXTRA_IMAGE_NAMES, ArrayList(imageNames))
+                }
                 if (context !is Activity) {
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 }

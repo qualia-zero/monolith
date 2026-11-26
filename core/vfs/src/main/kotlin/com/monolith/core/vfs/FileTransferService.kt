@@ -646,6 +646,12 @@ class FileTransferService : Service() {
                         }
                     }
                 }
+                val touchedDrive = job.destinationDir.startsWith("gdrive://") ||
+                    job.sources.any { it.startsWith("gdrive://") }
+                val touchedSmb = job.destinationDir.startsWith("smb://") ||
+                    job.sources.any { it.startsWith("smb://") }
+                if (touchedDrive) driveProvider.invalidateCache(null)
+                if (touchedSmb) smbProvider.invalidateCache(null)
             }
         }
 

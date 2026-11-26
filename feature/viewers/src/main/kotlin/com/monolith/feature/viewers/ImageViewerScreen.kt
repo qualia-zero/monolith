@@ -42,6 +42,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -63,6 +64,7 @@ import coil.compose.AsyncImagePainter
 import coil.compose.SubcomposeAsyncImage
 import coil.compose.SubcomposeAsyncImageContent
 import coil.request.ImageRequest
+import com.monolith.core.vfs.GoogleDriveAuthManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -83,6 +85,7 @@ fun ImageViewerScreen(
     imagePaths: List<String>,
     initialIndex: Int,
     onNavigateBack: () -> Unit,
+    imageNames: List<String> = emptyList(),
 ) {
     val pagerState = rememberPagerState(
         initialPage = initialIndex.coerceIn(0, (imagePaths.size - 1).coerceAtLeast(0)),
@@ -90,17 +93,21 @@ fun ImageViewerScreen(
     )
     val scope = rememberCoroutineScope()
 
-    var showOverlay by remember { mutableStateOf(true) }
+    var showOverlay by remember { mutableStateOf(false) }
     var currentPageScale by remember { mutableFloatStateOf(1f) }
     var rotationTrigger by remember { mutableIntStateOf(0) }
 
     val currentPath = imagePaths.getOrElse(pagerState.currentPage) { "" }
     val currentFile = remember(currentPath) { File(currentPath) }
+    val currentDisplayName = imageNames.getOrNull(pagerState.currentPage)?.takeIf { it.isNotBlank() }
+        ?: currentFile.name
     var metadata by remember(currentPath) { mutableStateOf<ImageMetadata?>(null) }
 
     LaunchedEffect(currentPath) {
-        if (currentPath.isNotBlank()) {
-            metadata = loadImageMetadata(currentPath)
+        metadata = if (currentPath.isNotBlank()) {
+            loadImageMetadata(currentPath)
+        } else {
+            null
         }
     }
 
@@ -136,7 +143,7 @@ fun ImageViewerScreen(
             modifier = Modifier.align(Alignment.TopCenter),
         ) {
             ViewerTopOverlay(
-                fileName = currentFile.name,
+                fileName = currentDisplayName,
                 currentIndex = pagerState.currentPage + 1,
                 totalCount = imagePaths.size,
                 onNavigateBack = onNavigateBack,
@@ -263,10 +270,21 @@ private fun ZoomableImagePage(
             },
         contentAlignment = Alignment.Center,
     ) {
+        val isRemoteUrl = path.startsWith("http://", ignoreCase = true) ||
+            path.startsWith("https://", ignoreCase = true)
+        val isDriveUrl = isRemoteUrl && path.contains("googleapis.com/drive/", ignoreCase = true)
+        val driveToken by produceState<String?>(initialValue = null, key1 = path, key2 = isDriveUrl) {
+            value = if (isDriveUrl) GoogleDriveAuthManager.getAccessToken(context) else null
+        }
         SubcomposeAsyncImage(
-            model = remember(path) {
+            model = remember(path, driveToken) {
                 ImageRequest.Builder(context)
-                    .data(File(path))
+                    .data(if (isRemoteUrl) path else File(path))
+                    .apply {
+                        if (isDriveUrl && !driveToken.isNullOrBlank()) {
+                            addHeader("Authorization", "Bearer $driveToken")
+                        }
+                    }
                     .crossfade(true)
                     .build()
             },
@@ -476,7 +494,10 @@ private fun clampOffset(offset: Offset, scale: Float, containerSize: IntSize): O
     )
 }
 
-private suspend fun loadImageMetadata(path: String): ImageMetadata = withContext(Dispatchers.IO) {
+private suspend fun loadImageMetadata(path: String): ImageMetadata? = withContext(Dispatchers.IO) {
+    if (path.startsWith("http://", ignoreCase = true) || path.startsWith("https://", ignoreCase = true)) {
+        return@withContext null
+    }
     val file = File(path)
     val sizeBytes = if (file.exists()) file.length() else 0L
     val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
