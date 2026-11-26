@@ -26,8 +26,6 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.RotateRight
 import androidx.compose.material.icons.filled.BrokenImage
 import androidx.compose.material3.CircularProgressIndicator
@@ -41,6 +39,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -86,28 +85,51 @@ fun ImageViewerScreen(
     initialIndex: Int,
     onNavigateBack: () -> Unit,
     imageNames: List<String> = emptyList(),
+    imageSizes: List<Long> = emptyList(),
 ) {
     val pagerState = rememberPagerState(
         initialPage = initialIndex.coerceIn(0, (imagePaths.size - 1).coerceAtLeast(0)),
         pageCount = { imagePaths.size },
     )
-    val scope = rememberCoroutineScope()
 
-    var showOverlay by remember { mutableStateOf(true) }
+    var showOverlay by remember { mutableStateOf(false) }
     var currentPageScale by remember { mutableFloatStateOf(1f) }
     var rotationTrigger by remember { mutableIntStateOf(0) }
+    val pageDimensions = remember { mutableStateMapOf<Int, Pair<Int, Int>>() }
 
-    val currentPath = imagePaths.getOrElse(pagerState.currentPage) { "" }
+    val currentPage = pagerState.currentPage
+    val currentPath = imagePaths.getOrElse(currentPage) { "" }
     val currentFile = remember(currentPath) { File(currentPath) }
-    val currentDisplayName = imageNames.getOrNull(pagerState.currentPage)?.takeIf { it.isNotBlank() }
+    val currentDisplayName = imageNames.getOrNull(currentPage)?.takeIf { it.isNotBlank() }
         ?: currentFile.name
-    var metadata by remember(currentPath) { mutableStateOf<ImageMetadata?>(null) }
+    var localMetadata by remember(currentPath) { mutableStateOf<ImageMetadata?>(null) }
 
     LaunchedEffect(currentPath) {
-        metadata = if (currentPath.isNotBlank()) {
+        localMetadata = if (currentPath.isNotBlank()) {
             loadImageMetadata(currentPath)
         } else {
             null
+        }
+    }
+
+    val effectiveMetadata = remember(localMetadata, currentPage, pageDimensions[currentPage], imageSizes) {
+        val dims = pageDimensions[currentPage]
+        val providedSize = imageSizes.getOrNull(currentPage)?.takeIf { it > 0L }
+        when {
+            localMetadata != null -> {
+                val m = localMetadata!!
+                if ((m.widthPx <= 0 || m.heightPx <= 0) && dims != null) {
+                    m.copy(widthPx = dims.first, heightPx = dims.second)
+                } else {
+                    m
+                }
+            }
+            dims != null || providedSize != null -> ImageMetadata(
+                sizeBytes = providedSize ?: 0L,
+                widthPx = dims?.first ?: 0,
+                heightPx = dims?.second ?: 0,
+            )
+            else -> null
         }
     }
 
@@ -122,7 +144,7 @@ fun ImageViewerScreen(
             modifier = Modifier.fillMaxSize(),
         ) { page ->
             val path = imagePaths[page]
-            val isCurrentPage = pagerState.currentPage == page
+            val isCurrentPage = currentPage == page
             ZoomableImagePage(
                 path = path,
                 isCurrentPage = isCurrentPage,
@@ -131,6 +153,11 @@ fun ImageViewerScreen(
                 onScaleChanged = { newScale ->
                     if (isCurrentPage) {
                         currentPageScale = newScale
+                    }
+                },
+                onDimensionsLoaded = { w, h ->
+                    if (w > 0 && h > 0) {
+                        pageDimensions[page] = w to h
                     }
                 },
             )
@@ -144,7 +171,7 @@ fun ImageViewerScreen(
         ) {
             ViewerTopOverlay(
                 fileName = currentDisplayName,
-                currentIndex = pagerState.currentPage + 1,
+                currentIndex = currentPage + 1,
                 totalCount = imagePaths.size,
                 onNavigateBack = onNavigateBack,
                 onRotate = { rotationTrigger++ },
@@ -158,20 +185,7 @@ fun ImageViewerScreen(
             modifier = Modifier.align(Alignment.BottomCenter),
         ) {
             ViewerBottomOverlay(
-                metadata = metadata,
-                canGoPrev = pagerState.currentPage > 0,
-                canGoNext = pagerState.currentPage < imagePaths.lastIndex,
-                showNavButtons = imagePaths.size > 1,
-                onPrev = {
-                    scope.launch {
-                        pagerState.animateScrollToPage((pagerState.currentPage - 1).coerceAtLeast(0))
-                    }
-                },
-                onNext = {
-                    scope.launch {
-                        pagerState.animateScrollToPage((pagerState.currentPage + 1).coerceAtMost(imagePaths.lastIndex))
-                    }
-                },
+                metadata = effectiveMetadata,
             )
         }
     }
@@ -184,6 +198,7 @@ private fun ZoomableImagePage(
     rotationTrigger: Int,
     onTap: () -> Unit,
     onScaleChanged: (Float) -> Unit,
+    onDimensionsLoaded: (Int, Int) -> Unit,
 ) {
     val context = LocalContext.current
     var scale by remember(path) { mutableFloatStateOf(1f) }
@@ -333,6 +348,14 @@ private fun ZoomableImagePage(
                     }
                 }
 
+                is AsyncImagePainter.State.Success -> {
+                    val drawable = (painter.state as AsyncImagePainter.State.Success).result.drawable
+                    LaunchedEffect(path, drawable) {
+                        onDimensionsLoaded(drawable.intrinsicWidth, drawable.intrinsicHeight)
+                    }
+                    SubcomposeAsyncImageContent()
+                }
+
                 else -> SubcomposeAsyncImageContent()
             }
         }
@@ -411,11 +434,6 @@ private fun ViewerTopOverlay(
 @Composable
 private fun ViewerBottomOverlay(
     metadata: ImageMetadata?,
-    canGoPrev: Boolean,
-    canGoNext: Boolean,
-    showNavButtons: Boolean,
-    onPrev: () -> Unit,
-    onNext: () -> Unit,
 ) {
     Surface(
         color = Color.Transparent,
@@ -432,35 +450,23 @@ private fun ViewerBottomOverlay(
             )
             .navigationBarsPadding(),
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            if (showNavButtons) {
-                IconButton(onClick = onPrev, enabled = canGoPrev) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
-                        contentDescription = "Vorheriges Bild",
-                        tint = if (canGoPrev) Color.White else Color.White.copy(alpha = 0.3f),
-                    )
+        val infoText = buildString {
+            if (metadata != null) {
+                if (metadata.widthPx > 0 && metadata.heightPx > 0) {
+                    append("${metadata.widthPx} × ${metadata.heightPx} px")
                 }
-            } else {
-                Spacer(modifier = Modifier.width(48.dp))
-            }
-
-            val infoText = buildString {
-                if (metadata != null) {
-                    if (metadata.widthPx > 0 && metadata.heightPx > 0) {
-                        append("${metadata.widthPx} × ${metadata.heightPx} px")
-                        append("  •  ")
-                    }
+                if (metadata.sizeBytes > 0L) {
+                    if (isNotEmpty()) append("  •  ")
                     append(formatFileSize(metadata.sizeBytes))
                 }
             }
-
+        }
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            contentAlignment = Alignment.Center,
+        ) {
             Text(
                 text = infoText,
                 style = MaterialTheme.typography.bodySmall,
@@ -468,18 +474,6 @@ private fun ViewerBottomOverlay(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-
-            if (showNavButtons) {
-                IconButton(onClick = onNext, enabled = canGoNext) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                        contentDescription = "Nächstes Bild",
-                        tint = if (canGoNext) Color.White else Color.White.copy(alpha = 0.3f),
-                    )
-                }
-            } else {
-                Spacer(modifier = Modifier.width(48.dp))
-            }
         }
     }
 }

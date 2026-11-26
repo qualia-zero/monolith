@@ -231,6 +231,7 @@ class MainActivity : ComponentActivity() {
                             path = resolveImageTarget(node),
                             imagePaths = images.map { resolveImageTarget(it) },
                             imageNames = images.map { it.name },
+                            imageSizes = images.map { it.sizeBytes },
                         )
                         true
                     }
