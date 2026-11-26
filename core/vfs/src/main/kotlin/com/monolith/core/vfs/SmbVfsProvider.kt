@@ -56,6 +56,12 @@ class SmbVfsProvider(
 
     fun hasCachedList(path: String, showHidden: Boolean): Boolean {
         val key = cacheKey(path, showHidden)
+        if (memoryCache.containsKey(key)) return true
+        return cacheFileForKey(key).isFile
+    }
+
+    fun isCacheFresh(path: String, showHidden: Boolean): Boolean {
+        val key = cacheKey(path, showHidden)
         val now = System.currentTimeMillis()
         val memTs = memoryCacheTimestamps[key]
         if (memoryCache.containsKey(key) && memTs != null && (now - memTs) < CACHE_TTL_MS) return true
@@ -86,11 +92,7 @@ class SmbVfsProvider(
         withContext(Dispatchers.IO) {
             val key = cacheKey(path, showHidden)
             if (!forceRefresh) {
-                val now = System.currentTimeMillis()
-                val memTs = memoryCacheTimestamps[key]
-                if (memTs != null && (now - memTs) < CACHE_TTL_MS) {
-                    memoryCache[key]?.let { return@withContext it }
-                }
+                memoryCache[key]?.let { return@withContext it }
                 readDiskCache(key)?.let { diskNodes ->
                     memoryCache[key] = diskNodes
                     memoryCacheTimestamps[key] = cacheFileForKey(key).lastModified()
@@ -906,7 +908,6 @@ class SmbVfsProvider(
     private fun readDiskCache(key: String): List<VfsNode>? {
         val file = cacheFileForKey(key)
         if (!file.isFile) return null
-        if (System.currentTimeMillis() - file.lastModified() >= CACHE_TTL_MS) return null
         return runCatching {
             val arr = JSONArray(file.readText(Charsets.UTF_8))
             buildList(arr.length()) {
@@ -959,7 +960,7 @@ class SmbVfsProvider(
 
     private companion object {
         const val TRANSFER_BUFFER_SIZE = 64 * 1024
-        const val CACHE_TTL_MS = 90_000L
+        const val CACHE_TTL_MS = 15 * 60_000L
         val contextPool = ConcurrentHashMap<String, CIFSContext>()
     }
 }

@@ -27,23 +27,35 @@ object PlaybackHistoryStore {
         }
     }
 
+    private fun canonicalKey(uri: String): String =
+        ThumbnailEngine.resolveMediaPath(uri)
+
     fun savePosition(uri: String, positionMs: Long, durationMs: Long) {
         if (uri.isBlank()) return
         if (durationMs < MIN_DURATION_MS) return
+        val key = canonicalKey(uri)
         if (positionMs < MIN_POS_MS || positionMs > durationMs - TAIL_MARGIN_MS) {
             clearPosition(uri)
             return
         }
-        prefs?.edit()?.putLong(uri, positionMs)?.apply()
+        prefs?.edit()?.putLong(key, positionMs)?.apply()
     }
 
     fun getSavedPosition(uri: String): Long {
         if (uri.isBlank()) return 0L
-        return prefs?.getLong(uri, 0L) ?: 0L
+        val key = canonicalKey(uri)
+        val sp = prefs ?: return 0L
+        if (sp.contains(key)) return sp.getLong(key, 0L)
+        return if (key != uri) sp.getLong(uri, 0L) else 0L
     }
 
     fun clearPosition(uri: String) {
         if (uri.isBlank()) return
-        prefs?.edit()?.remove(uri)?.apply()
+        val key = canonicalKey(uri)
+        prefs?.edit()?.apply {
+            remove(key)
+            if (key != uri) remove(uri)
+            apply()
+        }
     }
 }

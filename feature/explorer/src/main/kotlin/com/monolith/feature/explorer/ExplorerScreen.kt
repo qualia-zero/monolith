@@ -148,10 +148,13 @@ import com.monolith.core.vfs.SmbVfsProvider
 import com.monolith.core.vfs.VfsProvider
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import java.io.File
 
@@ -317,26 +320,27 @@ fun ExplorerScreen(
         }
     }
 
-    LaunchedEffect(activeLocation, currentPath, showHidden, sortBy, signedInEmail, activeSmbServerId) {
+    LaunchedEffect(activeLocation, currentPath, nodes, showHidden, sortBy, signedInEmail, activeSmbServerId) {
         val isRemoteLocation = activeLocation == LocationType.GOOGLE_DRIVE || activeLocation == LocationType.SMB
         if (!isRemoteLocation || currentPath.isBlank()) return@LaunchedEffect
-        while (true) {
-            delay(60_000L)
+        if (activeLocation == LocationType.GOOGLE_DRIVE && signedInEmail == null) return@LaunchedEffect
+        if (activeLocation == LocationType.SMB && activeSmbServer == null) return@LaunchedEffect
+
+        val currentFresh = when (activeLocation) {
+            LocationType.GOOGLE_DRIVE -> driveProvider.isCacheFresh(currentPath, showHidden)
+            LocationType.SMB -> smbProvider.isCacheFresh(currentPath, showHidden)
+            else -> true
+        }
+        if (!currentFresh) {
             runCatching {
-                val raw = when (activeLocation) {
-                    LocationType.GOOGLE_DRIVE -> {
-                        if (signedInEmail == null) return@runCatching null
-                        driveProvider.list(currentPath, showHidden, forceRefresh = true)
-                    }
-                    LocationType.SMB -> {
-                        if (activeSmbServer == null) return@runCatching null
-                        smbProvider.list(currentPath, showHidden, forceRefresh = true)
-                    }
+                val refreshed = when (activeLocation) {
+                    LocationType.GOOGLE_DRIVE -> driveProvider.list(currentPath, showHidden, forceRefresh = true)
+                    LocationType.SMB -> smbProvider.list(currentPath, showHidden, forceRefresh = true)
                     else -> null
                 }
-                if (raw != null) {
+                if (refreshed != null) {
                     nodes = withContext(Dispatchers.Default) {
-                        raw.sortedWith(
+                        refreshed.sortedWith(
                             compareByDescending<VfsNode> { it.isDirectory }.thenBy {
                                 when (sortBy) {
                                     SortBy.NAME -> it.name.lowercase()
@@ -346,6 +350,37 @@ fun ExplorerScreen(
                                 }
                             },
                         )
+                    }
+                }
+            }
+        }
+
+        val childDirs = nodes.asSequence().filter { it.isDirectory }.take(12).toList()
+        if (childDirs.isEmpty()) return@LaunchedEffect
+        val sem = Semaphore(2)
+        withContext(Dispatchers.IO) {
+            coroutineScope {
+                for (child in childDirs) {
+                    launch {
+                        sem.withPermit {
+                            val childAncestors = currentAncestors + child.path
+                            val childHidden = FolderHiddenPrefsStore.isShowHidden(context, child.path, childAncestors)
+                            runCatching {
+                                when (activeLocation) {
+                                    LocationType.GOOGLE_DRIVE -> {
+                                        if (!driveProvider.isCacheFresh(child.path, childHidden)) {
+                                            driveProvider.list(child.path, childHidden, forceRefresh = true)
+                                        }
+                                    }
+                                    LocationType.SMB -> {
+                                        if (!smbProvider.isCacheFresh(child.path, childHidden)) {
+                                            smbProvider.list(child.path, childHidden, forceRefresh = true)
+                                        }
+                                    }
+                                    else -> Unit
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -1603,7 +1638,7 @@ fun ExplorerScreen(
                     shareCloudTarget = null
                 }
             },
-            title = "Cloud-Datei teilen",
+            title = if (target.locationType == LocationType.SMB) "Netzwerkdatei teilen" else "Cloud-Datei teilen",
             dismissLabel = "Abbrechen",
             dismissEnabled = !isDownloadingForShare,
             onDismissClick = { shareCloudTarget = null },
@@ -1614,22 +1649,29 @@ fun ExplorerScreen(
                 scope.launch {
                     val result = runCatching {
                         withContext(Dispatchers.IO) {
-                            val cacheFolder = File(context.cacheDir, "shared_drive").apply { mkdirs() }
-                            val safeName = target.name.replace('/', '_')
-                            val outFile = File(cacheFolder, "${target.id}_$safeName")
-                            val alreadyCached = outFile.isFile &&
-                                target.sizeBytes > 0L &&
-                                outFile.length() == target.sizeBytes
+                            val outFile = CloudCacheManager.cachedFileFor(context, target)
+                            outFile.parentFile?.mkdirs()
+                            val alreadyCached = CloudCacheManager.isNodeCached(context, target)
                             if (!alreadyCached) {
                                 val remoteProvider = if (target.locationType == LocationType.SMB) {
                                     smbProvider
                                 } else {
                                     driveProvider
                                 }
-                                remoteProvider.openInputStream(target.path).use { input ->
-                                    outFile.outputStream().use { output ->
-                                        input.copyTo(output)
+                                val tmpFile = File(outFile.parentFile, "${outFile.name}.tmp")
+                                try {
+                                    remoteProvider.openInputStream(target.path).use { input ->
+                                        tmpFile.outputStream().use { output ->
+                                            input.copyTo(output)
+                                        }
                                     }
+                                    if (outFile.exists()) outFile.delete()
+                                    if (!tmpFile.renameTo(outFile)) {
+                                        tmpFile.copyTo(outFile, overwrite = true)
+                                        tmpFile.delete()
+                                    }
+                                } finally {
+                                    if (tmpFile.exists()) tmpFile.delete()
                                 }
                             }
                             outFile
