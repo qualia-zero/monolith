@@ -148,13 +148,10 @@ import com.monolith.core.vfs.SmbVfsProvider
 import com.monolith.core.vfs.VfsProvider
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import java.io.File
 
@@ -316,73 +313,6 @@ fun ExplorerScreen(
             cacheVersionTick++
             if (event.errorMessage != null) {
                 snackbarHostState.showSnackbar(event.errorMessage ?: "Übertragung fehlgeschlagen.")
-            }
-        }
-    }
-
-    LaunchedEffect(activeLocation, currentPath, nodes, showHidden, sortBy, signedInEmail, activeSmbServerId) {
-        val isRemoteLocation = activeLocation == LocationType.GOOGLE_DRIVE || activeLocation == LocationType.SMB
-        if (!isRemoteLocation || currentPath.isBlank()) return@LaunchedEffect
-        if (activeLocation == LocationType.GOOGLE_DRIVE && signedInEmail == null) return@LaunchedEffect
-        if (activeLocation == LocationType.SMB && activeSmbServer == null) return@LaunchedEffect
-
-        val currentFresh = when (activeLocation) {
-            LocationType.GOOGLE_DRIVE -> driveProvider.isCacheFresh(currentPath, showHidden)
-            LocationType.SMB -> smbProvider.isCacheFresh(currentPath, showHidden)
-            else -> true
-        }
-        if (!currentFresh) {
-            runCatching {
-                val refreshed = when (activeLocation) {
-                    LocationType.GOOGLE_DRIVE -> driveProvider.list(currentPath, showHidden, forceRefresh = true)
-                    LocationType.SMB -> smbProvider.list(currentPath, showHidden, forceRefresh = true)
-                    else -> null
-                }
-                if (refreshed != null) {
-                    nodes = withContext(Dispatchers.Default) {
-                        refreshed.sortedWith(
-                            compareByDescending<VfsNode> { it.isDirectory }.thenBy {
-                                when (sortBy) {
-                                    SortBy.NAME -> it.name.lowercase()
-                                    SortBy.SIZE -> it.sizeBytes.toString().padStart(20, '0')
-                                    SortBy.DATE_MODIFIED -> it.lastModifiedMs.toString().padStart(20, '0')
-                                    SortBy.TYPE -> it.category.name
-                                }
-                            },
-                        )
-                    }
-                }
-            }
-        }
-
-        val childDirs = nodes.asSequence().filter { it.isDirectory }.take(12).toList()
-        if (childDirs.isEmpty()) return@LaunchedEffect
-        val sem = Semaphore(2)
-        withContext(Dispatchers.IO) {
-            coroutineScope {
-                for (child in childDirs) {
-                    launch {
-                        sem.withPermit {
-                            val childAncestors = currentAncestors + child.path
-                            val childHidden = FolderHiddenPrefsStore.isShowHidden(context, child.path, childAncestors)
-                            runCatching {
-                                when (activeLocation) {
-                                    LocationType.GOOGLE_DRIVE -> {
-                                        if (!driveProvider.isCacheFresh(child.path, childHidden)) {
-                                            driveProvider.list(child.path, childHidden, forceRefresh = true)
-                                        }
-                                    }
-                                    LocationType.SMB -> {
-                                        if (!smbProvider.isCacheFresh(child.path, childHidden)) {
-                                            smbProvider.list(child.path, childHidden, forceRefresh = true)
-                                        }
-                                    }
-                                    else -> Unit
-                                }
-                            }
-                        }
-                    }
-                }
             }
         }
     }

@@ -37,7 +37,6 @@ class GoogleDriveVfsProvider(
     override val locationType: LocationType = LocationType.GOOGLE_DRIVE
 
     private val memoryCache = ConcurrentHashMap<String, List<VfsNode>>()
-    private val memoryCacheTimestamps = ConcurrentHashMap<String, Long>()
     private val cacheDir by lazy {
         File(context.applicationContext.cacheDir, "gdrive_dir_cache").apply { mkdirs() }
     }
@@ -54,19 +53,9 @@ class GoogleDriveVfsProvider(
         return cacheFileForKey(key).isFile
     }
 
-    fun isCacheFresh(path: String, showHidden: Boolean): Boolean {
-        val key = cacheKey(path, showHidden)
-        val now = System.currentTimeMillis()
-        val memTs = memoryCacheTimestamps[key]
-        if (memoryCache.containsKey(key) && memTs != null && (now - memTs) < CACHE_TTL_MS) return true
-        val diskFile = cacheFileForKey(key)
-        return diskFile.isFile && (now - diskFile.lastModified()) < CACHE_TTL_MS
-    }
-
     fun invalidateCache(path: String? = null) {
         if (path == null) {
             memoryCache.clear()
-            memoryCacheTimestamps.clear()
             cacheDir.listFiles()?.forEach { it.delete() }
             return
         }
@@ -75,7 +64,6 @@ class GoogleDriveVfsProvider(
         listOf(true, false).forEach { hidden ->
             val key = "$account|$parentId|$hidden"
             memoryCache.remove(key)
-            memoryCacheTimestamps.remove(key)
             cacheFileForKey(key).delete()
         }
     }
@@ -90,7 +78,6 @@ class GoogleDriveVfsProvider(
                 memoryCache[key]?.let { return@withContext it }
                 readDiskCache(key)?.let { diskNodes ->
                     memoryCache[key] = diskNodes
-                    memoryCacheTimestamps[key] = cacheFileForKey(key).lastModified()
                     return@withContext diskNodes
                 }
             }
@@ -147,7 +134,6 @@ class GoogleDriveVfsProvider(
             }
 
             memoryCache[key] = finalNodes
-            memoryCacheTimestamps[key] = System.currentTimeMillis()
             writeDiskCache(key, finalNodes)
             finalNodes
         }
@@ -780,6 +766,5 @@ class GoogleDriveVfsProvider(
         const val CONNECT_TIMEOUT_MS = 15_000
         const val READ_TIMEOUT_MS = 30_000
         const val TRANSFER_BUFFER_SIZE = 64 * 1024
-        const val CACHE_TTL_MS = 15 * 60_000L
     }
 }

@@ -49,7 +49,6 @@ class SmbVfsProvider(
     override val locationType: LocationType = LocationType.SMB
 
     private val memoryCache = ConcurrentHashMap<String, List<VfsNode>>()
-    private val memoryCacheTimestamps = ConcurrentHashMap<String, Long>()
     private val cacheDir by lazy {
         File(context.applicationContext.cacheDir, "smb_dir_cache").apply { mkdirs() }
     }
@@ -60,19 +59,9 @@ class SmbVfsProvider(
         return cacheFileForKey(key).isFile
     }
 
-    fun isCacheFresh(path: String, showHidden: Boolean): Boolean {
-        val key = cacheKey(path, showHidden)
-        val now = System.currentTimeMillis()
-        val memTs = memoryCacheTimestamps[key]
-        if (memoryCache.containsKey(key) && memTs != null && (now - memTs) < CACHE_TTL_MS) return true
-        val diskFile = cacheFileForKey(key)
-        return diskFile.isFile && (now - diskFile.lastModified()) < CACHE_TTL_MS
-    }
-
     fun invalidateCache(path: String? = null) {
         if (path == null) {
             memoryCache.clear()
-            memoryCacheTimestamps.clear()
             cacheDir.listFiles()?.forEach { it.delete() }
             return
         }
@@ -80,7 +69,6 @@ class SmbVfsProvider(
         listOf(true, false).forEach { hidden ->
             val key = "$normalized|$hidden"
             memoryCache.remove(key)
-            memoryCacheTimestamps.remove(key)
             cacheFileForKey(key).delete()
         }
     }
@@ -95,7 +83,6 @@ class SmbVfsProvider(
                 memoryCache[key]?.let { return@withContext it }
                 readDiskCache(key)?.let { diskNodes ->
                     memoryCache[key] = diskNodes
-                    memoryCacheTimestamps[key] = cacheFileForKey(key).lastModified()
                     return@withContext diskNodes
                 }
             }
@@ -161,7 +148,6 @@ class SmbVfsProvider(
             }
 
             memoryCache[key] = nodes
-            memoryCacheTimestamps[key] = System.currentTimeMillis()
             writeDiskCache(key, nodes)
             nodes
         }
@@ -960,7 +946,6 @@ class SmbVfsProvider(
 
     private companion object {
         const val TRANSFER_BUFFER_SIZE = 64 * 1024
-        const val CACHE_TTL_MS = 15 * 60_000L
         val contextPool = ConcurrentHashMap<String, CIFSContext>()
     }
 }
