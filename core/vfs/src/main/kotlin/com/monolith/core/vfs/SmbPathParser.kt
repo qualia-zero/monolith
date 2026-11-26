@@ -74,47 +74,17 @@ object SmbPathParser {
         }
         sb.append('/')
         val cleanShare = share?.trim('/')?.takeIf { it.isNotEmpty() } ?: return sb.toString()
-        sb.append(encodeSegment(cleanShare)).append('/')
+        sb.append(cleanShare).append('/')
         val cleanRel = relativePath.trim('/')
         if (cleanRel.isNotEmpty()) {
-            val encodedSegments = cleanRel.split('/')
+            val rawSegments = cleanRel.split('/')
                 .filter { it.isNotEmpty() }
-                .joinToString("/") { encodeSegment(it) }
-            sb.append(encodedSegments)
+                .joinToString("/")
+            sb.append(rawSegments)
             if (isDirectory) {
                 sb.append('/')
             }
         }
         return sb.toString()
     }
-
-    private fun encodeSegment(segment: String): String {
-        val bytes = segment.toByteArray(Charsets.UTF_8)
-        val out = StringBuilder(bytes.size)
-        for (b in bytes) {
-            val c = b.toInt() and 0xFF
-            if (isUnreserved(c)) {
-                out.append(c.toChar())
-            } else {
-                out.append('%')
-                out.append(HEX[(c ushr 4) and 0x0F])
-                out.append(HEX[c and 0x0F])
-            }
-        }
-        return out.toString()
-    }
-
-    private fun isUnreserved(c: Int): Boolean =
-        (c in 'a'.code..'z'.code) ||
-            (c in 'A'.code..'Z'.code) ||
-            (c in '0'.code..'9'.code) ||
-            c == '-'.code ||
-            c == '.'.code ||
-            c == '_'.code ||
-            c == '~'.code
-
-    private val HEX = charArrayOf(
-        '0', '1', '2', '3', '4', '5', '6', '7',
-        '8', '9', 'A', 'B', 'C', 'D', 'E', 'F',
-    )
 }

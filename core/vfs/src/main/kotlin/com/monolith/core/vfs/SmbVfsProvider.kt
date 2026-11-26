@@ -28,6 +28,9 @@ import java.io.FileOutputStream
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
+import java.net.ConnectException
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
 import java.security.MessageDigest
 import java.util.Properties
 import java.util.UUID
@@ -731,6 +734,10 @@ class SmbVfsProvider(
                         message = "SMB-Anmeldung erforderlich für ${config.effectiveDisplayName()}.",
                         cause = e2,
                     )
+                } catch (e2: SmbException) {
+                    throw mapSmbException(config, e2)
+                } catch (e2: IOException) {
+                    throw mapNetworkException(e2)
                 }
             } else {
                 throw SmbAuthRequiredException(
@@ -740,17 +747,54 @@ class SmbVfsProvider(
                 )
             }
         } catch (e: SmbException) {
-            if (e.ntStatus == NtStatus.NT_STATUS_LOGON_FAILURE ||
-                e.ntStatus == NtStatus.NT_STATUS_ACCESS_DENIED
-            ) {
-                throw SmbAuthRequiredException(
-                    serverId = config.id,
-                    message = "Zugriff verweigert für ${config.effectiveDisplayName()}.",
-                    cause = e,
-                )
-            }
-            throw e
+            throw mapSmbException(config, e)
+        } catch (e: IOException) {
+            throw mapNetworkException(e)
         }
+    }
+
+    private fun mapSmbException(config: SmbServerConfig, e: SmbException): IOException {
+        return when (e.ntStatus) {
+            NtStatus.NT_STATUS_LOGON_FAILURE,
+            NtStatus.NT_STATUS_ACCESS_DENIED -> SmbAuthRequiredException(
+                serverId = config.id,
+                message = "Zugriff verweigert für ${config.effectiveDisplayName()}.",
+                cause = e,
+            )
+            NtStatus.NT_STATUS_OBJECT_NAME_NOT_FOUND,
+            NtStatus.NT_STATUS_NO_SUCH_FILE,
+            NtStatus.NT_STATUS_OBJECT_PATH_NOT_FOUND -> IOException(
+                "Datei oder Ordner auf dem SMB-Server nicht gefunden.",
+                e,
+            )
+            NtStatus.NT_STATUS_BAD_NETWORK_NAME -> IOException(
+                "SMB-Freigabe wurde nicht gefunden.",
+                e,
+            )
+            NtStatus.NT_STATUS_SHARING_VIOLATION -> IOException(
+                "Die Datei wird gerade von einem anderen Prozess verwendet.",
+                e,
+            )
+            NtStatus.NT_STATUS_OBJECT_NAME_COLLISION -> IOException(
+                "Datei oder Ordner existiert bereits.",
+                e,
+            )
+            NtStatus.NT_STATUS_DISK_FULL -> IOException(
+                "Nicht genügend Speicherplatz auf der SMB-Freigabe.",
+                e,
+            )
+            else -> IOException(
+                "SMB-Fehler: ${e.message ?: "Unbekannter Fehler."}",
+                e,
+            )
+        }
+    }
+
+    private fun mapNetworkException(e: IOException): IOException = when (e) {
+        is UnknownHostException,
+        is ConnectException -> IOException("SMB-Server konnte nicht erreicht werden.", e)
+        is SocketTimeoutException -> IOException("Zeitüberschreitung bei der Verbindung zum SMB-Server.", e)
+        else -> e
     }
 
     private fun buildContext(config: SmbServerConfig, guestFallback: Boolean): CIFSContext {

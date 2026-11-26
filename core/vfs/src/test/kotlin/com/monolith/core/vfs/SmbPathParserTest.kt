@@ -41,7 +41,7 @@ class SmbPathParserTest {
     }
 
     @Test
-    fun encodeSmbUrlEncodesSpecialCharactersAndPort() {
+    fun encodeSmbUrlPreservesRawSegmentsAndPort() {
         val defaultPortRoot = SmbPathParser.encodeSmbUrl(
             host = "192.168.1.20",
             port = 445,
@@ -55,11 +55,11 @@ class SmbPathParserTest {
             host = "nas.local",
             port = 1445,
             share = "My Share",
-            relativePath = "100% #1/Clip [HD].mp4",
+            relativePath = "100% #1/Clip [HD] äöü.mp4",
             isDirectory = false,
         )
         assertEquals(
-            "smb://nas.local:1445/My%20Share/100%25%20%231/Clip%20%5BHD%5D.mp4",
+            "smb://nas.local:1445/My Share/100% #1/Clip [HD] äöü.mp4",
             customPortFile,
         )
 
@@ -70,6 +70,6 @@ class SmbPathParserTest {
             relativePath = "Sub Folder",
             isDirectory = true,
         )
-        assertEquals("smb://192.168.1.20/Docs/Sub%20Folder/", dirUrl)
+        assertEquals("smb://192.168.1.20/Docs/Sub Folder/", dirUrl)
     }
 }
